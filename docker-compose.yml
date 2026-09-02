@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sophos-blocker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sophos_blocker}
+      POSTGRES_USER: ${POSTGRES_USER:-sophos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sophos}
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sophos} -d ${POSTGRES_DB:-sophos_blocker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: sophos-blocker-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-sophos}:${POSTGRES_PASSWORD:-sophos}@db:5432/${POSTGRES_DB:-sophos_blocker}
+      MASTER_KEY: ${MASTER_KEY:?Bat buoc dat MASTER_KEY trong .env}
+      APP_PASSWORD: ${APP_PASSWORD:?Bat buoc dat APP_PASSWORD trong .env}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-8}
+      HOST_PREFIX: ${HOST_PREFIX:-SOC_BLOCK_}
+      API_TIMEOUT: ${API_TIMEOUT:-30}
+      SAFE_LIST: ${SAFE_LIST:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,169.254.0.0/16}
+      ALLOW_PRIVATE: ${ALLOW_PRIVATE:-false}
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "${APP_PORT:-8080}:8080"
+
+volumes:
+  pgdata:
