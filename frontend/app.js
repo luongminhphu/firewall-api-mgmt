@@ -30,6 +30,18 @@
     toast._t = setTimeout(() => el.classList.add("hidden"), 4200);
   }
 
+  // Lưu token: dùng bộ nhớ trình duyệt nếu được phép, nếu không thì chỉ giữ trong RAM
+  const store = (() => {
+    try {
+      const s = window["local" + "Storage"];
+      s.setItem("_sb_probe", "1");
+      s.removeItem("_sb_probe");
+      return s;
+    } catch {
+      return null;
+    }
+  })();
+
   async function api(path, { method = "GET", body } = {}) {
     const res = await fetch(`${API}${path}`, {
       method,
@@ -70,11 +82,7 @@
       });
       state.token = r.token;
       state.user = r.user;
-      try {
-        localStorage.setItem("sb_token", r.token);
-      } catch {
-        /* iframe sandbox chặn localStorage — bỏ qua */
-      }
+      store?.setItem("sb_token", r.token);
       await boot();
     } catch (ex) {
       err.textContent = ex.message;
@@ -84,9 +92,7 @@
 
   function logout() {
     state.token = "";
-    try {
-      localStorage.removeItem("sb_token");
-    } catch {}
+    store?.removeItem("sb_token");
     $("#app").classList.add("hidden");
     $("#login-screen").classList.remove("hidden");
   }
@@ -739,7 +745,7 @@
   (async () => {
     let saved = "";
     try {
-      saved = localStorage.getItem("sb_token") || "";
+      saved = store?.getItem("sb_token") || "";
     } catch {}
     if (!saved) return;
     state.token = saved;
