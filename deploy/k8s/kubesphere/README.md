@@ -3,7 +3,7 @@
 Hướng dẫn deploy mini app SOC Rapid Block lên cụm KubeSphere, dùng:
 
 - **Registry**: GitHub Container Registry (`ghcr.io/luongminhphu/firewall-api-mgmt`), build tự động bằng GitHub Actions.
-- **Ingress**: NodePort `30880` (đổi trong `base/app.yaml` nếu trùng cổng).
+- **Ingress**: NodePort `30988` (đổi trong `base/app.yaml` nếu trùng cổng — KubeSphere hay chiếm sẵn 30880 cho console).
 - **Database**: Postgres 16 StatefulSet trong cụm, PVC `pgdata` (mặc định 5Gi).
 
 Manifests nằm ở `deploy/k8s/base/`, dùng chung cho `kubectl apply -k` và cho UI KubeSphere.
@@ -43,8 +43,7 @@ kubectl -n infra-ops create secret generic soc-rapid-block-secrets \
   --from-literal=APP_PASSWORD='DoiMatKhauNay@2026' \
   --from-literal=POSTGRES_PASSWORD=$(openssl rand -hex 24)
 
-# 2.2 Bỏ file secret.yaml mẫu ra khỏi kustomization (nếu bạn đã tạo Secret ở bước trên)
-sed -i '/secret.yaml/d' deploy/k8s/base/kustomization.yaml
+# 2.2 (Kustomization đã comment sẵn secret.yaml — không cần sửa thêm)
 
 # 2.3 Cập nhật storageClassName trong deploy/k8s/base/postgres.yaml cho khớp cụm
 #      (openebs-hostpath, nfs-client, local-path, csi-cephfs, …). Bỏ trống nếu có default.
@@ -57,7 +56,7 @@ kubectl -n infra-ops get pods,svc,pvc
 kubectl -n infra-ops logs deploy/soc-rapid-block-app -f
 ```
 
-Truy cập: `http://<node-ip>:30880` → đăng nhập bằng `APP_PASSWORD`.
+Truy cập: `http://<node-ip>:30988` → đăng nhập bằng `APP_PASSWORD`.
 
 ---
 
@@ -68,7 +67,7 @@ Truy cập: `http://<node-ip>:30880` → đăng nhập bằng `APP_PASSWORD`.
 3. **Configuration ▸ ConfigMaps**: *Import YAML* → dán `configmap.yaml`, chỉnh `SAFE_LIST` cho phù hợp.
 4. **Application Workloads ▸ StatefulSets**: *Create* → *Import YAML* → dán `postgres.yaml`. Đợi Pod `soc-rapid-block-db-0` chuyển **Running/Ready**.
 5. **Application Workloads ▸ Deployments**: *Create* → *Import YAML* → dán `app.yaml`. Service NodePort được tạo cùng lúc.
-6. **Network ▸ Services**: kiểm tra Service `soc-rapid-block` (trong namespace `infra-ops`) có port `30880/TCP` trên tất cả node.
+6. **Network ▸ Services**: kiểm tra Service `soc-rapid-block` (trong namespace `infra-ops`) có port `30988/TCP` trên tất cả node.
 7. (Tuỳ chọn) **Network ▸ Network Policies**: import `network-policy.yaml` để chỉ cho phép app gọi DB.
 
 KubeSphere sẽ tự dựng dashboard **Application** nếu bạn gắn nhãn `app.kubernetes.io/part-of: soc-rapid-block` (đã có sẵn trong các manifest).

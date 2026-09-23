@@ -108,7 +108,7 @@ kubectl -n infra-ops create secret generic soc-rapid-block-secrets \
 kubectl apply -k deploy/k8s/base/
 ```
 
-Truy cập `http://<node-ip>:30880`. Xem hướng dẫn đầy đủ (imagePullSecret cho GHCR private, cách import qua UI KubeSphere, upgrade/rollback, sao lưu Postgres) trong [`deploy/k8s/kubesphere/README.md`](deploy/k8s/kubesphere/README.md).
+Truy cập `http://<node-ip>:30988`. Xem hướng dẫn đầy đủ (imagePullSecret cho GHCR private, cách import qua UI KubeSphere, upgrade/rollback, sao lưu Postgres) trong [`deploy/k8s/kubesphere/README.md`](deploy/k8s/kubesphere/README.md).
 
 ## 4. Sử dụng
 

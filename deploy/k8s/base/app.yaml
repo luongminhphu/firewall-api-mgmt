@@ -75,5 +75,6 @@ spec:
     - name: http
       port: 8080
       targetPort: 8080
-      # Cổng phải nằm trong dải NodePort của cluster (mặc định 30000–32767)
-      nodePort: 30880
+      # Cổng nằm trong dải NodePort (mặc định 30000–32767).
+      # Đã đổi sang 30988 vì 30880 hay trùng với ingress-controller/console trên một số cụm KubeSphere.
+      nodePort: 30988

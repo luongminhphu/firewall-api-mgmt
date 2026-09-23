@@ -5,7 +5,9 @@ namespace: infra-ops
 resources:
   - namespace.yaml
   - configmap.yaml
-  - secret.yaml           # ⚠️ Thay bằng Secret thật khi triển khai (xem hướng dẫn trong file)
+  # KHÔNG include secret.yaml — tạo Secret thật bằng `kubectl create secret generic ...`.
+  # File secret.yaml giữ trong repo chỉ để tham chiếu cấu trúc; bật dòng dưới nếu bạn muốn quản lý Secret qua Sealed-Secrets / SOPS.
+  # - secret.yaml
   - postgres.yaml
   - app.yaml
   - network-policy.yaml
