@@ -46,7 +46,11 @@ Mã trạng thái hay gặp: `200/202` OK · `502` object trùng tên · `503` t
 
 ---
 
-## 3. Triển khai bằng Docker Compose
+## 3. Triển khai
+
+Hai lựa chọn: **Docker Compose** (một máy chủ, đơn giản nhất) hoặc **KubeSphere/Kubernetes** (dùng ảnh dựng sẵn trên GHCR — xem `deploy/k8s/kubesphere/README.md`).
+
+### 3.1 Docker Compose
 
 ```bash
 git clone <repo> sophos-blocker && cd sophos-blocker
@@ -87,6 +91,24 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 - Cập nhật `SAFE_LIST` với dải IP văn phòng, VPN, đối tác để tránh tự chặn nhầm.
 
 ---
+
+### 3.2 KubeSphere / Kubernetes
+
+Manifests nằm ở `deploy/k8s/base/` (Namespace + ConfigMap + Secret mẫu + Postgres StatefulSet + Deployment + NodePort Service + NetworkPolicy). Image build tự động qua GitHub Actions và đẩy lên `ghcr.io/luongminhphu/firewall-api-mgmt`.
+
+Quick start:
+
+```bash
+kubectl create namespace soc-rapid-block
+kubectl -n soc-rapid-block create secret generic soc-rapid-block-secrets \
+  --from-literal=MASTER_KEY=$(openssl rand -hex 32) \
+  --from-literal=SESSION_SECRET=$(openssl rand -hex 32) \
+  --from-literal=APP_PASSWORD='DoiMatKhauNay@2026' \
+  --from-literal=POSTGRES_PASSWORD=$(openssl rand -hex 24)
+kubectl apply -k deploy/k8s/base/
+```
+
+Truy cập `http://<node-ip>:30880`. Xem hướng dẫn đầy đủ (imagePullSecret cho GHCR private, cách import qua UI KubeSphere, upgrade/rollback, sao lưu Postgres) trong [`deploy/k8s/kubesphere/README.md`](deploy/k8s/kubesphere/README.md).
 
 ## 4. Sử dụng
 

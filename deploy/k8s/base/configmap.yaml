@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: soc-rapid-block-config
+  namespace: soc-rapid-block
+data:
+  APP_PORT: "8080"
+  SESSION_TTL_HOURS: "8"
+  HOST_PREFIX: "SOC_BLOCK_"
+  API_TIMEOUT: "30"
+  ALLOW_PRIVATE: "false"
+  # Safe-list: dải sẽ KHÔNG BAO GIỜ bị chặn.
+  # Bổ sung dải VPN, đối tác, văn phòng của bạn vào đây trước khi go-live.
+  SAFE_LIST: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,169.254.0.0/16,8.8.8.8,1.1.1.1"
+  POSTGRES_DB: "sophos_blocker"
+  POSTGRES_USER: "sophos"
+  # DATABASE_URL trỏ tới Service Postgres nội bộ trong cùng namespace
+  DATABASE_URL: "postgresql+psycopg2://sophos:$(POSTGRES_PASSWORD)@soc-rapid-block-db:5432/sophos_blocker"
+  TZ: "Asia/Ho_Chi_Minh"

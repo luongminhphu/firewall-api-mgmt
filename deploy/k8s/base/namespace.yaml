@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: soc-rapid-block
+  labels:
+    # KubeSphere: gắn label này để namespace hiện trong workspace tương ứng
+    kubesphere.io/workspace: soc
+    app.kubernetes.io/part-of: soc-rapid-block

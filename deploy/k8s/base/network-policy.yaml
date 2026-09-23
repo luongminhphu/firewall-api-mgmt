@@ -1,0 +1,35 @@
+# Chỉ cho phép app truy cập DB, và cho phép mọi nguồn gọi vào port 8080 của app.
+# KubeSphere/CNI phải có plugin hỗ trợ NetworkPolicy (Calico, Cilium…) mới có tác dụng.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-allow-from-app
+  namespace: soc-rapid-block
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: soc-rapid-block-db
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: soc-rapid-block-app
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-allow-ingress
+  namespace: soc-rapid-block
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: soc-rapid-block-app
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080
