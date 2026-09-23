@@ -99,8 +99,8 @@ Manifests nằm ở `deploy/k8s/base/` (Namespace + ConfigMap + Secret mẫu + P
 Quick start:
 
 ```bash
-kubectl create namespace soc-rapid-block
-kubectl -n soc-rapid-block create secret generic soc-rapid-block-secrets \
+kubectl create namespace infra-ops
+kubectl -n infra-ops create secret generic soc-rapid-block-secrets \
   --from-literal=MASTER_KEY=$(openssl rand -hex 32) \
   --from-literal=SESSION_SECRET=$(openssl rand -hex 32) \
   --from-literal=APP_PASSWORD='DoiMatKhauNay@2026' \

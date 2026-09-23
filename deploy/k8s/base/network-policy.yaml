@@ -4,7 +4,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: db-allow-from-app
-  namespace: soc-rapid-block
+  namespace: infra-ops
 spec:
   podSelector:
     matchLabels:
@@ -23,7 +23,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: app-allow-ingress
-  namespace: soc-rapid-block
+  namespace: infra-ops
 spec:
   podSelector:
     matchLabels:

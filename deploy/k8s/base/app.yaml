@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: soc-rapid-block-app
-  namespace: soc-rapid-block
+  namespace: infra-ops
   labels:
     app.kubernetes.io/name: soc-rapid-block-app
     app.kubernetes.io/part-of: soc-rapid-block
@@ -23,7 +23,7 @@ spec:
         app.kubernetes.io/component: web
     spec:
       # Nếu image ở GHCR private, dùng imagePullSecret:
-      #   kubectl -n soc-rapid-block create secret docker-registry ghcr-pull \
+      #   kubectl -n infra-ops create secret docker-registry ghcr-pull \
       #     --docker-server=ghcr.io --docker-username=<gh-user> \
       #     --docker-password=<PAT read:packages> --docker-email=<email>
       imagePullSecrets:
@@ -63,7 +63,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: soc-rapid-block
-  namespace: soc-rapid-block
+  namespace: infra-ops
   labels:
     app.kubernetes.io/name: soc-rapid-block-app
     app.kubernetes.io/part-of: soc-rapid-block

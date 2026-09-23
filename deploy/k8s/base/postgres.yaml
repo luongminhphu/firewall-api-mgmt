@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: soc-rapid-block-db
-  namespace: soc-rapid-block
+  namespace: infra-ops
   labels:
     app.kubernetes.io/name: soc-rapid-block-db
     app.kubernetes.io/part-of: soc-rapid-block
@@ -19,7 +19,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: soc-rapid-block-db
-  namespace: soc-rapid-block
+  namespace: infra-ops
   labels:
     app.kubernetes.io/name: soc-rapid-block-db
     app.kubernetes.io/part-of: soc-rapid-block

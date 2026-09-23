@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: soc-rapid-block-config
-  namespace: soc-rapid-block
+  namespace: infra-ops
 data:
   APP_PORT: "8080"
   SESSION_TTL_HOURS: "8"
