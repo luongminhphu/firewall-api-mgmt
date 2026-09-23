@@ -80,9 +80,9 @@ spec:
         name: pgdata
       spec:
         accessModes: ["ReadWriteOnce"]
-        # ⚠️ Đổi storageClassName cho khớp cụm KubeSphere của bạn (openebs-hostpath, local, nfs-client, ...).
-        # Bỏ trường này nếu cluster có default StorageClass.
-        storageClassName: ""
+        # Đặt đúng StorageClass. Trên cụm này default là `local` (OpenEBS host-local, WaitForFirstConsumer).
+        # Đổi thành nfs-client / openebs-hostpath / csi-cephfs… nếu triển khai ở cụm khác.
+        storageClassName: local
         resources:
           requests:
             storage: 5Gi
