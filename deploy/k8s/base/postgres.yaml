@@ -80,9 +80,10 @@ spec:
         name: pgdata
       spec:
         accessModes: ["ReadWriteOnce"]
-        # Đặt đúng StorageClass. Trên cụm này default là `local` (OpenEBS host-local, WaitForFirstConsumer).
-        # Đổi thành nfs-client / openebs-hostpath / csi-cephfs… nếu triển khai ở cụm khác.
-        storageClassName: local
+        # Đặt đúng StorageClass của cụm. Cụm RKE2 hiện tại dùng Longhorn.
+        # LƯU Ý: volumeClaimTemplates của StatefulSet KHÔNG sửa được sau khi tạo — giá trị này phải khớp
+        # với PVC đang chạy, nếu không `kubectl apply` sẽ báo "spec: Forbidden". Đổi sang cụm khác thì sửa trước khi tạo lần đầu.
+        storageClassName: longhorn
         resources:
           requests:
             storage: 5Gi
