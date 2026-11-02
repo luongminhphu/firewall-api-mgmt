@@ -41,8 +41,45 @@ class Settings:
     # Cho phép chặn IP private hay không (mặc định: không).
     ALLOW_PRIVATE: bool = _bool(os.getenv("ALLOW_PRIVATE"), False)
 
+    # ------------------------------------------------------------ xác thực
+    # Các phương thức đăng nhập được bật, phân tách bằng dấu phẩy:
+    #   local  — mật khẩu dùng chung APP_PASSWORD (chỉ nên dùng trong LAN / lab)
+    #   oidc   — đăng nhập Microsoft Entra ID (OpenID Connect), khuyến nghị khi đi qua App Proxy
+    #   header — tin header danh tính do Entra Application Proxy chèn (header-based SSO)
+    AUTH_MODES: str = os.getenv("AUTH_MODES", "local")
+
+    # Vai trò mặc định khi đăng nhập bằng APP_PASSWORD (giữ tương thích v1.0: admin).
+    LOCAL_ROLE: str = os.getenv("LOCAL_ROLE", "admin")
+
+    # --- Entra ID OIDC (App registration) ---
+    OIDC_TENANT_ID: str = os.getenv("OIDC_TENANT_ID", "")
+    OIDC_CLIENT_ID: str = os.getenv("OIDC_CLIENT_ID", "")
+    OIDC_CLIENT_SECRET: str = os.getenv("OIDC_CLIENT_SECRET", "")
+    # URL callback công khai qua App Proxy, vd https://socblock-hsc.msappproxy.net/api/auth/oidc/callback
+    OIDC_REDIRECT_URI: str = os.getenv("OIDC_REDIRECT_URI", "")
+    OIDC_AUTHORITY: str = os.getenv("OIDC_AUTHORITY", "https://login.microsoftonline.com")
+    # Tên App Role (khai báo trong App registration) -> vai trò trong app
+    ROLE_ADMIN: str = os.getenv("ROLE_ADMIN", "SRB.Admin")
+    ROLE_OPERATOR: str = os.getenv("ROLE_OPERATOR", "SRB.Operator")
+    ROLE_VIEWER: str = os.getenv("ROLE_VIEWER", "SRB.Viewer")
+    # Bắt buộc token có claim amr chứa "mfa" (Conditional Access vẫn là lớp chính).
+    OIDC_REQUIRE_MFA_CLAIM: bool = _bool(os.getenv("OIDC_REQUIRE_MFA_CLAIM"), False)
+
+    # --- Header-based SSO qua Entra Application Proxy ---
+    HEADER_USER: str = os.getenv("HEADER_USER", "X-SRB-UPN")
+    HEADER_NAME: str = os.getenv("HEADER_NAME", "X-SRB-NAME")
+    # CHỈ tin header khi request đến từ các dải này (IP máy cài Private Network Connector).
+    TRUSTED_PROXY_CIDRS: str = os.getenv("TRUSTED_PROXY_CIDRS", "")
+    HEADER_DEFAULT_ROLE: str = os.getenv("HEADER_DEFAULT_ROLE", "viewer")
+    HEADER_ADMINS: str = os.getenv("HEADER_ADMINS", "")      # UPN, phân tách dấu phẩy
+    HEADER_OPERATORS: str = os.getenv("HEADER_OPERATORS", "")
+
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "1.2.0"
+
+    @property
+    def auth_modes(self) -> list[str]:
+        return [m.strip().lower() for m in self.AUTH_MODES.split(",") if m.strip()]
 
 
 settings = Settings()

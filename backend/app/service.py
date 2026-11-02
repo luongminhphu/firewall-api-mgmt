@@ -5,6 +5,7 @@ import datetime as dt
 
 from sqlalchemy.orm import Session
 
+from . import changelog
 from .config import settings
 from .crypto import decrypt
 from .db import AuditLog, Firewall
@@ -56,6 +57,21 @@ def audit(
     )
 
 
+def _host_value(h: dict) -> str:
+    """Giá trị hiển thị của IP Host: IP, CIDR hoặc dải."""
+    t = h.get("host_type", "")
+    if t == "Network" and h.get("subnet"):
+        try:
+            import ipaddress
+
+            return str(ipaddress.ip_network(f"{h['ip_address']}/{h['subnet']}", strict=False))
+        except ValueError:
+            return f"{h.get('ip_address', '')}/{h['subnet']}"
+    if t == "IPRange" and h.get("start_ip"):
+        return f"{h['start_ip']}-{h.get('end_ip', '')}"
+    return h.get("ip_address") or ""
+
+
 def mark_status(db: Session, fw: Firewall, status: str, message: str) -> None:
     fw.last_status = status
     fw.last_message = message[:2000]
@@ -99,8 +115,10 @@ def block_on_firewall(
     actor: str = "soc",
     client_ip: str = "",
     dry_run: bool = False,
+    who: dict | None = None,
 ) -> dict:
     group = (group_override or fw.default_group).strip()
+    who = who or {"user": actor, "name": actor, "method": "local"}
     rows: list[dict] = []
     try:
         cli = client_for(fw)
@@ -122,6 +140,15 @@ def block_on_firewall(
         }
 
     group_hosts = list(existing_group["hosts"]) if existing_group else []
+
+    # Phát hiện thay đổi ngoài app trước khi sửa group
+    try:
+        changelog.detect_drift(
+            db, fw, group, {h: "" for h in group_hosts},
+            resolve_values=lambda names: {h["name"]: _host_value(h) for h in cli.get_hosts(names)},
+        )
+    except Exception:  # noqa: BLE001 — không để drift chặn thao tác khẩn cấp
+        pass
     ip_index: dict[str, str] | None = None  # ip -> object name, nạp khi cần
     to_link: list[str] = []
 
@@ -178,6 +205,26 @@ def block_on_firewall(
             else:
                 gres = cli.create_group(group, merged, f"SOC block group ({reason})"[:255])
             group_result = {"changed": gres.ok, "code": gres.code, "message": gres.message}
+            if gres.ok:
+                values = {r["object"]: r["value"] for r in rows}
+                batch = changelog.new_batch()
+                if not existing_group:
+                    changelog.record(
+                        db, fw=fw, group=group, change_type="create_group", items=[],
+                        count_before=0, count_after=0, who=who, reason=reason,
+                        source=source, client_ip=client_ip, batch_id=batch,
+                    )
+                changelog.record(
+                    db, fw=fw, group=group, change_type="add",
+                    items=[(o, values.get(o, "")) for o in to_link],
+                    count_before=len(group_hosts), count_after=len(merged), who=who,
+                    reason=reason, source=source, client_ip=client_ip, batch_id=batch,
+                )
+                group_result["batch_id"] = batch
+                snap = changelog.get_snapshot(db, fw.id, group)
+                known = __import__("json").loads(snap.members_json) if snap else {}
+                changelog.save_snapshot(db, fw.id, group,
+                                        {h: values.get(h) or known.get(h, "") for h in merged})
             if not gres.ok:
                 for r in rows:
                     if r["object"] in to_link:
@@ -227,9 +274,11 @@ def unblock_on_firewall(
     reason: str = "",
     actor: str = "soc",
     client_ip: str = "",
+    who: dict | None = None,
 ) -> dict:
     """`targets` có thể là tên object hoặc địa chỉ IP."""
     group = (group_override or fw.default_group).strip()
+    who = who or {"user": actor, "name": actor, "method": "local"}
     rows: list[dict] = []
     try:
         cli = client_for(fw)
@@ -238,7 +287,7 @@ def unblock_on_firewall(
             raise SophosError(f"Group '{group}' không tồn tại trên firewall này", "526")
         hosts = list(g["hosts"])
         details = cli.get_hosts(hosts) if hosts else []
-        ip_of = {h["name"]: h["ip_address"] for h in details}
+        ip_of = {h["name"]: _host_value(h) for h in details}
     except (SophosError, SophosAuthError, ValueError) as exc:
         msg = str(exc)
         mark_status(db, fw, "error", msg)
@@ -248,6 +297,11 @@ def unblock_on_firewall(
         db.commit()
         return {"firewall_id": fw.id, "firewall": fw.name, "group": group, "ok": False,
                 "error": msg, "rows": []}
+
+    try:
+        changelog.detect_drift(db, fw, group, {h: ip_of.get(h, "") for h in hosts})
+    except Exception:  # noqa: BLE001
+        pass
 
     remove: list[str] = []
     for t in targets:
@@ -261,7 +315,7 @@ def unblock_on_firewall(
                 match = candidate
             else:
                 for name, ip in ip_of.items():
-                    if ip and ip == t:
+                    if ip and (ip == t or ip.split("/")[0] == t):
                         match = name
                         break
         if match:
@@ -275,6 +329,14 @@ def unblock_on_firewall(
         remaining = [h for h in hosts if h not in remove]
         try:
             gres = cli.set_group_hosts(group, remaining, g.get("description", ""), g.get("ip_family", "IPv4"))
+            if gres.ok:
+                changelog.record(
+                    db, fw=fw, group=group, change_type="remove",
+                    items=[(o, ip_of.get(o, "")) for o in remove],
+                    count_before=len(hosts), count_after=len(remaining), who=who,
+                    reason=reason, source="unblock", client_ip=client_ip,
+                )
+                changelog.save_snapshot(db, fw.id, group, {h: ip_of.get(h, "") for h in remaining})
             if not gres.ok:
                 for r in rows:
                     if r["result"] == "removed":

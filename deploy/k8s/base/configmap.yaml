@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: soc-rapid-block-config
-  namespace: infra-ops
+  namespace: sophos-blocker
 data:
   APP_PORT: "8080"
   SESSION_TTL_HOURS: "8"
@@ -17,3 +17,26 @@ data:
   # DATABASE_URL trỏ tới Service Postgres nội bộ trong cùng namespace
   DATABASE_URL: "postgresql+psycopg2://sophos:$(POSTGRES_PASSWORD)@soc-rapid-block-db:5432/sophos_blocker"
   TZ: "Asia/Ho_Chi_Minh"
+  # ---- Xác thực (v1.2) ----------------------------------------------------
+  # local  : mật khẩu chung APP_PASSWORD (chỉ nên dùng trong LAN / giai đoạn đầu)
+  # oidc   : Đăng nhập Microsoft Entra ID (AD) + MFA qua Conditional Access — KHUYẾN NGHỊ
+  # header : tin header do Entra Application Proxy gắn (header-based SSO)
+  # Có thể kết hợp, vd "oidc" (tắt mật khẩu chung) hoặc "oidc,local" khi chuyển đổi.
+  AUTH_MODES: "local"
+  LOCAL_ROLE: "admin"
+  # Điền sau khi tạo App registration (xem docs/entra-app-proxy.md)
+  OIDC_TENANT_ID: ""
+  OIDC_CLIENT_ID: ""
+  # = <External URL của App Proxy>/api/auth/oidc/callback
+  OIDC_REDIRECT_URI: ""
+  OIDC_REQUIRE_MFA_CLAIM: "false"
+  ROLE_ADMIN: "SRB.Admin"
+  ROLE_OPERATOR: "SRB.Operator"
+  ROLE_VIEWER: "SRB.Viewer"
+  # Header SSO: chỉ tin header khi kết nối TCP đến từ IP connector (vd 10.10.20.15/32)
+  TRUSTED_PROXY_CIDRS: ""
+  HEADER_USER: "X-SRB-UPN"
+  HEADER_NAME: "X-SRB-NAME"
+  HEADER_DEFAULT_ROLE: "viewer"
+  HEADER_ADMINS: ""
+  HEADER_OPERATORS: ""

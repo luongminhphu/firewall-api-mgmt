@@ -110,6 +110,85 @@ class AuditLog(Base):
         }
 
 
+class GroupChange(Base):
+    """Nhật ký thay đổi thành viên Object Group — mỗi dòng là một IP được thêm/bớt.
+
+    `batch_id` gom các dòng của cùng một thao tác trên cùng firewall/group.
+    `prev_hash`/`row_hash` tạo chuỗi băm (hash-chain) để phát hiện sửa/xóa log trái phép.
+    """
+
+    __tablename__ = "group_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)
+    batch_id: Mapped[str] = mapped_column(String(40), index=True)
+    actor: Mapped[str] = mapped_column(String(160), default="")
+    actor_name: Mapped[str] = mapped_column(String(160), default="")
+    auth_method: Mapped[str] = mapped_column(String(32), default="")
+    firewall_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    firewall_name: Mapped[str] = mapped_column(String(120), default="")
+    group_name: Mapped[str] = mapped_column(String(120), default="", index=True)
+    # add | remove | drift_add | drift_remove | baseline | create_group
+    change_type: Mapped[str] = mapped_column(String(20))
+    object_name: Mapped[str] = mapped_column(String(160), default="")
+    value: Mapped[str] = mapped_column(String(80), default="", index=True)
+    count_before: Mapped[int] = mapped_column(Integer, default=0)
+    count_after: Mapped[int] = mapped_column(Integer, default=0)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(String(64), default="")
+    client_ip: Mapped[str] = mapped_column(String(64), default="")
+    prev_hash: Mapped[str] = mapped_column(String(64), default="")
+    row_hash: Mapped[str] = mapped_column(String(64), default="")
+
+    def hash_payload(self) -> str:
+        ts = self.ts
+        if ts is not None:
+            # SQLite trả datetime "naive" (đã là UTC); PostgreSQL trả có múi giờ.
+            ts = ts.replace(tzinfo=dt.timezone.utc) if ts.tzinfo is None else ts.astimezone(dt.timezone.utc)
+        parts = [
+            ts.isoformat() if ts else "",
+            self.batch_id, self.actor, self.firewall_name, self.group_name, self.change_type,
+            self.object_name, self.value, str(self.count_before), str(self.count_after),
+            self.reason or "", self.source or "", self.prev_hash or "",
+        ]
+        return "\x1f".join(parts)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "ts": (self.ts.replace(tzinfo=dt.timezone.utc) if self.ts and self.ts.tzinfo is None
+                   else self.ts).isoformat() if self.ts else None,
+            "batch_id": self.batch_id,
+            "actor": self.actor,
+            "actor_name": self.actor_name,
+            "auth_method": self.auth_method,
+            "firewall_id": self.firewall_id,
+            "firewall_name": self.firewall_name,
+            "group_name": self.group_name,
+            "change_type": self.change_type,
+            "object_name": self.object_name,
+            "value": self.value,
+            "count_before": self.count_before,
+            "count_after": self.count_after,
+            "reason": self.reason,
+            "source": self.source,
+            "client_ip": self.client_ip,
+            "row_hash": self.row_hash,
+        }
+
+
+class GroupSnapshot(Base):
+    """Ảnh chụp thành viên group lần gần nhất app nhìn thấy — dùng để phát hiện thay đổi ngoài app."""
+
+    __tablename__ = "group_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    firewall_id: Mapped[int] = mapped_column(Integer, index=True)
+    group_name: Mapped[str] = mapped_column(String(120))
+    members_json: Mapped[str] = mapped_column(Text, default="{}")  # {object_name: value}
+    taken_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)
 

@@ -14,7 +14,13 @@
     candidates: [], // [{value, kind, object}]
     source: "paste",
     groupMembers: [],
+    role: "viewer",
+    authModes: null,
   };
+
+  const RANK = { viewer: 0, operator: 1, admin: 2 };
+  const can = (role) => (RANK[state.role] ?? -1) >= RANK[role];
+  const ROLE_LABEL = { admin: "Quản trị", operator: "Vận hành", viewer: "Chỉ xem" };
 
   // ------------------------------------------------------------------ utils
   const esc = (s) =>
@@ -67,7 +73,7 @@
   const fmtTime = (iso) => {
     if (!iso) return "";
     const d = new Date(iso);
-    return d.toLocaleString("vi-VN", { hour12: false });
+    return d.toLocaleString("vi-VN", { hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
   };
 
   // ------------------------------------------------------------------ login
@@ -90,6 +96,42 @@
     }
   });
 
+  function showLoginError(msg) {
+    const err = $("#login-error");
+    err.textContent = msg;
+    err.classList.remove("hidden");
+  }
+
+  async function initLogin() {
+    try {
+      const m = await api("/api/auth/modes");
+      state.authModes = m;
+      $("#local-box").classList.toggle("hidden", !m.local);
+      $("#sso-box").classList.toggle("hidden", !m.oidc);
+      $("#sso-divider").classList.toggle("hidden", !(m.oidc && m.local));
+      if (m.oidc && !m.oidc_ready) {
+        $("#sso-hint").textContent = "Đăng nhập Microsoft chưa cấu hình đủ: " + m.oidc_message;
+        $("#sso-hint").classList.remove("hidden");
+      }
+      $("#sso-btn").href = `${API}/api/auth/oidc/login`;
+      return m;
+    } catch {
+      return null;
+    }
+  }
+
+  async function tryHeaderSso() {
+    try {
+      const r = await api("/api/auth/header", { method: "POST" });
+      state.token = r.token;
+      store?.setItem("sb_token", r.token);
+      await boot();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function logout() {
     state.token = "";
     store?.removeItem("sb_token");
@@ -101,10 +143,15 @@
   async function boot() {
     state.config = await api("/api/config");
     state.user = state.config.user;
+    state.role = state.config.role || "viewer";
     $("#login-screen").classList.add("hidden");
     $("#app").classList.remove("hidden");
-    $("#who").textContent = `${state.config.user} · v${state.config.version}`;
+    $("#who").innerHTML = `${esc(state.config.name || state.config.user)} <span class="role-chip">· ${esc(
+      ROLE_LABEL[state.role] || state.role
+    )}</span>`;
+    $("#who").title = `${state.config.user} · ${state.config.auth_method} · v${state.config.version}`;
     $("#a-export").href = `${API}/api/audit.csv?token=${encodeURIComponent(state.token)}`;
+    applyRole();
     if (!state.config.master_key_set) {
       toast("Chưa cấu hình MASTER_KEY — không thể lưu credential firewall", "err");
     }
@@ -118,6 +165,7 @@
     $$(".tab").forEach((t) => t.classList.toggle("is-active", t === btn));
     $$(".panel").forEach((p) => p.classList.toggle("is-active", p.dataset.panel === btn.dataset.tab));
     if (btn.dataset.tab === "audit") loadAudit();
+    if (btn.dataset.tab === "changes") loadChanges();
     if (btn.dataset.tab === "groups") loadGroupsForSelectedFw();
   });
 
@@ -200,9 +248,9 @@
           ${statusChip(f)}
           ${f.enabled ? "" : '<span class="chip chip--warn">Đang tắt</span>'}
           <span class="fw-card__acts">
-            <button class="btn btn--sm" data-act="test" data-id="${f.id}">Kiểm tra</button>
-            <button class="btn btn--sm" data-act="edit" data-id="${f.id}">Sửa</button>
-            <button class="btn btn--sm btn--ghost" data-act="del" data-id="${f.id}">Xóa</button>
+            ${can("operator") ? `<button class="btn btn--sm" data-act="test" data-id="${f.id}">Kiểm tra</button>` : ""}
+            ${can("admin") ? `<button class="btn btn--sm" data-act="edit" data-id="${f.id}">Sửa</button>
+            <button class="btn btn--sm btn--ghost" data-act="del" data-id="${f.id}">Xóa</button>` : ""}
           </span>
         </div>
         <dl class="fw-card__grid">
@@ -404,7 +452,7 @@
   });
 
   function refreshBlockButton() {
-    $("#do-block").disabled = !(state.candidates.length && selectedFwIds().length);
+    $("#do-block").disabled = !can("operator") || !(state.candidates.length && selectedFwIds().length);
   }
 
   const addManual = () => {
@@ -642,7 +690,7 @@
     $$("#g-table tbody input[type=checkbox]:checked").map((c) => c.value);
 
   function refreshUnblockButton() {
-    $("#do-unblock").disabled = selectedObjects().length === 0;
+    $("#do-unblock").disabled = !can("operator") || selectedObjects().length === 0;
   }
 
   $("#do-unblock").addEventListener("click", async () => {
@@ -741,18 +789,216 @@
     }
   }
 
-  // --------------------------------------------------------- auto-login lại
+  // ------------------------------------------------------------ phân quyền
+  function applyRole() {
+    const viewer = !can("operator");
+    const fwFormCard = $("#fw-form")?.closest(".card");
+    if (fwFormCard) fwFormCard.hidden = !can("admin");
+    $("#test-all").hidden = viewer;
+    $("#c-sync").hidden = viewer;
+    $("#do-block").title = viewer ? "Vai trò Chỉ xem không được chặn IP" : "";
+    $("#do-unblock").title = viewer ? "Vai trò Chỉ xem không được bỏ chặn" : "";
+    if (viewer) toast("Bạn đang ở chế độ Chỉ xem — liên hệ IT để được gán App Role Vận hành", "");
+  }
+
+  // ===================================================== LỊCH SỬ THAY ĐỔI
+  const KIND = {
+    change: ["", "Thao tác trong app"],
+    drift: ["chip--warn", "Thay đổi ngoài app"],
+    baseline: ["", "Bắt đầu theo dõi"],
+    create_group: ["chip--info", "Tạo group"],
+  };
+  const SOURCE = { "teams-paste": "Dán từ Teams", paste: "Dán từ Teams", manual: "Nhập tay", csv: "File CSV/TXT", unblock: "Bỏ chặn" };
+  const METHOD = { "entra-oidc": "Entra ID + MFA", "entra-header": "Entra App Proxy", local: "Mật khẩu app", drift: "Phát hiện tự động", system: "Hệ thống" };
+  const DIFF_PREVIEW = 12;
+
+  function changeParams() {
+    const p = new URLSearchParams();
+    const add = (k, v) => v && p.set(k, v);
+    add("firewall_id", $("#c-fw").value);
+    add("group", $("#c-group").value);
+    add("type", $("#c-type").value);
+    add("q", $("#c-q").value.trim());
+    add("actor", $("#c-actor").value.trim());
+    add("from", $("#c-from").value);
+    add("to", $("#c-to").value);
+    return p;
+  }
+
+  function fillChangeFilters(groups) {
+    const fwSel = $("#c-fw");
+    const keepFw = fwSel.value;
+    fwSel.innerHTML = `<option value="">Tất cả</option>` +
+      state.firewalls.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join("");
+    fwSel.value = keepFw;
+    const gSel = $("#c-group");
+    const keepG = gSel.value;
+    gSel.innerHTML = `<option value="">Tất cả</option>` +
+      (groups || []).map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join("");
+    gSel.value = keepG;
+  }
+
+  function diffList(b) {
+    const lines = [
+      ...b.added.map((i) => ({ ...i, s: "+", c: "add" })),
+      ...b.removed.map((i) => ({ ...i, s: "−", c: "rm" })),
+    ];
+    if (!lines.length) return "";
+    const row = (l, extra) => `<li class="${l.c}${extra ? " extra hidden" : ""}"><span class="sg">${l.s}</span><span>${esc(l.value || "(không rõ IP)")}</span><span class="ob">${esc(l.object)}</span></li>`;
+    const head = lines.slice(0, DIFF_PREVIEW).map((l) => row(l, false)).join("");
+    const rest = lines.slice(DIFF_PREVIEW);
+    return `<ul class="diff">${head}${
+      rest.map((l) => row(l, true)).join("")
+    }</ul>${rest.length ? `<div class="diff-more"><button type="button" data-more>Xem thêm ${rest.length} dòng</button></div>` : ""}`;
+  }
+
+  function renderChanges(r) {
+    const t = r.totals;
+    $("#c-stats").innerHTML = `
+      <div class="stat"><b>${t.batches}</b><span>lần thay đổi</span></div>
+      <div class="stat stat--add"><b>+${t.added}</b><span>IP đưa vào group chặn</span></div>
+      <div class="stat stat--rm"><b>−${t.removed}</b><span>IP gỡ khỏi group</span></div>
+      <div class="stat stat--drift"><b>${t.drift}</b><span>lần sửa ngoài app</span></div>`;
+    const box = $("#c-list");
+    if (!r.batches.length) {
+      box.innerHTML = `<p class="empty">Không có thay đổi nào khớp bộ lọc. Lịch sử bắt đầu ghi từ phiên bản 1.2 — thao tác chặn/bỏ chặn đầu tiên sẽ xuất hiện tại đây.</p>`;
+      return;
+    }
+    box.innerHTML = r.batches.map((b) => {
+      const [cls, label] = KIND[b.kind] || KIND.change;
+      const delta = b.kind === "baseline"
+        ? `<span class="cb__count">${b.count_after} object</span>`
+        : `${b.added.length ? `<span class="d-add">+${b.added.length}</span>` : ""}${
+            b.removed.length ? `<span class="d-rm">−${b.removed.length}</span>` : ""
+          }<span class="cb__count">${b.count_before} → ${b.count_after} object</span>`;
+      return `<article class="cb cb--${b.kind}">
+        <div class="cb__head">
+          <span class="cb__time">${esc(fmtTime(b.ts))}</span>
+          <span class="cb__who">${esc(b.actor_name || b.actor)}${
+            b.actor && b.actor !== b.actor_name ? `<small>${esc(b.actor)}</small>` : ""
+          }</span>
+          <span class="chip ${cls}">${label}</span>
+          <span class="cb__target">${esc(b.firewall_name)} › ${esc(b.group_name)}</span>
+          <span class="cb__delta">${delta}</span>
+        </div>
+        <div class="cb__meta">
+          ${b.reason ? `<span>Lý do: <strong>${esc(b.reason)}</strong></span>` : ""}
+          ${b.source ? `<span>Nguồn: ${esc(SOURCE[b.source] || b.source)}</span>` : ""}
+          ${b.auth_method ? `<span>Xác thực: ${esc(METHOD[b.auth_method] || b.auth_method)}</span>` : ""}
+          ${b.client_ip ? `<span>IP client: <span class="mono">${esc(b.client_ip)}</span></span>` : ""}
+          <span class="mono" title="Mã lô thao tác">#${esc(b.batch_id)}</span>
+        </div>
+        ${diffList(b)}
+      </article>`;
+    }).join("");
+  }
+
+  async function loadChanges() {
+    const box = $("#c-list");
+    box.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
+    const p = changeParams();
+    $("#c-export").href = `${API}/api/changes.csv?token=${encodeURIComponent(state.token)}&${p}`;
+    try {
+      const r = await api(`/api/changes?${p}`);
+      fillChangeFilters(r.groups);
+      renderChanges(r);
+    } catch (ex) {
+      box.innerHTML = `<p class="alert alert--error">${esc(ex.message)}</p>`;
+    }
+  }
+
+  let changeTimer;
+  ["#c-fw", "#c-group", "#c-type", "#c-from", "#c-to"].forEach((id) =>
+    $(id).addEventListener("change", loadChanges)
+  );
+  ["#c-q", "#c-actor"].forEach((id) =>
+    $(id).addEventListener("input", () => {
+      clearTimeout(changeTimer);
+      changeTimer = setTimeout(loadChanges, 350);
+    })
+  );
+  $("#c-list").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-more]");
+    if (!btn) return;
+    btn.closest(".cb").querySelectorAll(".extra").forEach((li) => li.classList.remove("hidden"));
+    btn.parentElement.remove();
+  });
+
+  $("#c-sync").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const label = btn.textContent;
+    btn.textContent = "Đang đọc firewall…";
+    try {
+      const body = $("#c-fw").value ? { firewall_ids: [Number($("#c-fw").value)] } : {};
+      if ($("#c-group").value) body.group = $("#c-group").value;
+      const r = await api("/api/changes/sync", { method: "POST", body });
+      const drift = r.results.filter((x) => x.ok && (x.added?.length || x.removed?.length));
+      const errs = r.results.filter((x) => !x.ok);
+      if (errs.length) toast(`Không đọc được: ${errs.map((x) => x.firewall).join(", ")}`, "err");
+      else if (drift.length)
+        toast(`Phát hiện thay đổi ngoài app trên ${drift.map((x) => `${x.firewall}/${x.group}`).join(", ")}`, "err");
+      else toast(`Đã đối chiếu ${r.results.length} group — không có thay đổi ngoài app`, "ok");
+      await loadChanges();
+    } catch (ex) {
+      toast(ex.message, "err");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  });
+
+  $("#c-verify").addEventListener("click", async () => {
+    const el = $("#c-verify-msg");
+    try {
+      const r = await api("/api/changes/verify");
+      el.textContent = r.message;
+      el.className = `alert ${r.ok ? "alert--ok" : "alert--error"}`;
+    } catch (ex) {
+      el.textContent = ex.message;
+      el.className = "alert alert--error";
+    }
+  });
+
+  // --------------------------------------------------------- khởi động
   (async () => {
+    // 1) Kết quả trả về từ Entra ID (OIDC callback chuyển hướng về /#sso=...)
+    const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+    if (hash.has("sso") || hash.has("sso_error")) {
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+    const modes = await initLogin();
+    if (hash.has("sso_error")) {
+      showLoginError("Đăng nhập Microsoft thất bại: " + hash.get("sso_error"));
+      return;
+    }
+    if (hash.has("sso")) {
+      state.token = hash.get("sso");
+      store?.setItem("sb_token", state.token);
+      try {
+        await boot();
+        return;
+      } catch (ex) {
+        logout();
+        showLoginError(ex.message);
+        return;
+      }
+    }
+    // 2) Phiên đã lưu
     let saved = "";
     try {
       saved = store?.getItem("sb_token") || "";
     } catch {}
-    if (!saved) return;
-    state.token = saved;
-    try {
-      await boot();
-    } catch {
-      logout();
+    if (saved) {
+      state.token = saved;
+      try {
+        await boot();
+        return;
+      } catch {
+        logout();
+      }
     }
+    // 3) Header SSO qua Entra Application Proxy
+    if (modes?.header) await tryHeaderSso();
   })();
 })();

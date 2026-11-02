@@ -51,24 +51,52 @@ def decrypt(token: str) -> str:
 
 
 # ---------------------------------------------------------------- session token
-def issue_token(user: str = "soc") -> str:
-    exp = int(time.time()) + settings.SESSION_TTL_HOURS * 3600
-    body = f"{user}.{exp}"
-    sig = hmac.new(settings.SESSION_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
-    return f"{body}.{sig}"
+# Token = base64url(JSON {u, r, m, n, exp}) + "." + HMAC-SHA256.
+#   u: định danh (UPN hoặc tên người trực), r: vai trò, m: phương thức đăng nhập, n: tên hiển thị
+ROLES = ("viewer", "operator", "admin")
+
+
+def _b64(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).decode().rstrip("=")
+
+
+def _unb64(s: str) -> bytes:
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+def _sign(body: str) -> str:
+    return hmac.new(settings.SESSION_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+
+
+def issue_token(user: str = "soc", role: str = "admin", method: str = "local", name: str = "") -> str:
+    import json
+
+    role = role if role in ROLES else "viewer"
+    payload = {
+        "u": user, "r": role, "m": method, "n": name or user,
+        "exp": int(time.time()) + settings.SESSION_TTL_HOURS * 3600,
+    }
+    body = _b64(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode())
+    return f"{body}.{_sign(body)}"
+
+
+def verify_principal(token: str) -> dict | None:
+    import json
+
+    try:
+        body, sig = token.rsplit(".", 1)
+        if not hmac.compare_digest(sig, _sign(body)):
+            return None
+        data = json.loads(_unb64(body))
+        if int(data.get("exp", 0)) < time.time():
+            return None
+        if data.get("r") not in ROLES:
+            return None
+        return data
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def verify_token(token: str) -> str | None:
-    try:
-        user, exp, sig = token.rsplit(".", 2)
-        body = f"{user}.{exp}"
-        good = hmac.new(
-            settings.SESSION_SECRET.encode(), body.encode(), hashlib.sha256
-        ).hexdigest()
-        if not hmac.compare_digest(sig, good):
-            return None
-        if int(exp) < time.time():
-            return None
-        return user
-    except Exception:  # noqa: BLE001
-        return None
+    p = verify_principal(token or "")
+    return p["u"] if p else None

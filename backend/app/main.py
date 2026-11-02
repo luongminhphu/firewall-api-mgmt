@@ -2,22 +2,27 @@
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import io
 import os
+import urllib.parse
 from typing import Any
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from . import auth as sso
+from . import changelog
 from .config import settings
-from .crypto import MasterKeyMissing, decrypt, encrypt, issue_token, verify_token
-from .db import AuditLog, Firewall, get_session, init_db
+from .crypto import MasterKeyMissing, decrypt, encrypt, issue_token, verify_principal, verify_token
+from .db import AuditLog, Firewall, GroupChange, get_session, init_db
 from .ipparse import extract, host_object_name
 from .service import (
+    _host_value,
     audit,
     block_on_firewall,
     client_for,
@@ -44,13 +49,33 @@ def _startup() -> None:
 
 
 # ------------------------------------------------------------------- helpers
-def current_user(
+def principal(
     x_auth_token: str | None = Header(default=None, alias="X-Auth-Token"),
-) -> str:
-    user = verify_token(x_auth_token or "")
-    if not user:
+) -> dict:
+    p = verify_principal(x_auth_token or "")
+    if not p:
         raise HTTPException(status_code=401, detail="Chưa đăng nhập hoặc session đã hết hạn")
-    return user
+    return {"user": p["u"], "name": p.get("n") or p["u"], "role": p["r"], "method": p.get("m", "local")}
+
+
+def current_user(p: dict = Depends(principal)) -> str:
+    return p["user"]
+
+
+def require(role: str):
+    def dep(p: dict = Depends(principal)) -> dict:
+        if not sso.role_at_least(p["role"], role):
+            raise HTTPException(403, f"Vai trò '{p['role']}' không đủ quyền (cần '{role}')")
+        return p
+    return dep
+
+
+def operator(p: dict = Depends(require("operator"))) -> dict:
+    return p
+
+
+def admin(p: dict = Depends(require("admin"))) -> dict:
+    return p
 
 
 def client_ip_of(request: Request) -> str:
@@ -78,20 +103,112 @@ def selected_firewalls(db: Session, ids: list[int] | None) -> list[Firewall]:
 
 
 # ---------------------------------------------------------------------- auth
+@app.get("/api/auth/modes")
+def auth_modes():
+    modes = settings.auth_modes
+    ready, msg = sso.oidc_ready()
+    return {
+        "modes": modes,
+        "local": "local" in modes,
+        "oidc": "oidc" in modes,
+        "oidc_ready": ready,
+        "oidc_message": msg,
+        "header": "header" in modes,
+    }
+
+
 @app.post("/api/login")
 def login(payload: dict = Body(...)):
-    if (payload.get("password") or "") != settings.APP_PASSWORD:
+    if "local" not in settings.auth_modes:
+        raise HTTPException(403, "Đăng nhập bằng mật khẩu đã bị tắt — dùng tài khoản Microsoft")
+    import hmac as _h
+
+    if not _h.compare_digest((payload.get("password") or "").encode(), settings.APP_PASSWORD.encode()):
         raise HTTPException(401, "Mật khẩu không đúng")
     user = (payload.get("user") or "soc").strip()[:60] or "soc"
-    return {"token": issue_token(user), "user": user, "ttl_hours": settings.SESSION_TTL_HOURS}
+    tok = issue_token(user, role=settings.LOCAL_ROLE, method="local")
+    return {"token": tok, "user": user, "ttl_hours": settings.SESSION_TTL_HOURS}
+
+
+_FLOW_COOKIE = "srb_oidc"
+
+
+@app.get("/api/auth/oidc/login")
+def oidc_login():
+    if "oidc" not in settings.auth_modes:
+        raise HTTPException(404, "Chưa bật đăng nhập Microsoft (AUTH_MODES)")
+    try:
+        url, cookie = sso.build_authorize_url()
+    except sso.AuthError as exc:
+        raise HTTPException(500, str(exc)) from exc
+    resp = RedirectResponse(url, status_code=302)
+    resp.set_cookie(
+        _FLOW_COOKIE, cookie, max_age=600, httponly=True, samesite="lax",
+        secure=settings.OIDC_REDIRECT_URI.startswith("https://"), path="/api/auth/oidc",
+    )
+    return resp
+
+
+@app.get("/api/auth/oidc/callback")
+def oidc_callback(
+    request: Request,
+    code: str = Query(default=""),
+    state: str = Query(default=""),
+    error: str = Query(default=""),
+    error_description: str = Query(default=""),
+    db: Session = Depends(get_session),
+):
+    def fail(msg: str):
+        r = RedirectResponse("/#sso_error=" + urllib.parse.quote(msg[:300]), status_code=302)
+        r.delete_cookie(_FLOW_COOKIE, path="/api/auth/oidc")
+        audit(db, action="login", fw=None, target="entra-oidc", result="error", message=msg,
+              actor="?", client_ip=client_ip_of(request))
+        db.commit()
+        return r
+
+    if error:
+        return fail(f"{error}: {error_description}")
+    try:
+        flow = sso.unpack_flow(request.cookies.get(_FLOW_COOKIE, ""))
+        if not state or state != flow["s"]:
+            raise sso.AuthError("Sai tham số state — yêu cầu đăng nhập không hợp lệ")
+        p = sso.exchange_code(code, flow)
+    except sso.AuthError as exc:
+        return fail(str(exc))
+    tok = issue_token(p["user"], role=p["role"], method=p["method"], name=p["name"])
+    audit(db, action="login", fw=None, target="entra-oidc", result="ok",
+          message=f"{p['name']} · vai trò {p['role']}", actor=p["user"], client_ip=client_ip_of(request))
+    db.commit()
+    r = RedirectResponse("/#sso=" + urllib.parse.quote(tok), status_code=302)
+    r.delete_cookie(_FLOW_COOKIE, path="/api/auth/oidc")
+    return r
+
+
+@app.post("/api/auth/header")
+def header_login(request: Request, db: Session = Depends(get_session)):
+    if "header" not in settings.auth_modes:
+        raise HTTPException(404, "Chưa bật header SSO (AUTH_MODES)")
+    peer = request.client.host if request.client else ""
+    try:
+        p = sso.principal_from_headers(peer, request.headers)
+    except sso.AuthError as exc:
+        raise HTTPException(401, str(exc)) from exc
+    tok = issue_token(p["user"], role=p["role"], method=p["method"], name=p["name"])
+    audit(db, action="login", fw=None, target="entra-header", result="ok",
+          message=f"{p['name']} · vai trò {p['role']}", actor=p["user"], client_ip=client_ip_of(request))
+    db.commit()
+    return {"token": tok, "user": p["user"], "name": p["name"], "role": p["role"]}
 
 
 @app.get("/api/config")
-def config(user: str = Depends(current_user)):
+def config(p: dict = Depends(principal)):
     return {
         "app_name": settings.APP_NAME,
         "version": settings.APP_VERSION,
-        "user": user,
+        "user": p["user"],
+        "name": p["name"],
+        "role": p["role"],
+        "auth_method": p["method"],
         "host_prefix": settings.HOST_PREFIX,
         "safe_list": [s.strip() for s in settings.SAFE_LIST.split(",") if s.strip()],
         "allow_private": settings.ALLOW_PRIVATE,
@@ -111,8 +228,9 @@ def create_firewall(
     request: Request,
     payload: dict = Body(...),
     db: Session = Depends(get_session),
-    user: str = Depends(current_user),
+    p: dict = Depends(admin),
 ):
+    user = p["user"]
     required = ("name", "host", "username", "password")
     missing = [k for k in required if not (payload.get(k) or "").strip()]
     if missing:
@@ -150,8 +268,9 @@ def update_firewall(
     request: Request,
     payload: dict = Body(...),
     db: Session = Depends(get_session),
-    user: str = Depends(current_user),
+    p: dict = Depends(admin),
 ):
+    user = p["user"]
     fw = get_fw(db, fw_id)
     for field in ("name", "site", "host", "username", "default_group", "note"):
         if payload.get(field) is not None:
@@ -180,8 +299,9 @@ def delete_firewall(
     fw_id: int,
     request: Request,
     db: Session = Depends(get_session),
-    user: str = Depends(current_user),
+    p: dict = Depends(admin),
 ):
+    user = p["user"]
     fw = get_fw(db, fw_id)
     name, host = fw.name, f"{fw.host}:{fw.port}"
     db.query(AuditLog).filter(AuditLog.firewall_id == fw.id).update({"firewall_id": None})
@@ -198,8 +318,9 @@ def test_one(
     fw_id: int,
     request: Request,
     db: Session = Depends(get_session),
-    user: str = Depends(current_user),
+    p: dict = Depends(operator),
 ):
+    user = p["user"]
     return test_firewall(db, get_fw(db, fw_id), user, client_ip_of(request))
 
 
@@ -208,8 +329,9 @@ def test_all(
     request: Request,
     payload: dict = Body(default={}),
     db: Session = Depends(get_session),
-    user: str = Depends(current_user),
+    p: dict = Depends(operator),
 ):
+    user = p["user"]
     fws = selected_firewalls(db, payload.get("firewall_ids"))
     ip = client_ip_of(request)
     return {"results": [test_firewall(db, fw, user, ip) for fw in fws]}
@@ -249,6 +371,12 @@ def fw_group_members(
         details = {h["name"]: h for h in cli.get_hosts(g["hosts"])} if g["hosts"] else {}
     except (SophosError, SophosAuthError, ValueError) as exc:
         raise HTTPException(502, str(exc)) from exc
+
+    try:
+        changelog.detect_drift(db, fw, g["name"], {n: _host_value(details.get(n, {})) for n in g["hosts"]})
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
 
     members = []
     for name in g["hosts"]:
@@ -298,8 +426,9 @@ def block(
     request: Request,
     payload: dict = Body(...),
     db: Session = Depends(get_session),
-    user: str = Depends(current_user),
+    p: dict = Depends(operator),
 ):
+    user = p["user"]
     values: list[str] = [str(v) for v in (payload.get("values") or [])]
     if payload.get("text"):
         values += [i["value"] for i in extract(payload["text"], payload.get("extra_safe")) ["accepted"]]
@@ -317,7 +446,7 @@ def block(
             group_override=payload.get("group") or "",
             reason=payload.get("reason") or "",
             source=payload.get("source") or "manual",
-            actor=user, client_ip=ip, dry_run=bool(payload.get("dry_run")),
+            actor=user, client_ip=ip, dry_run=bool(payload.get("dry_run")), who=p,
         )
         for fw in fws
     ]
@@ -329,8 +458,9 @@ def unblock(
     request: Request,
     payload: dict = Body(...),
     db: Session = Depends(get_session),
-    user: str = Depends(current_user),
+    p: dict = Depends(operator),
 ):
+    user = p["user"]
     targets = [str(t).strip() for t in (payload.get("targets") or []) if str(t).strip()]
     if not targets:
         raise HTTPException(400, "Chưa chọn IP/object nào để bỏ chặn")
@@ -342,7 +472,7 @@ def unblock(
             group_override=payload.get("group") or "",
             delete_object=bool(payload.get("delete_object")),
             reason=payload.get("reason") or "",
-            actor=user, client_ip=ip,
+            actor=user, client_ip=ip, who=p,
         )
         for fw in fws
     ]
@@ -396,6 +526,117 @@ def audit_csv(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=audit_soc_rapid_block.csv"},
     )
+
+
+# ------------------------------------------------------------- change log
+def _parse_day(v: str, end: bool = False) -> dt.datetime | None:
+    if not v:
+        return None
+    try:
+        d = dt.date.fromisoformat(v)
+    except ValueError as exc:
+        raise HTTPException(400, f"Ngày không hợp lệ: {v} (định dạng YYYY-MM-DD)") from exc
+    tz = dt.timezone(dt.timedelta(hours=7))  # Asia/Ho_Chi_Minh
+    base = dt.datetime.combine(d, dt.time.min, tzinfo=tz)
+    return base + dt.timedelta(days=1) if end else base
+
+
+@app.get("/api/changes")
+def changes(
+    firewall_id: int | None = Query(default=None),
+    group: str = Query(default=""),
+    type: str = Query(default=""),
+    actor: str = Query(default=""),
+    q: str = Query(default=""),
+    date_from: str = Query(default="", alias="from"),
+    date_to: str = Query(default="", alias="to"),
+    limit: int = Query(default=100, le=500),
+    db: Session = Depends(get_session),
+    user: str = Depends(current_user),
+):
+    batches = changelog.query_batches(
+        db, firewall_id=firewall_id, group=group.strip(), change_type=type, actor=actor.strip(),
+        q=q, date_from=_parse_day(date_from), date_to=_parse_day(date_to, end=True),
+        limit_batches=limit,
+    )
+    totals = {
+        "batches": len(batches),
+        "added": sum(len(b["added"]) for b in batches),
+        "removed": sum(len(b["removed"]) for b in batches),
+        "drift": sum(1 for b in batches if b["kind"] == "drift"),
+    }
+    groups = sorted({g for (g,) in db.query(GroupChange.group_name).distinct().all() if g})
+    return {"batches": batches, "totals": totals, "groups": groups}
+
+
+@app.get("/api/changes.csv")
+def changes_csv(
+    token: str = Query(default=""),
+    firewall_id: int | None = Query(default=None),
+    group: str = Query(default=""),
+    q: str = Query(default=""),
+    date_from: str = Query(default="", alias="from"),
+    date_to: str = Query(default="", alias="to"),
+    db: Session = Depends(get_session),
+):
+    if not verify_token(token):
+        raise HTTPException(401, "Token không hợp lệ")
+    batches = changelog.query_batches(
+        db, firewall_id=firewall_id, group=group.strip(), q=q,
+        date_from=_parse_day(date_from), date_to=_parse_day(date_to, end=True), limit_batches=5000,
+    )
+    labels = {"change": "thao tac trong app", "drift": "thay doi ngoai app",
+              "baseline": "trang thai ban dau", "create_group": "tao group"}
+    buf = io.StringIO()
+    buf.write("\ufeff")  # BOM để Excel đọc đúng tiếng Việt
+    w = csv.writer(buf)
+    w.writerow(["thoi_gian_vn", "lo_thao_tac", "loai", "thay_doi", "ip_cidr", "object", "firewall",
+                "group", "so_object_truoc", "so_object_sau", "nguoi_thuc_hien", "ten_hien_thi",
+                "phuong_thuc_dang_nhap", "ly_do", "nguon", "ip_client"])
+    for b in batches:
+        lines = [("+", i) for i in b["added"]] + [("-", i) for i in b["removed"]] or [("", {"value": "", "object": ""})]
+        for sign, it in lines:
+            w.writerow([changelog.vn_time(b["ts"]), b["batch_id"], labels.get(b["kind"], b["kind"]),
+                        {"+": "THEM", "-": "BOT"}.get(sign, ""), it["value"], it["object"],
+                        b["firewall_name"], b["group_name"], b["count_before"], b["count_after"],
+                        b["actor"], b["actor_name"], b["auth_method"], b["reason"], b["source"],
+                        b["client_ip"]])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=lich_su_thay_doi_object_group.csv"},
+    )
+
+
+@app.get("/api/changes/verify")
+def changes_verify(db: Session = Depends(get_session), user: str = Depends(current_user)):
+    return changelog.verify_chain(db)
+
+
+@app.post("/api/changes/sync")
+def changes_sync(
+    payload: dict = Body(default={}),
+    db: Session = Depends(get_session),
+    p: dict = Depends(operator),
+):
+    """Đọc lại group trên firewall để phát hiện thay đổi ngoài app."""
+    fws = selected_firewalls(db, payload.get("firewall_ids"))
+    out = []
+    for fw in fws:
+        group = (payload.get("group") or fw.default_group).strip()
+        try:
+            cli = client_for(fw)
+            g = cli.get_group(group)
+            hosts = list(g["hosts"]) if g else []
+            details = {h["name"]: _host_value(h) for h in cli.get_hosts(hosts)} if hosts else {}
+            res = changelog.detect_drift(db, fw, group, {h: details.get(h, "") for h in hosts})
+            db.commit()
+            out.append({"firewall": fw.name, "group": group, "ok": True, "exists": bool(g),
+                        "total": len(hosts), **res})
+        except (SophosError, SophosAuthError, ValueError) as exc:
+            db.rollback()
+            out.append({"firewall": fw.name, "group": group, "ok": False, "error": str(exc)})
+    return {"results": out}
 
 
 @app.get("/api/health")

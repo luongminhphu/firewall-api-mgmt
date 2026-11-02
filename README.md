@@ -4,6 +4,13 @@ Mini app HTML5 + FastAPI giúp team SOC/NOC dán thẳng đoạn chat Teams (ho�
 bóc IP tự động và đẩy vào **IP Host Group** trên **nhiều Sophos Firewall** cùng lúc qua XML API —
 thao tác được từ điện thoại trong ngày nghỉ lễ Tết.
 
+**Mới ở v1.2.0**
+- Truy cập từ Internet qua **Microsoft Entra Application Proxy** + **MFA tài khoản AD**, không mở port inbound,
+  không public app — xem [`docs/entra-app-proxy.md`](docs/entra-app-proxy.md).
+- Đăng nhập **Microsoft OIDC** (PKCE, kiểm tra chữ ký/tenant/nonce) và phân quyền theo **App Role**: Quản trị / Vận hành / Chỉ xem.
+- Tab **Lịch sử thay đổi**: ghi tường minh từng IP được thêm/bớt khỏi Object Group (ai, lúc nào, lý do, số object trước → sau),
+  **phát hiện thay đổi làm trực tiếp trên firewall**, chuỗi băm SHA-256 chống sửa log, xuất CSV.
+
 ---
 
 ## 1. Kiến trúc
@@ -82,11 +89,20 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 | `SAFE_LIST` | Dải **không bao giờ** được chặn (dải nội bộ, VPN, đối tác) |
 | `ALLOW_PRIVATE` | Cho phép chặn IP private (mặc định `false`) |
 | `API_TIMEOUT` | Timeout gọi firewall, giây (mặc định 30) |
+| `AUTH_MODES` | `local` (mật khẩu chung), `oidc` (Microsoft Entra ID + MFA), `header` (header SSO từ App Proxy); kết hợp bằng dấu phẩy |
+| `LOCAL_ROLE` | Vai trò cấp cho đăng nhập mật khẩu chung (mặc định `admin`) |
+| `OIDC_TENANT_ID` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | Thông tin App registration trên Entra ID |
+| `OIDC_REDIRECT_URI` | `<External URL>/api/auth/oidc/callback` |
+| `OIDC_REQUIRE_MFA_CLAIM` | `true` = từ chối token không có claim `amr=mfa` |
+| `ROLE_ADMIN` / `ROLE_OPERATOR` / `ROLE_VIEWER` | Giá trị App Role (mặc định `SRB.Admin` / `SRB.Operator` / `SRB.Viewer`) |
+| `TRUSTED_PROXY_CIDRS` | IP connector được tin header SSO (chỉ dùng với `header`) |
+| `HEADER_USER` / `HEADER_NAME` | Tên header danh tính (mặc định `X-SRB-UPN` / `X-SRB-NAME`) |
+| `HEADER_ADMINS` / `HEADER_OPERATORS` / `HEADER_DEFAULT_ROLE` | Phân quyền theo UPN khi dùng header SSO |
 
 ### Khuyến nghị vận hành
 
-- Đặt sau reverse proxy có HTTPS (nginx/Caddy), **không** phơi trực tiếp ra Internet; nếu cần truy cập từ xa dịp lễ thì
-  cho qua VPN hoặc giới hạn IP.
+- **Không** phơi trực tiếp ra Internet. Truy cập từ xa dịp lễ: dùng Entra Application Proxy + Conditional Access MFA
+  và `AUTH_MODES=oidc` ([hướng dẫn](docs/entra-app-proxy.md)), hoặc VPN.
 - Sao lưu volume `pgdata` (chứa firewall + audit log).
 - Cập nhật `SAFE_LIST` với dải IP văn phòng, VPN, đối tác để tránh tự chặn nhầm.
 
@@ -99,8 +115,8 @@ Manifests nằm ở `deploy/k8s/base/` (Namespace + ConfigMap + Secret mẫu + P
 Quick start:
 
 ```bash
-kubectl create namespace infra-ops
-kubectl -n infra-ops create secret generic soc-rapid-block-secrets \
+kubectl create namespace sophos-blocker
+kubectl -n sophos-blocker create secret generic soc-rapid-block-secrets \
   --from-literal=MASTER_KEY=$(openssl rand -hex 32) \
   --from-literal=SESSION_SECRET=$(openssl rand -hex 32) \
   --from-literal=APP_PASSWORD='DoiMatKhauNay@2026' \
@@ -124,6 +140,26 @@ Truy cập `http://<node-ip>:30988`. Xem hướng dẫn đầy đủ (imagePullS
 
 **Tab Firewall** — thêm/sửa/xóa firewall, **Kiểm tra** từng cái hoặc **Kiểm tra tất cả**.
 
+**Tab Lịch sử thay đổi** — dòng thời gian mọi thay đổi thành viên Object Group:
+- Mỗi lần chặn/bỏ chặn là một thẻ: thời gian, người thực hiện (UPN + tên AD), phương thức xác thực, firewall › group,
+  `+N / −N`, số object **trước → sau**, lý do/ticket, nguồn (Teams/nhập tay/CSV), IP client; bên dưới liệt kê từng dòng
+  `+ IP  object` (đỏ = đưa vào group chặn) và `− IP  object` (xanh = gỡ khỏi group).
+- **Thay đổi ngoài app**: mỗi khi app đọc group (xem group, trước khi chặn/bỏ chặn, hoặc bấm **Đồng bộ & dò thay đổi ngoài app**),
+  app so với ảnh chụp lần trước; nếu ai đó sửa trực tiếp trên WebAdmin, thay đổi được ghi thành thẻ màu cam
+  "Thay đổi ngoài app". Lần đầu thấy một group sẽ ghi "Bắt đầu theo dõi" (baseline).
+- Lọc theo firewall, group, loại (thêm/bớt/ngoài app), người thực hiện, khoảng ngày; ô tìm IP trả về toàn bộ lô có IP đó
+  — trả lời nhanh câu hỏi "IP này bị chặn bởi ai, khi nào, vì sao, đã gỡ chưa".
+- **Kiểm tra toàn vẹn log**: mỗi bản ghi chứa SHA-256 của bản ghi trước (hash chain); sửa/xóa trực tiếp trong DB sẽ bị phát hiện.
+- **Xuất CSV** (UTF-8 BOM, giờ Việt Nam) để đính kèm báo cáo sự cố.
+
+**Phân quyền** (theo App Role Entra hoặc cấu hình header):
+
+| Vai trò | Xem group / log / lịch sử | Chặn, bỏ chặn, kiểm tra, đồng bộ | Thêm/sửa/xóa firewall |
+|---|---|---|---|
+| Chỉ xem (`SRB.Viewer`) | ✓ | — | — |
+| Vận hành (`SRB.Operator`) | ✓ | ✓ | — |
+| Quản trị (`SRB.Admin`) | ✓ | ✓ | ✓ |
+
 **Tab Audit log** — toàn bộ thao tác (ai, lúc nào, IP nào, firewall nào, kết quả, lý do), lọc + **Xuất CSV**.
 
 ### Cơ chế an toàn
@@ -131,7 +167,8 @@ Truy cập `http://<node-ip>:30988`. Xem hướng dẫn đầy đủ (imagePullS
 - Safe-list + chặn IP private (tùy chọn) để tránh tự khóa hệ thống.
 - Tối đa 500 IP mỗi lần đẩy; hộp thoại xác nhận trước khi chặn/bỏ chặn.
 - Mật khẩu firewall mã hóa AES-256-GCM, không bao giờ trả về client.
-- Mọi thao tác đều được ghi audit kèm IP người thao tác.
+- Mọi thao tác đều được ghi audit kèm IP người thao tác; thay đổi thành viên group ghi vào lịch sử có hash chain.
+- Đăng nhập Microsoft: Authorization Code + PKCE, kiểm tra chữ ký JWKS, issuer, audience, tenant, nonce, App Role.
 
 ---
 
@@ -165,8 +202,10 @@ API docs: `http://localhost:8080/api/docs`.
 
 ```
 backend/app/config.py    cấu hình từ biến môi trường
-backend/app/crypto.py    mã hóa AES-256-GCM + token phiên HMAC
-backend/app/db.py        model Firewall + AuditLog (SQLAlchemy)
+backend/app/crypto.py    mã hóa AES-256-GCM + token phiên HMAC (kèm vai trò)
+backend/app/auth.py      đăng nhập Microsoft Entra ID (OIDC + PKCE) và header SSO App Proxy
+backend/app/changelog.py lịch sử thay đổi group: hash chain, snapshot, phát hiện thay đổi ngoài app
+backend/app/db.py        model Firewall, AuditLog, GroupChange, GroupSnapshot (SQLAlchemy)
 backend/app/ipparse.py   bóc & kiểm tra IP/CIDR, safe-list
 backend/app/sophos.py    client XML API Sophos
 backend/app/service.py   luồng block/unblock/test + ghi audit
@@ -184,3 +223,6 @@ mock/mock_sophos.py      firewall Sophos giả lập để kiểm thử
 - [IPHost — Add/Edit](https://docs.sophos.com/nsg/sophos-firewall/22.0/api/system/host%20and%20services/iphost/operations/AddIPHost&EditIPHost.html)
 - [IPHostGroup — Add/Edit](https://docs.sophos.com/nsg/sophos-firewall/22.0/api/SYSTEM/Host%20and%20Services/IPHostGroup/operations/AddIpHostGroup&EditIpHostGroup.html)
 - [Bảo vệ truy cập API Sophos (Avanet)](https://www.avanet.com/en/kb/sophos-firewall-api-zugriff-absichern/)
+- [Microsoft Entra Application Proxy — tổng quan](https://learn.microsoft.com/entra/identity/app-proxy/overview-what-is-app-proxy)
+- [Header-based SSO với App Proxy](https://learn.microsoft.com/entra/identity/app-proxy/application-proxy-configure-single-sign-on-with-headers)
+- [Bảo mật App Proxy](https://www.learn.microsoft.com/en-za/entra/identity/app-proxy/application-proxy-security)

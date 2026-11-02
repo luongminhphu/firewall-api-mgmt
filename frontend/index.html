@@ -32,6 +32,19 @@
             <p class="muted">Chặn IP dò quét trên nhiều Sophos Firewall trong vài giây</p>
           </div>
         </div>
+        <div id="sso-box" class="sso-box hidden">
+          <a class="btn btn--ms btn--block" id="sso-btn" href="/api/auth/oidc/login">
+            <svg viewBox="0 0 21 21" width="18" height="18" aria-hidden="true">
+              <rect x="1" y="1" width="9" height="9" fill="#f25022" /><rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+              <rect x="1" y="11" width="9" height="9" fill="#00a4ef" /><rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+            </svg>
+            Đăng nhập bằng tài khoản công ty (MFA)
+          </a>
+          <p class="muted tiny">Xác thực qua Microsoft Entra ID. Quyền thao tác theo App Role được IT gán.</p>
+          <p id="sso-hint" class="alert alert--warn hidden"></p>
+        </div>
+        <div id="sso-divider" class="divider hidden"><span>hoặc mật khẩu ứng dụng</span></div>
+        <div id="local-box">
         <label class="field">
           <span>Tên người trực</span>
           <input id="login-user" placeholder="vd: phu.luong" value="soc" />
@@ -41,10 +54,11 @@
           <input id="login-pass" type="password" placeholder="APP_PASSWORD" required />
         </label>
         <button class="btn btn--primary btn--block" type="submit">Đăng nhập</button>
-        <p id="login-error" class="alert alert--error hidden"></p>
         <p class="muted tiny">
           Mật khẩu lấy từ biến môi trường <code>APP_PASSWORD</code> trên máy chủ.
         </p>
+        </div>
+        <p id="login-error" class="alert alert--error hidden"></p>
       </form>
     </div>
 
@@ -64,6 +78,7 @@
           <button class="tab is-active" data-tab="block">Chặn nhanh</button>
           <button class="tab" data-tab="groups">Object Group</button>
           <button class="tab" data-tab="firewalls">Firewall</button>
+          <button class="tab" data-tab="changes">Lịch sử thay đổi</button>
           <button class="tab" data-tab="audit">Audit log</button>
         </nav>
         <div class="topbar-right">
@@ -269,6 +284,42 @@ Ví dụ:
           </div>
         </section>
 
+        <!-- -------------------------------------------------- TAB: CHANGES -->
+        <section class="panel" data-panel="changes">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>Lịch sử thay đổi Object Group</h2>
+                <p class="muted tiny">Mỗi lần thêm/bớt IP được ghi kèm người thực hiện, lý do, số object trước → sau. Thay đổi làm trực tiếp trên firewall được phát hiện và đánh dấu riêng.</p>
+              </div>
+              <div class="row row--tight">
+                <button class="btn" id="c-sync" type="button" title="Đọc lại group trên các firewall đang bật để phát hiện thay đổi ngoài app">Đồng bộ &amp; dò thay đổi ngoài app</button>
+                <button class="btn btn--ghost" id="c-verify" type="button">Kiểm tra toàn vẹn log</button>
+                <a class="btn btn--ghost" id="c-export" href="#">Xuất CSV</a>
+              </div>
+            </div>
+            <div class="filters">
+              <label class="field"><span>Firewall</span><select id="c-fw" class="select"><option value="">Tất cả</option></select></label>
+              <label class="field"><span>Group</span><select id="c-group" class="select"><option value="">Tất cả</option></select></label>
+              <label class="field"><span>Loại</span>
+                <select id="c-type" class="select">
+                  <option value="">Tất cả</option>
+                  <option value="add">Thêm IP</option>
+                  <option value="remove">Bớt IP</option>
+                  <option value="drift">Thay đổi ngoài app</option>
+                </select>
+              </label>
+              <label class="field"><span>IP / object / lý do</span><input id="c-q" placeholder="45.155.204.11" /></label>
+              <label class="field"><span>Người thực hiện</span><input id="c-actor" placeholder="phu.luong" /></label>
+              <label class="field"><span>Từ ngày</span><input id="c-from" type="date" /></label>
+              <label class="field"><span>Đến ngày</span><input id="c-to" type="date" /></label>
+            </div>
+            <div id="c-stats" class="stats"></div>
+            <p id="c-verify-msg" class="alert hidden"></p>
+            <div id="c-list" class="timeline"></div>
+          </div>
+        </section>
+
         <!-- ---------------------------------------------------- TAB: AUDIT -->
         <section class="panel" data-panel="audit">
           <div class="card">
@@ -281,6 +332,7 @@ Ví dụ:
                   <option value="unblock">Bỏ chặn</option>
                   <option value="test">Kiểm tra kết nối</option>
                   <option value="firewall_cud">Thay đổi firewall</option>
+                  <option value="login">Đăng nhập SSO</option>
                 </select>
                 <input id="a-search" placeholder="Tìm IP, firewall, lý do…" />
                 <button class="btn" id="a-reload" type="button">Tải lại</button>

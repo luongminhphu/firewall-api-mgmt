@@ -4,7 +4,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: db-allow-from-app
-  namespace: infra-ops
+  namespace: sophos-blocker
 spec:
   podSelector:
     matchLabels:
@@ -23,7 +23,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: app-allow-ingress
-  namespace: infra-ops
+  namespace: sophos-blocker
 spec:
   podSelector:
     matchLabels:
