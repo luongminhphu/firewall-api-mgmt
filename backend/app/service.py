@@ -10,7 +10,8 @@ from .config import settings
 from .crypto import decrypt
 from .db import AuditLog, Firewall
 from .ipparse import classify, host_object_name
-from .sophos import SophosAuthError, SophosClient, SophosError
+from .policy import BLOCK_GROUP, BLOCK_GROUP_FAMILY, GroupPolicyError
+from .sophos import SophosAuthError, SophosClient, SophosError, build_iphostgroup_xml, pretty_xml
 
 
 def client_for(fw: Firewall) -> SophosClient:
@@ -109,7 +110,6 @@ def block_on_firewall(
     fw: Firewall,
     entries: list[dict],
     *,
-    group_override: str = "",
     reason: str = "",
     source: str = "manual",
     actor: str = "soc",
@@ -117,12 +117,19 @@ def block_on_firewall(
     dry_run: bool = False,
     who: dict | None = None,
 ) -> dict:
-    group = (group_override or fw.default_group).strip()
+    group = BLOCK_GROUP  # cố định — xem policy.py
     who = who or {"user": actor, "name": actor, "method": "local"}
     rows: list[dict] = []
     try:
         cli = client_for(fw)
         existing_group = cli.get_group(group)
+        if not existing_group:
+            # Không tự tạo group: group mới chưa gắn vào rule chặn nào sẽ khiến việc "chặn" vô tác dụng
+            raise SophosError(
+                f"IP Host Group '{group}' chưa tồn tại trên {fw.name}. Admin firewall cần tạo group "
+                f"này ({BLOCK_GROUP_FAMILY}) và gắn vào firewall rule chặn trước khi dùng app.",
+                "526",
+            )
     except (SophosError, SophosAuthError, ValueError) as exc:
         msg = str(exc)
         mark_status(db, fw, "error", msg)
@@ -139,7 +146,21 @@ def block_on_firewall(
             "summary": {"added": 0, "existed": 0, "error": len(entries), "skipped": 0},
         }
 
-    group_hosts = list(existing_group["hosts"]) if existing_group else []
+    group_family = existing_group.get("ip_family") or "IPv4"
+    if group_family != BLOCK_GROUP_FAMILY:
+        # Sophos không cho trộn IPv4 và IPv6 trong cùng một IPHostGroup
+        msg = (f"Group '{group}' là IPHostGroup {group_family} — không thể thêm IP Host IPv4. "
+               "Hãy chọn/tạo group IPv4 khác.")
+        for e in entries:
+            audit(db, action="block", fw=fw, target=e["value"], result="error", message=msg,
+                  group=group, reason=reason, source=source, actor=actor, client_ip=client_ip)
+        db.commit()
+        return {
+            "firewall_id": fw.id, "firewall": fw.name, "group": group, "ok": False, "error": msg,
+            "rows": [], "summary": {"added": 0, "existed": 0, "error": len(entries), "skipped": 0},
+        }
+    group_desc = existing_group.get("description") or ""
+    group_hosts = list(existing_group["hosts"])
 
     # Phát hiện thay đổi ngoài app trước khi sửa group
     try:
@@ -197,23 +218,11 @@ def block_on_firewall(
     if not dry_run and to_link:
         merged = group_hosts + [h for h in to_link if h not in group_hosts]
         try:
-            if existing_group:
-                gres = cli.set_group_hosts(
-                    group, merged, existing_group.get("description", ""),
-                    existing_group.get("ip_family", "IPv4"),
-                )
-            else:
-                gres = cli.create_group(group, merged, f"SOC block group ({reason})"[:255])
+            gres = cli.set_group_hosts(group, merged, group_desc, group_family)
             group_result = {"changed": gres.ok, "code": gres.code, "message": gres.message}
             if gres.ok:
                 values = {r["object"]: r["value"] for r in rows}
                 batch = changelog.new_batch()
-                if not existing_group:
-                    changelog.record(
-                        db, fw=fw, group=group, change_type="create_group", items=[],
-                        count_before=0, count_after=0, who=who, reason=reason,
-                        source=source, client_ip=client_ip, batch_id=batch,
-                    )
                 changelog.record(
                     db, fw=fw, group=group, change_type="add",
                     items=[(o, values.get(o, "")) for o in to_link],
@@ -230,7 +239,7 @@ def block_on_firewall(
                     if r["object"] in to_link:
                         r.update(result="error", code=gres.code,
                                  message=f"Tạo object OK nhưng cập nhật group lỗi: {gres.message}")
-        except (SophosError, SophosAuthError) as exc:
+        except (SophosError, SophosAuthError, ValueError) as exc:
             group_result = {"changed": False, "code": getattr(exc, "code", ""), "message": str(exc)}
             for r in rows:
                 if r["object"] in to_link:
@@ -247,10 +256,21 @@ def block_on_firewall(
     mark_status(db, fw, "ok" if ok_rows else "error", group_result.get("message") or "")
     db.commit()
 
+    # Payload IPHostGroup (dự kiến khi chạy thử / đã gửi khi chạy thật) để người trực đối chiếu
+    planned = [r["object"] for r in rows if r["result"] in ("added", "existed", "dry-run")]
+    final_hosts = group_hosts + [h for h in planned if h not in group_hosts]
+    try:
+        group_xml = pretty_xml(build_iphostgroup_xml(group, final_hosts, group_desc, group_family))
+    except ValueError as exc:
+        group_xml = f"<!-- {exc} -->"
+
     return {
         "firewall_id": fw.id,
         "firewall": fw.name,
         "group": group,
+        "ip_family": group_family,
+        "group_operation": "update",
+        "group_xml": group_xml,
         "ok": bool(ok_rows) and all(r["result"] != "error" for r in rows),
         "rows": rows,
         "group_result": group_result,
@@ -269,7 +289,6 @@ def unblock_on_firewall(
     fw: Firewall,
     targets: list[str],
     *,
-    group_override: str = "",
     delete_object: bool = False,
     reason: str = "",
     actor: str = "soc",
@@ -277,7 +296,7 @@ def unblock_on_firewall(
     who: dict | None = None,
 ) -> dict:
     """`targets` có thể là tên object hoặc địa chỉ IP."""
-    group = (group_override or fw.default_group).strip()
+    group = BLOCK_GROUP  # cố định — xem policy.py
     who = who or {"user": actor, "name": actor, "method": "local"}
     rows: list[dict] = []
     try:
@@ -350,9 +369,9 @@ def unblock_on_firewall(
                         r["message"] += " · xóa object: " + (
                             "OK" if dres.ok else f"lỗi {dres.code} {dres.message}"
                         )
-                    except SophosError as exc:
+                    except (SophosError, ValueError) as exc:
                         r["message"] += f" · xóa object lỗi: {exc}"
-        except (SophosError, SophosAuthError) as exc:
+        except (SophosError, SophosAuthError, ValueError) as exc:
             for r in rows:
                 if r["result"] == "removed":
                     r.update(result="error", message=f"Cập nhật group lỗi: {exc}")

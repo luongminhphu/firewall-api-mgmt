@@ -36,8 +36,13 @@ def _load() -> dict:
                                "Description": "Doi tac"},
         },
         "groups": {
+            # Group cố định mà SOC Rapid Block được phép thao tác (gắn sẵn vào rule chặn trên firewall thật)
+            "SCANPORT GROUP": {"Description": "Chan IP do quet port - SOC", "IPFamily": "IPv4",
+                               "HostList": ["SOC_BLOCK_45_155_204_11"]},
+            # Các group khác: app KHÔNG được đọc/sửa
             "SOC_BLOCKED_IPS": {"Description": "Nhom IP bi chan boi SOC", "IPFamily": "IPv4",
-                                "HostList": ["SOC_BLOCK_45_155_204_11"]},
+                                "HostList": ["PARTNER_VPN_GW"]},
+            "SOC_BLOCKED_IPV6": {"Description": "Nhom IPv6", "IPFamily": "IPv6", "HostList": []},
             "SOC_BLOCKED_IPS_HANOI": {"Description": "Chi nhanh Ha Noi", "IPFamily": "IPv4",
                                       "HostList": []},
         },
@@ -62,6 +67,12 @@ def _resp(body: str) -> Response:
 
 def _status(tag: str, code: str, text: str) -> str:
     return f'<{tag} transactionid=""><Status code="{code}">{text}</Status></{tag}>'
+
+
+def _x(v) -> str:
+    from xml.sax.saxutils import escape
+
+    return escape(str(v or ""))
 
 
 def _as_list(v) -> list:
@@ -99,8 +110,8 @@ def controller(reqxml: str = Form(default="")):
                 hosts = "".join(f"<Host>{h}</Host>" for h in g["HostList"])
                 out.append(
                     f'<IPHostGroup transactionid=""><Name>{name}</Name>'
-                    f"<Description>{g['Description']}</Description>"
                     f"<IPFamily>{g['IPFamily']}</IPFamily>"
+                    f"<Description>{_x(g['Description'])}</Description>"
                     f"<HostList>{hosts}</HostList></IPHostGroup>"
                 )
             if not out:
@@ -141,6 +152,7 @@ def controller(reqxml: str = Form(default="")):
                                      "Entity having same parameter details already exists."))
             STATE["hosts"][name] = {
                 "HostType": h.get("HostType", "IP"),
+                "IPFamily": h.get("IPFamily", "IPv4"),
                 "IPAddress": h.get("IPAddress", ""),
                 "Subnet": h.get("Subnet", ""),
                 "Description": h.get("Description", ""),
@@ -151,11 +163,27 @@ def controller(reqxml: str = Form(default="")):
         if "IPHostGroup" in st:
             g = st["IPHostGroup"]
             name = g["Name"]
+            # Kiểm tra đúng mẫu tài liệu: Name → IPFamily → Description → HostList
+            expected = ["Name", "IPFamily", "Description", "HostList"]
+            keys = [k for k in g.keys() if not k.startswith("@")]
+            if keys != [k for k in expected if k in keys] or any(k not in expected for k in keys):
+                return _resp(_status("IPHostGroup", "500", f"Unexpected element order: {keys}"))
+            fam = g.get("IPFamily") or "IPv4"
+            if fam not in ("IPv4", "IPv6"):
+                return _resp(_status("IPHostGroup", "500", f"Invalid IPFamily: {fam}"))
+            if "," in name:
+                return _resp(_status("IPHostGroup", "500", "Comma not allowed in Name"))
             hosts = _as_list((g.get("HostList") or {}).get("Host")) if g.get("HostList") else []
             unknown = [h for h in hosts if h not in STATE["hosts"]]
             if unknown:
                 return _resp(_status("IPHostGroup", "500",
                                      f"Referred host not found: {', '.join(unknown)}"))
+            wrong = [h for h in hosts if STATE["hosts"][h].get("IPFamily", "IPv4") != fam]
+            if wrong:
+                return _resp(_status("IPHostGroup", "500",
+                                     f"Host family mismatch with group {fam}: {', '.join(wrong)}"))
+            if op == "update" and STATE["groups"].get(name, {}).get("IPFamily", fam) != fam:
+                return _resp(_status("IPHostGroup", "500", "IPFamily of an existing group cannot be changed"))
             if op == "add" and name in STATE["groups"]:
                 return _resp(_status("IPHostGroup", "502",
                                      "Entity having same name already exists."))

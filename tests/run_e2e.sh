@@ -13,4 +13,4 @@ export DATABASE_URL=sqlite:////tmp/sb_t.db MASTER_KEY=0123456789abcdef0123456789
 APP=$!
 trap 'kill $MOCK $APP 2>/dev/null' EXIT
 for i in $(seq 1 30); do curl -s localhost:8090/api/health >/dev/null && break; sleep 0.5; done
-PYTHONPATH=backend python3 tests/e2e_changelog_test.py
+PYTHONPATH=backend python3 "${1:-tests/e2e_changelog_test.py}"

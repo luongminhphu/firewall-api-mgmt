@@ -16,6 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 from .config import settings
+from .policy import BLOCK_GROUP
 
 connect_args = {}
 if settings.DATABASE_URL.startswith("sqlite"):
@@ -41,7 +42,7 @@ class Firewall(Base):
     port: Mapped[int] = mapped_column(Integer, default=4444)
     username: Mapped[str] = mapped_column(String(120))
     password_enc: Mapped[str] = mapped_column(Text)
-    default_group: Mapped[str] = mapped_column(String(120), default="SOC_BLOCKED_IPS")
+    default_group: Mapped[str] = mapped_column(String(120), default=BLOCK_GROUP)
     verify_ssl: Mapped[bool] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     note: Mapped[str] = mapped_column(Text, default="")
@@ -62,7 +63,7 @@ class Firewall(Base):
             "host": self.host,
             "port": self.port,
             "username": self.username,
-            "default_group": self.default_group,
+            "default_group": BLOCK_GROUP,  # cố định — xem policy.py
             "verify_ssl": self.verify_ssl,
             "enabled": self.enabled,
             "note": self.note,

@@ -14,6 +14,9 @@ from typing import Any
 import httpx
 import xmltodict
 
+from .config import settings
+from .policy import BLOCK_GROUP, GroupPolicyError
+
 log = logging.getLogger("sophos")
 
 # Mã lỗi đặc thù ở tầng request (không nằm trong entity)
@@ -64,6 +67,69 @@ def _as_list(value) -> list:
     if value is None:
         return []
     return value if isinstance(value, list) else [value]
+
+
+IP_FAMILIES = ("IPv4", "IPv6")
+HOST_NAME_MAX = 60  # Sophos: <Host> tối đa 60 ký tự, không có dấu phẩy
+
+
+def validate_group_name(name: str) -> str:
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("Tên IP Host Group không được để trống")
+    if "," in name:
+        raise ValueError(f"Tên IP Host Group không được chứa dấu phẩy: {name}")
+    return name
+
+
+def build_iphostgroup_xml(
+    name: str, hosts: list[str], description: str = "", ip_family: str = "IPv4"
+) -> str:
+    """Dựng entity IPHostGroup theo đúng mẫu của Sophos Firewall XML API:
+
+        <IPHostGroup>
+          <Name>name</Name>
+          <IPFamily>IPv4/IPv6</IPFamily>
+          <Description>Text</Description>
+          <HostList><Host>Hostname</Host>...</HostList>
+        </IPHostGroup>
+
+    <Host> là TÊN của IP Host đã tồn tại trên firewall (không phải địa chỉ IP).
+    """
+    name = validate_group_name(name)
+    fam = ip_family or "IPv4"
+    if fam not in IP_FAMILIES:
+        raise ValueError(f"IPFamily chỉ nhận IPv4 hoặc IPv6, nhận được: {fam}")
+    seen: set[str] = set()
+    clean: list[str] = []
+    for h in hosts:
+        h = (h or "").strip()
+        if not h or h in seen:
+            continue
+        if "," in h or len(h) > HOST_NAME_MAX:
+            raise ValueError(f"Tên IP Host không hợp lệ (tối đa {HOST_NAME_MAX} ký tự, không dấu phẩy): {h}")
+        seen.add(h)
+        clean.append(h)
+    host_xml = "".join(f"<Host>{_esc(h)}</Host>" for h in clean)
+    return (
+        "<IPHostGroup>"
+        f"<Name>{_esc(name)}</Name>"
+        f"<IPFamily>{fam}</IPFamily>"
+        f"<Description>{_esc(description or '')}</Description>"
+        f"<HostList>{host_xml}</HostList>"
+        "</IPHostGroup>"
+    )
+
+
+def pretty_xml(xml: str) -> str:
+    """Định dạng XML nhiều dòng để hiển thị cho người dùng (không chứa thông tin đăng nhập)."""
+    import xml.dom.minidom as minidom
+
+    try:
+        out = minidom.parseString(xml.encode("utf-8")).toprettyxml(indent="  ")
+        return "\n".join(line for line in out.splitlines()[1:] if line.strip())
+    except Exception:  # noqa: BLE001
+        return xml
 
 
 class SophosClient:
@@ -157,7 +223,7 @@ class SophosClient:
         data = self._post("<Get><IPHostGroup></IPHostGroup></Get>")
         groups = []
         for g in _as_list(data.get("IPHostGroup")):
-            if not isinstance(g, dict) or not g.get("Name"):
+            if not isinstance(g, dict) or g.get("Name") != BLOCK_GROUP:
                 continue
             hosts = _as_list((g.get("HostList") or {}).get("Host")) if g.get("HostList") else []
             groups.append(
@@ -241,33 +307,24 @@ class SophosClient:
         return self._entity_status(data, "IPHost")
 
     def delete_ip_host(self, name: str) -> OpResult:
+        # Chỉ được xóa IP Host do app tạo (đúng tiền tố), tránh xóa nhầm object hệ thống/của team khác
+        if not name.startswith(settings.HOST_PREFIX):
+            raise GroupPolicyError(f"Không được xóa IP Host '{name}' — chỉ xóa object có tiền tố {settings.HOST_PREFIX}")
         data = self._post(f"<Remove><IPHost><Name>{_esc(name)}</Name></IPHost></Remove>")
         return self._entity_status(data, "IPHost")
 
     # ----------------------------------------------------------- write: group
-    def create_group(
-        self, name: str, hosts: list[str], description: str = "", ip_family: str = "IPv4"
-    ) -> OpResult:
-        host_xml = "".join(f"<Host>{_esc(h)}</Host>" for h in hosts)
-        body = (
-            f"<Name>{_esc(name)}</Name>"
-            f"<Description>{_esc(description or 'Tạo bởi SOC Rapid Block')}</Description>"
-            f"<IPFamily>{ip_family}</IPFamily>"
-            f"<HostList>{host_xml}</HostList>"
-        )
-        data = self._post(f'<Set operation="add"><IPHostGroup>{body}</IPHostGroup></Set>')
-        return self._entity_status(data, "IPHostGroup")
+    # Không có hàm tạo group: app không được phép tạo IP Host Group mới trên firewall.
 
     def set_group_hosts(
         self, name: str, hosts: list[str], description: str = "", ip_family: str = "IPv4"
     ) -> OpResult:
-        """Ghi lại toàn bộ HostList của group (Sophos không có API add/remove từng phần tử)."""
-        host_xml = "".join(f"<Host>{_esc(h)}</Host>" for h in hosts)
-        body = (
-            f"<Name>{_esc(name)}</Name>"
-            f"<Description>{_esc(description or 'Quản lý bởi SOC Rapid Block')}</Description>"
-            f"<IPFamily>{ip_family}</IPFamily>"
-            f"<HostList>{host_xml}</HostList>"
-        )
-        data = self._post(f'<Set operation="update"><IPHostGroup>{body}</IPHostGroup></Set>')
+        """Ghi lại toàn bộ HostList của group cố định (Sophos không có API add/remove từng phần tử).
+
+        Giữ nguyên Description và IPFamily hiện có của group để không làm thay đổi cấu hình ngoài ý muốn.
+        """
+        if name != BLOCK_GROUP:  # phòng thủ nhiều lớp — không phụ thuộc lớp API
+            raise GroupPolicyError(f"Chỉ được cập nhật IP Host Group '{BLOCK_GROUP}'")
+        body = build_iphostgroup_xml(name, hosts, description, ip_family)
+        data = self._post(f'<Set operation="update">{body}</Set>')
         return self._entity_status(data, "IPHostGroup")

@@ -21,6 +21,7 @@ from .config import settings
 from .crypto import MasterKeyMissing, decrypt, encrypt, issue_token, verify_principal, verify_token
 from .db import AuditLog, Firewall, GroupChange, get_session, init_db
 from .ipparse import extract, host_object_name
+from .policy import BLOCK_GROUP, GroupPolicyError, enforce_group
 from .service import (
     _host_value,
     audit,
@@ -46,6 +47,14 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    # Hardening: chuẩn hóa mọi firewall về group cố định (dữ liệu cũ có thể còn SOC_BLOCKED_IPS)
+    from .db import SessionLocal
+
+    with SessionLocal() as db:
+        db.query(Firewall).filter(Firewall.default_group != BLOCK_GROUP).update(
+            {Firewall.default_group: BLOCK_GROUP}, synchronize_session=False
+        )
+        db.commit()
 
 
 # ------------------------------------------------------------------- helpers
@@ -83,6 +92,17 @@ def client_ip_of(request: Request) -> str:
     if fwd:
         return fwd.split(",")[0].strip()
     return request.client.host if request.client else ""
+
+
+def locked_group(db: Session, request: Request, requested, actor: str) -> str:
+    """Áp chính sách group cố định; vi phạm → 403 và ghi audit 'policy_violation'."""
+    try:
+        return enforce_group(requested)
+    except GroupPolicyError as exc:
+        audit(db, action="policy_violation", fw=None, target=str(requested)[:120], result="denied",
+              message=str(exc), group=str(requested)[:120], actor=actor, client_ip=client_ip_of(request))
+        db.commit()
+        raise HTTPException(403, str(exc)) from exc
 
 
 def get_fw(db: Session, fw_id: int) -> Firewall:
@@ -205,6 +225,7 @@ def config(p: dict = Depends(principal)):
     return {
         "app_name": settings.APP_NAME,
         "version": settings.APP_VERSION,
+        "block_group": BLOCK_GROUP,
         "user": p["user"],
         "name": p["name"],
         "role": p["role"],
@@ -249,7 +270,7 @@ def create_firewall(
         port=int(payload.get("port") or 4444),
         username=payload["username"].strip(),
         password_enc=pwd,
-        default_group=(payload.get("default_group") or "SOC_BLOCKED_IPS").strip(),
+        default_group=locked_group(db, request, payload.get("default_group"), user),
         verify_ssl=bool(payload.get("verify_ssl")),
         enabled=bool(payload.get("enabled", True)),
         note=(payload.get("note") or "").strip(),
@@ -272,7 +293,10 @@ def update_firewall(
 ):
     user = p["user"]
     fw = get_fw(db, fw_id)
-    for field in ("name", "site", "host", "username", "default_group", "note"):
+    if payload.get("default_group") is not None:
+        locked_group(db, request, payload.get("default_group"), user)
+    fw.default_group = BLOCK_GROUP
+    for field in ("name", "site", "host", "username", "note"):
         if payload.get(field) is not None:
             setattr(fw, field, str(payload[field]).strip())
     if payload.get("port"):
@@ -344,24 +368,27 @@ def fw_groups(
 ):
     fw = get_fw(db, fw_id)
     try:
-        groups = client_for(fw).list_groups()
+        g = client_for(fw).get_group(BLOCK_GROUP)  # chỉ đọc group cố định, không liệt kê group khác
     except (SophosError, SophosAuthError, ValueError) as exc:
         raise HTTPException(502, str(exc)) from exc
     return {
         "firewall": fw.name,
-        "default_group": fw.default_group,
-        "groups": [{**g, "count": len(g["hosts"])} for g in groups],
+        "default_group": BLOCK_GROUP,
+        "locked": True,
+        "groups": [{**g, "count": len(g["hosts"])}] if g else [],
     }
 
 
 @app.get("/api/firewalls/{fw_id}/group-members")
 def fw_group_members(
     fw_id: int,
-    group: str = Query(...),
+    request: Request,
+    group: str = Query(default=""),
     q: str = Query(default=""),
     db: Session = Depends(get_session),
     user: str = Depends(current_user),
 ):
+    group = locked_group(db, request, group, user)
     fw = get_fw(db, fw_id)
     try:
         cli = client_for(fw)
@@ -429,6 +456,7 @@ def block(
     p: dict = Depends(operator),
 ):
     user = p["user"]
+    locked_group(db, request, payload.get("group"), user)
     values: list[str] = [str(v) for v in (payload.get("values") or [])]
     if payload.get("text"):
         values += [i["value"] for i in extract(payload["text"], payload.get("extra_safe")) ["accepted"]]
@@ -443,7 +471,6 @@ def block(
     results = [
         block_on_firewall(
             db, fw, entries,
-            group_override=payload.get("group") or "",
             reason=payload.get("reason") or "",
             source=payload.get("source") or "manual",
             actor=user, client_ip=ip, dry_run=bool(payload.get("dry_run")), who=p,
@@ -461,6 +488,7 @@ def unblock(
     p: dict = Depends(operator),
 ):
     user = p["user"]
+    locked_group(db, request, payload.get("group"), user)
     targets = [str(t).strip() for t in (payload.get("targets") or []) if str(t).strip()]
     if not targets:
         raise HTTPException(400, "Chưa chọn IP/object nào để bỏ chặn")
@@ -469,7 +497,6 @@ def unblock(
     results = [
         unblock_on_firewall(
             db, fw, targets,
-            group_override=payload.get("group") or "",
             delete_object=bool(payload.get("delete_object")),
             reason=payload.get("reason") or "",
             actor=user, client_ip=ip, who=p,
@@ -543,6 +570,7 @@ def _parse_day(v: str, end: bool = False) -> dt.datetime | None:
 
 @app.get("/api/changes")
 def changes(
+    request: Request,
     firewall_id: int | None = Query(default=None),
     group: str = Query(default=""),
     type: str = Query(default=""),
@@ -554,8 +582,9 @@ def changes(
     db: Session = Depends(get_session),
     user: str = Depends(current_user),
 ):
+    group = locked_group(db, request, group, user)
     batches = changelog.query_batches(
-        db, firewall_id=firewall_id, group=group.strip(), change_type=type, actor=actor.strip(),
+        db, firewall_id=firewall_id, group=group, change_type=type, actor=actor.strip(),
         q=q, date_from=_parse_day(date_from), date_to=_parse_day(date_to, end=True),
         limit_batches=limit,
     )
@@ -565,8 +594,7 @@ def changes(
         "removed": sum(len(b["removed"]) for b in batches),
         "drift": sum(1 for b in batches if b["kind"] == "drift"),
     }
-    groups = sorted({g for (g,) in db.query(GroupChange.group_name).distinct().all() if g})
-    return {"batches": batches, "totals": totals, "groups": groups}
+    return {"batches": batches, "totals": totals, "groups": [BLOCK_GROUP], "locked_group": BLOCK_GROUP}
 
 
 @app.get("/api/changes.csv")
@@ -581,8 +609,10 @@ def changes_csv(
 ):
     if not verify_token(token):
         raise HTTPException(401, "Token không hợp lệ")
+    if group.strip() not in ("", BLOCK_GROUP):
+        raise HTTPException(403, f"Chỉ xuất lịch sử của IP Host Group '{BLOCK_GROUP}'")
     batches = changelog.query_batches(
-        db, firewall_id=firewall_id, group=group.strip(), q=q,
+        db, firewall_id=firewall_id, group=BLOCK_GROUP, q=q,
         date_from=_parse_day(date_from), date_to=_parse_day(date_to, end=True), limit_batches=5000,
     )
     labels = {"change": "thao tac trong app", "drift": "thay doi ngoai app",
@@ -615,15 +645,16 @@ def changes_verify(db: Session = Depends(get_session), user: str = Depends(curre
 
 @app.post("/api/changes/sync")
 def changes_sync(
+    request: Request,
     payload: dict = Body(default={}),
     db: Session = Depends(get_session),
     p: dict = Depends(operator),
 ):
-    """Đọc lại group trên firewall để phát hiện thay đổi ngoài app."""
+    """Đọc lại group cố định trên firewall để phát hiện thay đổi ngoài app."""
+    group = locked_group(db, request, payload.get("group"), p["user"])
     fws = selected_firewalls(db, payload.get("firewall_ids"))
     out = []
     for fw in fws:
-        group = (payload.get("group") or fw.default_group).strip()
         try:
             cli = client_for(fw)
             g = cli.get_group(group)

@@ -76,7 +76,7 @@
         </div>
         <nav class="tabs" id="tabs">
           <button class="tab is-active" data-tab="block">Chặn nhanh</button>
-          <button class="tab" data-tab="groups">Object Group</button>
+          <button class="tab" data-tab="groups">IP Host Group</button>
           <button class="tab" data-tab="firewalls">Firewall</button>
           <button class="tab" data-tab="changes">Lịch sử thay đổi</button>
           <button class="tab" data-tab="audit">Audit log</button>
@@ -144,10 +144,12 @@ Ví dụ:
               </div>
 
               <div class="row row--2">
-                <label class="field">
-                  <span>Object Group (bỏ trống = group mặc định của từng firewall)</span>
-                  <input id="block-group" placeholder="SOC_BLOCKED_IPS" />
-                </label>
+                <div class="field">
+                  <span>IP Host Group đích (cố định)</span>
+                  <div class="locked-group" title="Được gắn cứng trong mã nguồn để hardening — không thể đổi từ giao diện hay API">
+                    <svg class="lock-ic" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="mono js-block-group">SCANPORT GROUP</span><span class="chip">IPv4</span>
+                  </div>
+                </div>
                 <label class="field">
                   <span>Lý do / ticket (ghi vào audit + description)</span>
                   <input id="block-reason" placeholder="Tết 2026 - brute force SSH" />
@@ -183,10 +185,9 @@ Ví dụ:
         <section class="panel" data-panel="groups">
           <div class="card">
             <div class="card-head">
-              <h2>Object Group trên firewall</h2>
+              <h2>IP Host Group <span class="mono js-block-group">SCANPORT GROUP</span></h2>
               <div class="row row--tight">
                 <select id="g-fw" class="select"></select>
-                <select id="g-group" class="select"></select>
                 <input id="g-search" placeholder="Tìm IP / tên object…" />
                 <button class="btn" id="g-reload" type="button">Tải lại</button>
               </div>
@@ -258,8 +259,8 @@ Ví dụ:
                   <label class="field"><span>Mật khẩu *</span>
                     <input id="fw-pass" type="password" placeholder="••••••" /></label>
                 </div>
-                <label class="field"><span>Object Group mặc định</span>
-                  <input id="fw-group" value="SOC_BLOCKED_IPS" /></label>
+                <div class="field"><span>IP Host Group (cố định)</span>
+                  <div class="locked-group"><svg class="lock-ic" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="mono js-block-group">SCANPORT GROUP</span></div></div>
                 <label class="field"><span>Ghi chú</span>
                   <input id="fw-note" placeholder="XGS 4300, firmware 21.5 MR1" /></label>
                 <div class="row row--2">
@@ -289,7 +290,7 @@ Ví dụ:
           <div class="card">
             <div class="card-head">
               <div>
-                <h2>Lịch sử thay đổi Object Group</h2>
+                <h2>Lịch sử thay đổi · <span class="mono js-block-group">SCANPORT GROUP</span></h2>
                 <p class="muted tiny">Mỗi lần thêm/bớt IP được ghi kèm người thực hiện, lý do, số object trước → sau. Thay đổi làm trực tiếp trên firewall được phát hiện và đánh dấu riêng.</p>
               </div>
               <div class="row row--tight">
@@ -300,7 +301,6 @@ Ví dụ:
             </div>
             <div class="filters">
               <label class="field"><span>Firewall</span><select id="c-fw" class="select"><option value="">Tất cả</option></select></label>
-              <label class="field"><span>Group</span><select id="c-group" class="select"><option value="">Tất cả</option></select></label>
               <label class="field"><span>Loại</span>
                 <select id="c-type" class="select">
                   <option value="">Tất cả</option>

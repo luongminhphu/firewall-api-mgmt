@@ -4,6 +4,8 @@ Mini app HTML5 + FastAPI giúp team SOC/NOC dán thẳng đoạn chat Teams (ho�
 bóc IP tự động và đẩy vào **IP Host Group** trên **nhiều Sophos Firewall** cùng lúc qua XML API —
 thao tác được từ điện thoại trong ngày nghỉ lễ Tết.
 
+**Mới ở v1.3.0** — chỉ thao tác trên IP Host Group cố định **`SCANPORT GROUP`**; payload IPHostGroup đúng mẫu Sophos (Name → IPFamily → Description → HostList), xem trước XML khi chạy thử.
+
 **Mới ở v1.2.0**
 - Truy cập từ Internet qua **Microsoft Entra Application Proxy** + **MFA tài khoản AD**, không mở port inbound,
   không public app — xem [`docs/entra-app-proxy.md`](docs/entra-app-proxy.md).
@@ -44,9 +46,11 @@ Theo [hướng dẫn cấu hình API của Sophos](https://docs.sophos.com/nsg/s
 3. **Tài khoản API**: tạo admin riêng (vd `apiadmin`) có quyền sửa **Hosts and services**; nên giới hạn login theo IP
    ([khuyến nghị hardening](https://www.avanet.com/en/kb/sophos-firewall-api-zugriff-absichern/)).
 4. **Cổng**: cổng XML API = cổng HTTPS của Admin Console (`System ▸ Administration ▸ Admin settings`), mặc định **4444**.
-5. **Tạo group + rule chặn**: tạo IP Host Group (vd `SOC_BLOCKED_IPS`) rồi tạo **firewall rule Drop**
-   với Source zone WAN, Source networks = group đó, đặt **lên trên cùng**. Mini app chỉ đổ IP vào group —
-   không có rule thì IP vẫn không bị chặn.
+5. **Tạo group + rule chặn**: tạo IP Host Group tên chính xác **`SCANPORT GROUP`** (IP version **IPv4**) rồi tạo
+   **firewall rule Drop** với Source zone WAN, Source networks = group đó, đặt **lên trên cùng**. Mini app chỉ đổ IP
+   vào group này — không có rule thì IP vẫn không bị chặn. App **không tự tạo group**: nếu thiếu, app báo lỗi rõ ràng.
+6. **Giới hạn quyền tài khoản API** (khuyến nghị): profile admin chỉ có quyền đọc/ghi **Hosts and services**, không có quyền
+   firewall rule, network, system.
 
 Mã trạng thái hay gặp: `200/202` OK · `502` object trùng tên · `503` trùng tham số ·
 `526` không tồn tại · `532` chưa bật API · `534` IP nguồn chưa được cho phép · `599` thiếu quyền.
@@ -131,12 +135,34 @@ Truy cập `http://<node-ip>:30988`. Xem hướng dẫn đầy đủ (imagePullS
 **Tab Chặn nhanh**
 1. Chọn nguồn: **Dán từ Teams** (app tự bóc IPv4/CIDR, hiểu cả dạng làm mờ `1.2.3[.]4`, `1.2.3(.)4`, `1.2.3[dot]4`),
    **Nhập tay**, hoặc **CSV/TXT** (kéo-thả file).
-2. Tick các firewall đích (có thể chọn tất cả), điền Object Group (bỏ trống = group mặc định của từng firewall) và lý do/ticket.
+2. Tick các firewall đích (có thể chọn tất cả) và điền lý do/ticket. IP Host Group đích luôn là **`SCANPORT GROUP`**
+   (hiển thị khóa, không sửa được).
 3. Tick **Chạy thử (dry-run)** để xem trước sẽ tạo gì mà không ghi lên firewall.
 4. Bấm **Chặn ngay** → xem kết quả từng IP trên từng firewall (đã thêm / đã có / lỗi + mã Sophos).
 
-**Tab Object Group** — xem và tìm kiếm thành viên group hiện tại trên từng firewall, tick để **bỏ chặn**
-(tùy chọn xóa luôn IP Host object).
+**Tab IP Host Group** — xem và tìm kiếm thành viên `SCANPORT GROUP` trên từng firewall, tick để **bỏ chặn**
+(tùy chọn xóa luôn IP Host object — chỉ áp dụng cho object do app tạo, tiền tố `SOC_BLOCK_`).
+
+**Payload IPHostGroup** — kết quả chặn (kể cả chạy thử) hiển thị đúng XML gửi lên firewall theo mẫu
+[Add/Edit IP Host Group của Sophos](https://docs.sophos.com/nsg/sophos-firewall/22.0/api/SYSTEM/Host%20and%20Services/IPHostGroup/operations/AddIpHostGroup&EditIpHostGroup.html):
+
+```xml
+<Set operation="update">
+  <IPHostGroup>
+    <Name>SCANPORT GROUP</Name>
+    <IPFamily>IPv4</IPFamily>
+    <Description>(giữ nguyên mô tả hiện có trên firewall)</Description>
+    <HostList>
+      <Host>SOC_BLOCK_45_155_205_10</Host>
+      <Host>SOC_BLOCK_185_220_101_0-24</Host>
+    </HostList>
+  </IPHostGroup>
+</Set>
+```
+
+`<Host>` là **tên IP Host** (tối đa 60 ký tự, không dấu phẩy) — app tạo IP Host `SOC_BLOCK_<ip>` trước, sau đó ghi lại
+toàn bộ `HostList` (danh sách cũ + mới) vì Sophos không có lệnh thêm/bớt từng phần tử. `Description` và `IPFamily`
+hiện có của group được giữ nguyên.
 
 **Tab Firewall** — thêm/sửa/xóa firewall, **Kiểm tra** từng cái hoặc **Kiểm tra tất cả**.
 
@@ -163,6 +189,16 @@ Truy cập `http://<node-ip>:30988`. Xem hướng dẫn đầy đủ (imagePullS
 **Tab Audit log** — toàn bộ thao tác (ai, lúc nào, IP nào, firewall nào, kết quả, lý do), lọc + **Xuất CSV**.
 
 ### Cơ chế an toàn
+
+**Hardening — group cố định `SCANPORT GROUP`** (từ v1.3.0):
+- Tên group được **gắn cứng trong mã nguồn** (`backend/app/policy.py`), không đọc từ biến môi trường/ConfigMap, không nhận
+  từ giao diện. Muốn đổi phải sửa mã, review, build lại image.
+- Mọi API nhận tham số group (`/api/block`, `/api/unblock`, `/api/firewalls/*/group-members`, `/api/changes`,
+  `/api/changes/sync`, tạo/sửa firewall) **từ chối HTTP 403** nếu group khác `SCANPORT GROUP` (so khớp chính xác,
+  phân biệt hoa/thường) và ghi audit `policy_violation`.
+- Lớp client Sophos kiểm tra lần nữa (phòng thủ nhiều lớp): chỉ `Set operation="update"` cho `SCANPORT GROUP`,
+  không có hàm tạo group, chỉ xóa IP Host có tiền tố `SOC_BLOCK_`, chỉ liệt kê `SCANPORT GROUP`.
+- Group không phải IPv4 trên firewall → từ chối, không ghi.
 
 - Safe-list + chặn IP private (tùy chọn) để tránh tự khóa hệ thống.
 - Tối đa 500 IP mỗi lần đẩy; hộp thoại xác nhận trước khi chặn/bỏ chặn.
@@ -196,6 +232,14 @@ python -m uvicorn app.main:app --app-dir backend --port 8080
 Thêm firewall `127.0.0.1:4444` trong tab Firewall để chạy thử toàn bộ luồng.
 API docs: `http://localhost:8080/api/docs`.
 
+Bộ kiểm thử hồi quy (mock firewall kiểm tra chặt thứ tự thẻ XML IPHostGroup):
+
+```bash
+bash tests/run_e2e.sh                              # SSO, RBAC, chặn/bỏ chặn, lịch sử thay đổi, hash chain
+bash tests/run_e2e.sh tests/iphostgroup_test.py    # payload IPHostGroup + hardening SCANPORT GROUP
+cd backend && PYTHONPATH=. python3 ../tests/oidc_flow_test.py
+```
+
 ---
 
 ## 7. Cấu trúc thư mục
@@ -203,6 +247,7 @@ API docs: `http://localhost:8080/api/docs`.
 ```
 backend/app/config.py    cấu hình từ biến môi trường
 backend/app/crypto.py    mã hóa AES-256-GCM + token phiên HMAC (kèm vai trò)
+backend/app/policy.py    chính sách hardening: group cố định SCANPORT GROUP
 backend/app/auth.py      đăng nhập Microsoft Entra ID (OIDC + PKCE) và header SSO App Proxy
 backend/app/changelog.py lịch sử thay đổi group: hash chain, snapshot, phát hiện thay đổi ngoài app
 backend/app/db.py        model Firewall, AuditLog, GroupChange, GroupSnapshot (SQLAlchemy)

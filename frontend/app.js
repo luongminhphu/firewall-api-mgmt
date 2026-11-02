@@ -15,6 +15,7 @@
     source: "paste",
     groupMembers: [],
     role: "viewer",
+    blockGroup: "SCANPORT GROUP", // cố định phía server; giá trị lấy lại từ /api/config
     authModes: null,
   };
 
@@ -144,6 +145,8 @@
     state.config = await api("/api/config");
     state.user = state.config.user;
     state.role = state.config.role || "viewer";
+    state.blockGroup = state.config.block_group || state.blockGroup;
+    $$(".js-block-group").forEach((el) => (el.textContent = state.blockGroup));
     $("#login-screen").classList.add("hidden");
     $("#app").classList.remove("hidden");
     $("#who").innerHTML = `${esc(state.config.name || state.config.user)} <span class="role-chip">· ${esc(
@@ -214,7 +217,7 @@
           } />
           <span class="fw-opt__body">
             <span class="fw-opt__name">${esc(f.name)}${f.site ? ` · ${esc(f.site)}` : ""}</span>
-            <span class="fw-opt__meta">${esc(f.host)}:${f.port} → ${esc(f.default_group)}</span>
+            <span class="fw-opt__meta">${esc(f.host)}:${f.port} → ${esc(state.blockGroup)}</span>
           </span>
           ${statusChip(f)}
         </label>`
@@ -256,7 +259,7 @@
         <dl class="fw-card__grid">
           <div><dt>Địa chỉ</dt><dd>${esc(f.host)}:${f.port}</dd></div>
           <div><dt>Tài khoản</dt><dd>${esc(f.username)}</dd></div>
-          <div><dt>Group mặc định</dt><dd>${esc(f.default_group)}</dd></div>
+          <div><dt>IP Host Group</dt><dd>${esc(state.blockGroup)}</dd></div>
           <div><dt>Site</dt><dd>${esc(f.site || "—")}</dd></div>
           <div><dt>TLS verify</dt><dd>${f.verify_ssl ? "Bật" : "Tắt"}</dd></div>
           <div><dt>Kiểm tra lần cuối</dt><dd>${esc(fmtTime(f.last_checked) || "—")}</dd></div>
@@ -319,7 +322,6 @@
     $("#fw-user").value = fw?.username || "";
     $("#fw-pass").value = "";
     $("#fw-pass").placeholder = fw ? "Bỏ trống = giữ mật khẩu cũ" : "••••••";
-    $("#fw-group").value = fw?.default_group || "SOC_BLOCKED_IPS";
     $("#fw-note").value = fw?.note || "";
     $("#fw-verify").checked = !!fw?.verify_ssl;
     $("#fw-enabled").checked = fw ? fw.enabled : true;
@@ -340,7 +342,6 @@
       host: $("#fw-host").value,
       port: Number($("#fw-port").value),
       username: $("#fw-user").value,
-      default_group: $("#fw-group").value,
       note: $("#fw-note").value,
       verify_ssl: $("#fw-verify").checked,
       enabled: $("#fw-enabled").checked,
@@ -507,7 +508,7 @@
       !dry &&
       !confirm(
         `Chặn ${state.candidates.length} IP trên ${ids.length} firewall (${fwNames.join(", ")})?\n` +
-          `Group: ${$("#block-group").value.trim() || "mặc định của từng firewall"}`
+          `IP Host Group: ${state.blockGroup}`
       )
     )
       return;
@@ -522,7 +523,6 @@
         body: {
           firewall_ids: ids,
           values: state.candidates.map((c) => c.value),
-          group: $("#block-group").value.trim(),
           reason: $("#block-reason").value.trim(),
           source: state.source === "paste" ? "teams-paste" : state.source,
           dry_run: dry,
@@ -566,6 +566,7 @@
         const head = `<div class="result-fw__head">
             <span>${esc(fw.firewall)}</span>
             <span class="chip">${esc(fw.group)}</span>
+            ${fw.ip_family ? `<span class="chip">IPHostGroup · ${esc(fw.ip_family)}</span>` : ""}
             ${fw.ok ? '<span class="chip chip--ok">OK</span>' : '<span class="chip chip--err">Có lỗi</span>'}
             <span class="muted tiny">thêm ${s.added || 0} · đã có ${s.existed || 0} · lỗi ${s.error || 0}</span>
           </div>`;
@@ -582,7 +583,14 @@
             </div>`
           )
           .join("");
-        return `<div class="result-fw">${head}${rows}</div>`;
+        const xml = fw.group_xml
+          ? `<details class="xml-preview"${fw.summary?.dry_run ? " open" : ""}>
+              <summary>Payload IPHostGroup ${fw.summary?.dry_run ? "dự kiến" : "đã gửi"} ·
+                <span class="mono">Set operation="${esc(fw.group_operation)}"</span> · ${esc(fw.ip_family || "IPv4")}</summary>
+              <pre class="mono">${esc(fw.group_xml)}</pre>
+            </details>`
+          : "";
+        return `<div class="result-fw">${head}${rows}${xml}</div>`;
       })
       .join("");
   }
@@ -598,7 +606,6 @@
   }
 
   $("#g-fw").addEventListener("change", loadGroupsForSelectedFw);
-  $("#g-group").addEventListener("change", loadMembers);
   $("#g-reload").addEventListener("click", loadMembers);
   $("#g-search").addEventListener("input", () => renderMembers(filterMembers()));
 
@@ -608,15 +615,10 @@
     $("#g-meta").innerHTML = `<span class="skeleton" style="width:220px"></span>`;
     try {
       const r = await api(`/api/firewalls/${id}/groups`);
-      $("#g-group").innerHTML = r.groups
-        .map(
-          (g) =>
-            `<option value="${esc(g.name)}" ${g.name === r.default_group ? "selected" : ""}>${esc(g.name)} (${g.count})</option>`
-        )
-        .join("");
       if (!r.groups.length) {
-        $("#g-group").innerHTML = `<option value="">— chưa có group —</option>`;
-        $("#g-meta").innerHTML = `<span class="muted">Firewall này chưa có IP Host Group nào.</span>`;
+        $("#g-meta").innerHTML = `<span class="chip chip--err">Chưa có IP Host Group '${esc(
+          state.blockGroup
+        )}' trên firewall này — admin firewall cần tạo group (IPv4) và gắn vào rule chặn.</span>`;
         renderMembers([]);
         return;
       }
@@ -629,8 +631,8 @@
 
   async function loadMembers() {
     const id = $("#g-fw").value;
-    const group = $("#g-group").value;
-    if (!id || !group) return;
+    const group = state.blockGroup;
+    if (!id) return;
     $("#g-table").querySelector("tbody").innerHTML =
       `<tr><td colspan="5"><div class="skeleton"></div></td></tr>`;
     try {
@@ -696,7 +698,7 @@
   $("#do-unblock").addEventListener("click", async () => {
     const targets = selectedObjects();
     const fwId = Number($("#g-fw").value);
-    const group = $("#g-group").value;
+    const group = state.blockGroup;
     const fw = state.firewalls.find((f) => f.id === fwId);
     if (!confirm(`Bỏ chặn ${targets.length} object khỏi group ${group} trên ${fw.name}?`)) return;
     const btn = $("#do-unblock");
@@ -708,7 +710,6 @@
         body: {
           firewall_ids: [fwId],
           targets,
-          group,
           delete_object: $("#delete-object").checked,
           reason: "Bỏ chặn từ mini app",
         },
@@ -816,7 +817,6 @@
     const p = new URLSearchParams();
     const add = (k, v) => v && p.set(k, v);
     add("firewall_id", $("#c-fw").value);
-    add("group", $("#c-group").value);
     add("type", $("#c-type").value);
     add("q", $("#c-q").value.trim());
     add("actor", $("#c-actor").value.trim());
@@ -825,17 +825,12 @@
     return p;
   }
 
-  function fillChangeFilters(groups) {
+  function fillChangeFilters() {
     const fwSel = $("#c-fw");
     const keepFw = fwSel.value;
     fwSel.innerHTML = `<option value="">Tất cả</option>` +
       state.firewalls.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join("");
     fwSel.value = keepFw;
-    const gSel = $("#c-group");
-    const keepG = gSel.value;
-    gSel.innerHTML = `<option value="">Tất cả</option>` +
-      (groups || []).map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join("");
-    gSel.value = keepG;
   }
 
   function diffList(b) {
@@ -900,7 +895,7 @@
     $("#c-export").href = `${API}/api/changes.csv?token=${encodeURIComponent(state.token)}&${p}`;
     try {
       const r = await api(`/api/changes?${p}`);
-      fillChangeFilters(r.groups);
+      fillChangeFilters();
       renderChanges(r);
     } catch (ex) {
       box.innerHTML = `<p class="alert alert--error">${esc(ex.message)}</p>`;
@@ -908,7 +903,7 @@
   }
 
   let changeTimer;
-  ["#c-fw", "#c-group", "#c-type", "#c-from", "#c-to"].forEach((id) =>
+  ["#c-fw", "#c-type", "#c-from", "#c-to"].forEach((id) =>
     $(id).addEventListener("change", loadChanges)
   );
   ["#c-q", "#c-actor"].forEach((id) =>
@@ -931,7 +926,6 @@
     btn.textContent = "Đang đọc firewall…";
     try {
       const body = $("#c-fw").value ? { firewall_ids: [Number($("#c-fw").value)] } : {};
-      if ($("#c-group").value) body.group = $("#c-group").value;
       const r = await api("/api/changes/sync", { method: "POST", body });
       const drift = r.results.filter((x) => x.ok && (x.added?.length || x.removed?.length));
       const errs = r.results.filter((x) => !x.ok);

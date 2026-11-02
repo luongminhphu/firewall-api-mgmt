@@ -75,7 +75,7 @@ class Settings:
     HEADER_OPERATORS: str = os.getenv("HEADER_OPERATORS", "")
 
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "1.2.0"
+    APP_VERSION: str = "1.3.0"
 
     @property
     def auth_modes(self) -> list[str]:

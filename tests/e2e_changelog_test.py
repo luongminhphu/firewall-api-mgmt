@@ -22,7 +22,7 @@ r=c.get("/api/auth/oidc/login", follow_redirects=False); chk("oidc not configure
 # config
 r=c.get("/api/config", headers=H); chk("config role/name", r.json()["role"]=="admin" and r.json()["name"]=="Lương Minh Phú", r.json()["user"])
 # viewer cannot add firewall
-fwp={"name":"FW-HCM","host":"127.0.0.1","port":4460,"username":"apiadmin","password":"Sophos@123","default_group":"SOC_BLOCKED_IPS"}
+fwp={"name":"FW-HCM","host":"127.0.0.1","port":4460,"username":"apiadmin","password":"Sophos@123"}
 r=c.post("/api/firewalls", json=fwp, headers={"X-Auth-Token":vtok}); chk("viewer add fw -> 403", r.status_code==403)
 r=c.post("/api/firewalls", json=fwp, headers=H); chk("admin add fw", r.status_code==200, r.text[:100]); fid=r.json()["id"]
 r=c.post("/api/block", json={"values":["45.155.205.10"],"firewall_ids":[fid]}, headers={"X-Auth-Token":vtok}); chk("viewer block -> 403", r.status_code==403)
@@ -43,9 +43,9 @@ import sys; sys.path.insert(0,"/home/user/workspace/sophos-blocker/backend")
 from app.sophos import SophosClient
 fc=SophosClient(host="127.0.0.1",port=4460,username="apiadmin",password="Sophos@123",verify_ssl=False,timeout=10)
 fc.add_ip_host("MANUAL_BAD_1","IP","103.77.1.9","them tay tren WebAdmin")
-g=fc.get_group("SOC_BLOCKED_IPS")
+g=fc.get_group("SCANPORT GROUP")
 hosts=[h for h in g["hosts"] if h!="SOC_BLOCK_91_240_118_7"]+["MANUAL_BAD_1"]
-fc.set_group_hosts("SOC_BLOCKED_IPS",hosts,g["description"],g["ip_family"])
+fc.set_group_hosts("SCANPORT GROUP",hosts,g["description"],g["ip_family"])
 r=c.post("/api/changes/sync", json={"firewall_ids":[fid]}, headers=H).json()
 res=r["results"][0]; chk("sync detects drift", res["added"]==["MANUAL_BAD_1"] and res["removed"]==["SOC_BLOCK_91_240_118_7"], json.dumps(res))
 r=c.get("/api/changes?type=drift", headers=H).json()
@@ -62,7 +62,7 @@ chk("search by IP returns add+remove batches", len(b)==2 and {len(x["added"])>0 
 rm=[x for x in b if x["removed"]][0]
 chk("remove batch counts", rm["count_after"]==rm["count_before"]-2 and rm["reason"].startswith("False"), f'{rm["count_before"]}->{rm["count_after"]}')
 # member view triggers no false drift
-r=c.get(f"/api/firewalls/{fid}/group-members?group=SOC_BLOCKED_IPS", headers=H); chk("members view", r.status_code==200, r.json()["total"])
+r=c.get(f"/api/firewalls/{fid}/group-members?group=SCANPORT%20GROUP", headers=H); chk("members view", r.status_code==200, r.json()["total"])
 d=c.get("/api/changes?type=drift", headers=H).json()["totals"]["drift"]; chk("no false drift after app ops", d==1, d)
 # filters
 r=c.get("/api/changes?actor=phu.luong&from=2020-01-01&to=2099-12-31", headers=H).json(); chk("actor+date filter", r["totals"]["batches"]==2, r["totals"])
