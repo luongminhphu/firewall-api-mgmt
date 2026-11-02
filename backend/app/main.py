@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -680,5 +680,34 @@ _FRONTEND = os.getenv(
     "FRONTEND_DIR",
     os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "frontend"),
 )
+_NO_CACHE = "no-cache, must-revalidate"
+
+
+@app.middleware("http")
+async def _static_no_cache(request: Request, call_next):
+    """Bắt trình duyệt / reverse proxy luôn kiểm tra lại file tĩnh (ETag → 304),
+    tránh tình trạng index.html mới chạy với app.js cũ sau khi nâng cấp."""
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/") and "cache-control" not in response.headers:
+        response.headers["Cache-Control"] = _NO_CACHE
+    return response
+
+
+def _render_index() -> HTMLResponse:
+    with open(os.path.join(_FRONTEND, "index.html"), encoding="utf-8") as f:
+        html = f.read()
+    v = settings.APP_VERSION
+    html = html.replace('src="app.js"', f'src="app.js?v={v}"').replace(
+        'href="styles.css"', f'href="styles.css?v={v}"'
+    )
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+
 if os.path.isdir(_FRONTEND):
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/index.html", include_in_schema=False)
+    def _index():
+        return _render_index()
+
     app.mount("/", StaticFiles(directory=_FRONTEND, html=True), name="frontend")
