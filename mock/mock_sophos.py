@@ -140,6 +140,8 @@ def controller(reqxml: str = Form(default="")):
         if "IPHost" in st:
             h = st["IPHost"]
             name = h["Name"]
+            if "," in name or name[:1] in ("#", ",") or len(name) > 60:
+                return _resp(_status("IPHost", "500", "Invalid Name (no comma, not start with #, max 60)"))
             if op == "add" and name in STATE["hosts"]:
                 return _resp(_status("IPHost", "502",
                                      f'Host "{name}" already exists.'))

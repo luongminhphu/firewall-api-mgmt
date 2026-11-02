@@ -6,6 +6,7 @@ metadata:
 data:
   APP_PORT: "8080"
   SESSION_TTL_HOURS: "8"
+  # Từ v1.4.0 object mới đặt tên = IP/CIDR; HOST_PREFIX chỉ để nhận diện object kiểu cũ (SOC_BLOCK_*)
   HOST_PREFIX: "SOC_BLOCK_"
   API_TIMEOUT: "30"
   ALLOW_PRIVATE: "false"

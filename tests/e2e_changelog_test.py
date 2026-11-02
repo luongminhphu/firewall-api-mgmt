@@ -44,10 +44,10 @@ from app.sophos import SophosClient
 fc=SophosClient(host="127.0.0.1",port=4460,username="apiadmin",password="Sophos@123",verify_ssl=False,timeout=10)
 fc.add_ip_host("MANUAL_BAD_1","IP","103.77.1.9","them tay tren WebAdmin")
 g=fc.get_group("SCANPORT GROUP")
-hosts=[h for h in g["hosts"] if h!="SOC_BLOCK_91_240_118_7"]+["MANUAL_BAD_1"]
+hosts=[h for h in g["hosts"] if h!="91.240.118.7"]+["MANUAL_BAD_1"]
 fc.set_group_hosts("SCANPORT GROUP",hosts,g["description"],g["ip_family"])
 r=c.post("/api/changes/sync", json={"firewall_ids":[fid]}, headers=H).json()
-res=r["results"][0]; chk("sync detects drift", res["added"]==["MANUAL_BAD_1"] and res["removed"]==["SOC_BLOCK_91_240_118_7"], json.dumps(res))
+res=r["results"][0]; chk("sync detects drift", res["added"]==["MANUAL_BAD_1"] and res["removed"]==["91.240.118.7"], json.dumps(res))
 r=c.get("/api/changes?type=drift", headers=H).json()
 vals=sorted([a["value"] for b in r["batches"] for a in b["added"]]+["-"+x["value"] for b in r["batches"] for x in b["removed"]])
 chk("drift values resolved", "103.77.1.9" in vals and "-91.240.118.7" in vals and all(b["actor"]=="ngoai-app" for b in r["batches"]), vals)

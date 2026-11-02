@@ -9,7 +9,7 @@ from . import changelog
 from .config import settings
 from .crypto import decrypt
 from .db import AuditLog, Firewall
-from .ipparse import classify, host_object_name
+from .ipparse import classify, host_object_name, legacy_object_name
 from .policy import BLOCK_GROUP, BLOCK_GROUP_FAMILY, GroupPolicyError
 from .sophos import SophosAuthError, SophosClient, SophosError, build_iphostgroup_xml, pretty_xml
 
@@ -162,21 +162,45 @@ def block_on_firewall(
     group_desc = existing_group.get("description") or ""
     group_hosts = list(existing_group["hosts"])
 
+    # Giá trị IP/CIDR của các thành viên hiện có (để nhận ra IP đã bị chặn, kể cả object tên kiểu cũ)
+    _all_hosts: list[dict] | None = None
+
+    def all_hosts() -> list[dict]:
+        nonlocal _all_hosts
+        if _all_hosts is None:
+            _all_hosts = cli.get_hosts()
+        return _all_hosts
+
+    member_value: dict[str, str] = {}
+    if group_hosts:
+        try:
+            member_value = {h["name"]: _host_value(h) for h in all_hosts() if h["name"] in group_hosts}
+        except Exception:  # noqa: BLE001
+            member_value = {}
+    in_group = {host_object_name(v): n for n, v in member_value.items() if v}
+
     # Phát hiện thay đổi ngoài app trước khi sửa group
     try:
         changelog.detect_drift(
             db, fw, group, {h: "" for h in group_hosts},
-            resolve_values=lambda names: {h["name"]: _host_value(h) for h in cli.get_hosts(names)},
+            resolve_values=lambda names: {n: member_value.get(n, "") for n in names}
+            if member_value else {h["name"]: _host_value(h) for h in cli.get_hosts(names)},
         )
     except Exception:  # noqa: BLE001 — không để drift chặn thao tác khẩn cấp
         pass
-    ip_index: dict[str, str] | None = None  # ip -> object name, nạp khi cần
     to_link: list[str] = []
 
     for e in entries:
         value, kind = e["value"], e.get("kind") or "IP"
         obj = host_object_name(value)
         row = {"value": value, "object": obj, "result": "", "code": "", "message": ""}
+
+        already = in_group.get(obj)
+        if already:
+            row.update(object=already, result="existed",
+                       message=f"Đã nằm trong {group} (object '{already}')")
+            rows.append(row)
+            continue
 
         if dry_run:
             row.update(result="dry-run", message=f"Sẽ tạo object {obj} và thêm vào {group}")
@@ -187,12 +211,17 @@ def block_on_firewall(
             res = cli.add_ip_host(obj, kind, value, description=reason[:255])
             if res.ok:
                 row.update(result="added", code=res.code, message=res.message)
-            elif res.code == "502":  # đã tồn tại đúng tên
-                row.update(result="existed", code=res.code, message="Object đã tồn tại, dùng lại")
+            elif res.code == "502":  # đã có object đúng tên — chỉ dùng lại nếu trỏ đúng địa chỉ
+                cur = next((h for h in all_hosts() if h["name"] == obj), None)
+                cur_val = _host_value(cur) if cur else ""
+                if cur and host_object_name(cur_val) == obj:
+                    row.update(result="existed", code=res.code, message="Object đã tồn tại, dùng lại")
+                else:
+                    row.update(result="error", code=res.code,
+                               message=f"Đã có object tên '{obj}' nhưng trỏ tới '{cur_val or '?'}' — không dùng")
             elif res.code == "503":  # đã có object khác cùng IP
-                if ip_index is None:
-                    ip_index = {h["ip_address"]: h["name"] for h in cli.get_hosts() if h["ip_address"]}
-                found = ip_index.get(value)
+                ip_index = {host_object_name(_host_value(h)): h["name"] for h in all_hosts() if _host_value(h)}
+                found = ip_index.get(obj)
                 if found:
                     obj = found
                     row.update(
@@ -329,12 +358,14 @@ def unblock_on_firewall(
         if t in hosts:
             match = t
         else:
-            candidate = host_object_name(t)
-            if candidate in hosts:
-                match = candidate
-            else:
+            norm = host_object_name(t)
+            for candidate in (norm, legacy_object_name(t)):
+                if candidate in hosts:
+                    match = candidate
+                    break
+            if not match:
                 for name, ip in ip_of.items():
-                    if ip and (ip == t or ip.split("/")[0] == t):
+                    if ip and (host_object_name(ip) == norm or ip.split("/")[0] == t):
                         match = name
                         break
         if match:
@@ -365,7 +396,7 @@ def unblock_on_firewall(
                     if r["result"] != "removed":
                         continue
                     try:
-                        dres = cli.delete_ip_host(r["object"])
+                        dres = cli.delete_ip_host(r["object"], ip_of.get(r["object"]))
                         r["message"] += " · xóa object: " + (
                             "OK" if dres.ok else f"lỗi {dres.code} {dres.message}"
                         )

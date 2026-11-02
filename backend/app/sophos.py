@@ -306,10 +306,16 @@ class SophosClient:
         data = self._post(f'<Set operation="add"><IPHost>{body}</IPHost></Set>')
         return self._entity_status(data, "IPHost")
 
-    def delete_ip_host(self, name: str) -> OpResult:
-        # Chỉ được xóa IP Host do app tạo (đúng tiền tố), tránh xóa nhầm object hệ thống/của team khác
-        if not name.startswith(settings.HOST_PREFIX):
-            raise GroupPolicyError(f"Không được xóa IP Host '{name}' — chỉ xóa object có tiền tố {settings.HOST_PREFIX}")
+    def delete_ip_host(self, name: str, actual_value: str | None = None) -> OpResult:
+        # Chỉ được xóa IP Host do app tạo: tên = chính địa chỉ của object (vd 45.138.12.16)
+        # hoặc tên kiểu cũ có tiền tố HOST_PREFIX. Tránh xóa nhầm object hệ thống/của team khác.
+        from .ipparse import is_app_owned
+
+        if not is_app_owned(name, actual_value):
+            raise GroupPolicyError(
+                f"Không được xóa IP Host '{name}' — chỉ xóa object do app tạo "
+                f"(tên trùng địa chỉ IP/CIDR của object, hoặc tiền tố {settings.HOST_PREFIX})"
+            )
         data = self._post(f"<Remove><IPHost><Name>{_esc(name)}</Name></IPHost></Remove>")
         return self._entity_status(data, "IPHost")
 

@@ -4,6 +4,10 @@ Mini app HTML5 + FastAPI giúp team SOC/NOC dán thẳng đoạn chat Teams (ho�
 bóc IP tự động và đẩy vào **IP Host Group** trên **nhiều Sophos Firewall** cùng lúc qua XML API —
 thao tác được từ điện thoại trong ngày nghỉ lễ Tết.
 
+**Mới ở v1.4.0** — tên IP Host = chính địa chỉ IP/CIDR (`45.138.12.16`, `185.220.101.0/24`) thay cho `SOC_BLOCK_45_138_12_16`.
+Object kiểu cũ đã có trong group vẫn được nhận ra (không tạo trùng), bỏ chặn/xóa bình thường. Nếu trên firewall đã có object
+trùng tên IP nhưng trỏ tới địa chỉ khác, app báo lỗi và không dùng object đó.
+
 **Mới ở v1.3.0** — chỉ thao tác trên IP Host Group cố định **`SCANPORT GROUP`**; payload IPHostGroup đúng mẫu Sophos (Name → IPFamily → Description → HostList), xem trước XML khi chạy thử.
 
 **Mới ở v1.2.0**
@@ -31,7 +35,7 @@ https://<firewall>:4444/webconsole/APIController   (Sophos Firewall XML API)
 Trình duyệt **không** gọi thẳng firewall được (CORS + chứng chỉ self-signed), nên backend đóng vai proxy
 và cũng là nơi giữ credential + ghi audit.
 
-Cách chặn: với mỗi IP/CIDR, app tạo **IP Host** tên `SOC_BLOCK_<ip>` (`Set operation="add"`),
+Cách chặn: với mỗi IP/CIDR, app tạo **IP Host** có tên chính là địa chỉ đó — vd `45.138.12.16`, `185.220.101.0/24` (`Set operation="add"`),
 sau đó ghi lại toàn bộ `<HostList>` của group trong **một** lệnh (Sophos không hỗ trợ thêm/bớt từng phần tử của IPHostGroup —
 [tài liệu IPHostGroup](https://docs.sophos.com/nsg/sophos-firewall/22.0/api/SYSTEM/Host%20and%20Services/IPHostGroup/operations/AddIpHostGroup&EditIpHostGroup.html)).
 
@@ -89,7 +93,7 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 | `APP_PASSWORD` | Mật khẩu đăng nhập mini app |
 | `SESSION_SECRET` | Khóa ký session; bỏ trống = sinh mới mỗi lần restart |
 | `SESSION_TTL_HOURS` | Thời hạn phiên (mặc định 8h) |
-| `HOST_PREFIX` | Tiền tố tên IP Host (mặc định `SOC_BLOCK_`) |
+| `HOST_PREFIX` | Chỉ để nhận diện object kiểu cũ do app tạo trước v1.4.0 (mặc định `SOC_BLOCK_`). Object mới luôn đặt tên = IP/CIDR |
 | `SAFE_LIST` | Dải **không bao giờ** được chặn (dải nội bộ, VPN, đối tác) |
 | `ALLOW_PRIVATE` | Cho phép chặn IP private (mặc định `false`) |
 | `API_TIMEOUT` | Timeout gọi firewall, giây (mặc định 30) |
@@ -141,7 +145,7 @@ Truy cập `http://<node-ip>:30988`. Xem hướng dẫn đầy đủ (imagePullS
 4. Bấm **Chặn ngay** → xem kết quả từng IP trên từng firewall (đã thêm / đã có / lỗi + mã Sophos).
 
 **Tab IP Host Group** — xem và tìm kiếm thành viên `SCANPORT GROUP` trên từng firewall, tick để **bỏ chặn**
-(tùy chọn xóa luôn IP Host object — chỉ áp dụng cho object do app tạo, tiền tố `SOC_BLOCK_`).
+(tùy chọn xóa luôn IP Host object — chỉ áp dụng cho object do app tạo: tên trùng đúng địa chỉ của object, hoặc tên kiểu cũ `SOC_BLOCK_*`).
 
 **Payload IPHostGroup** — kết quả chặn (kể cả chạy thử) hiển thị đúng XML gửi lên firewall theo mẫu
 [Add/Edit IP Host Group của Sophos](https://docs.sophos.com/nsg/sophos-firewall/22.0/api/SYSTEM/Host%20and%20Services/IPHostGroup/operations/AddIpHostGroup&EditIpHostGroup.html):
@@ -153,14 +157,14 @@ Truy cập `http://<node-ip>:30988`. Xem hướng dẫn đầy đủ (imagePullS
     <IPFamily>IPv4</IPFamily>
     <Description>(giữ nguyên mô tả hiện có trên firewall)</Description>
     <HostList>
-      <Host>SOC_BLOCK_45_155_205_10</Host>
-      <Host>SOC_BLOCK_185_220_101_0-24</Host>
+      <Host>45.138.12.16</Host>
+      <Host>185.220.101.0/24</Host>
     </HostList>
   </IPHostGroup>
 </Set>
 ```
 
-`<Host>` là **tên IP Host** (tối đa 60 ký tự, không dấu phẩy) — app tạo IP Host `SOC_BLOCK_<ip>` trước, sau đó ghi lại
+`<Host>` là **tên IP Host** (tối đa 60 ký tự, không dấu phẩy) — app tạo IP Host tên = IP/CIDR (vd `45.138.12.16`) trước, sau đó ghi lại
 toàn bộ `HostList` (danh sách cũ + mới) vì Sophos không có lệnh thêm/bớt từng phần tử. `Description` và `IPFamily`
 hiện có của group được giữ nguyên.
 
@@ -197,7 +201,7 @@ hiện có của group được giữ nguyên.
   `/api/changes/sync`, tạo/sửa firewall) **từ chối HTTP 403** nếu group khác `SCANPORT GROUP` (so khớp chính xác,
   phân biệt hoa/thường) và ghi audit `policy_violation`.
 - Lớp client Sophos kiểm tra lần nữa (phòng thủ nhiều lớp): chỉ `Set operation="update"` cho `SCANPORT GROUP`,
-  không có hàm tạo group, chỉ xóa IP Host có tiền tố `SOC_BLOCK_`, chỉ liệt kê `SCANPORT GROUP`.
+  không có hàm tạo group, chỉ xóa IP Host do app tạo (tên = địa chỉ thực của object, hoặc tiền tố cũ `SOC_BLOCK_`), chỉ liệt kê `SCANPORT GROUP`.
 - Group không phải IPv4 trên firewall → từ chối, không ghi.
 
 - Safe-list + chặn IP private (tùy chọn) để tránh tự khóa hệ thống.
@@ -237,6 +241,7 @@ Bộ kiểm thử hồi quy (mock firewall kiểm tra chặt thứ tự thẻ XM
 ```bash
 bash tests/run_e2e.sh                              # SSO, RBAC, chặn/bỏ chặn, lịch sử thay đổi, hash chain
 bash tests/run_e2e.sh tests/iphostgroup_test.py    # payload IPHostGroup + hardening SCANPORT GROUP
+bash tests/run_e2e.sh tests/object_naming_test.py    # tên IP Host = IP/CIDR, tương thích object SOC_BLOCK_* cũ
 cd backend && PYTHONPATH=. python3 ../tests/oidc_flow_test.py
 ```
 

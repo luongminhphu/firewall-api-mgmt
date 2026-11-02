@@ -48,15 +48,15 @@ r = c.post("/api/block", json={"values": ["45.155.205.10", "185.220.101.0/24"], 
 gx = r.get("group_xml", "")
 chk("dry-run has group_xml + operation update", "<IPHostGroup>" in gx and r["group_operation"] == "update", r.get("group_operation"))
 chk("dry-run xml order", re.findall(r"<(\w+)>", gx)[:5] == ["IPHostGroup", "Name", "IPFamily", "Description", "HostList"])
-chk("dry-run xml lists new hosts", "<Host>SOC_BLOCK_45_155_205_10</Host>" in gx and "<Host>SOC_BLOCK_185_220_101_0-24</Host>" in gx)
-chk("dry-run did not touch firewall", "SOC_BLOCK_45_155_205_10" not in fc.get_group("SCANPORT GROUP")["hosts"])
+chk("dry-run xml lists new hosts", "<Host>45.155.205.10</Host>" in gx and "<Host>185.220.101.0/24</Host>" in gx)
+chk("dry-run did not touch firewall", "45.155.205.10" not in fc.get_group("SCANPORT GROUP")["hosts"])
 
 # 3) Chạy thật: mock từ chối nếu sai thứ tự thẻ → phải thành công
 r = c.post("/api/block", json={"values": ["45.155.205.10", "185.220.101.0/24"], "firewall_ids": [fid],
                                "reason": "test IPHostGroup"}, headers=H).json()["results"][0]
 chk("real block accepted by strict mock", r["ok"] and r["group_result"]["changed"], json.dumps(r["group_result"]))
 g = fc.get_group("SCANPORT GROUP")
-chk("hosts linked in IPHostGroup", {"SOC_BLOCK_45_155_205_10", "SOC_BLOCK_185_220_101_0-24"} <= set(g["hosts"]))
+chk("hosts linked in IPHostGroup", {"45.155.205.10", "185.220.101.0/24"} <= set(g["hosts"]))
 chk("Description preserved", g["description"] == desc_before, g["description"])
 chk("IPFamily preserved IPv4", g["ip_family"] == "IPv4")
 
@@ -105,7 +105,7 @@ chk("config exposes block_group", cfg.get("block_group") == "SCANPORT GROUP")
 r = c.post("/api/unblock", json={"targets": ["45.155.205.10"], "firewall_ids": [fid], "reason": "FP"},
            headers=H).json()["results"][0]
 g = fc.get_group("SCANPORT GROUP")
-chk("unblock removes from HostList", "SOC_BLOCK_45_155_205_10" not in g["hosts"] and r["summary"]["removed"] == 1)
+chk("unblock removes from HostList", "45.155.205.10" not in g["hosts"] and r["summary"]["removed"] == 1)
 chk("unblock keeps Description", g["description"] == desc_before)
 
 # 7) Groups endpoint chỉ trả về group cố định
