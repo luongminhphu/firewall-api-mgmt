@@ -1,0 +1,14 @@
+# Overlay môi trường thật của HSC.
+# Triển khai / nâng cấp:   kubectl apply -k deploy/k8s/overlays/prod/
+#
+# Cấu hình riêng của site (đăng nhập Microsoft, quản lý người dùng…) nằm trong local-config.yaml.
+# File này KHÔNG có trong Git (.gitignore) → `git pull` và `kubectl apply` không bao giờ ghi đè về mặc định nữa.
+# Lần đầu:  cp deploy/k8s/overlays/prod/local-config.example.yaml deploy/k8s/overlays/prod/local-config.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - path: local-config.yaml

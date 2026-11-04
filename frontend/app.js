@@ -107,18 +107,45 @@
     try {
       const m = await api("/api/auth/modes");
       state.authModes = m;
-      $("#local-box").classList.toggle("hidden", !m.local);
+      // Có SSO Microsoft → form mật khẩu thu gọn thành đường khẩn cấp
+      $("#local-box").classList.toggle("hidden", !m.local || m.oidc);
+      $("#local-toggle").classList.toggle("hidden", !(m.local && m.oidc));
       $("#sso-box").classList.toggle("hidden", !m.oidc);
-      $("#sso-divider").classList.toggle("hidden", !(m.oidc && m.local));
       if (m.oidc && !m.oidc_ready) {
         $("#sso-hint").textContent = "Đăng nhập Microsoft chưa cấu hình đủ: " + m.oidc_message;
         $("#sso-hint").classList.remove("hidden");
       }
-      $("#sso-btn").href = `${API}/api/auth/oidc/login`;
+      $("#sso-btn").href = ssoUrl();
       return m;
     } catch {
       return null;
     }
+  }
+
+  // UPN lần đăng nhập Microsoft trước → login_hint để Entra chọn đúng tài khoản, không hiện bảng chọn
+  function ssoUrl() {
+    let hint = "";
+    try { hint = localStorage.getItem("sb_last_upn") || ""; } catch {}
+    return `${API}/api/auth/oidc/login` + (hint ? `?hint=${encodeURIComponent(hint)}` : "");
+  }
+  const sess = (() => { try { return window.sessionStorage; } catch { return null; } })();
+
+  $("#local-toggle").addEventListener("click", () => {
+    $("#local-box").classList.remove("hidden");
+    $("#local-toggle").classList.add("hidden");
+    $("#login-user").focus();
+  });
+
+  function autoSso(modes) {
+    if (!modes?.oidc_auto) return false;
+    if (sess?.getItem("sb_no_auto") === "1") return false; // vừa bấm Thoát → không tự đăng nhập lại
+    const last = Number(sess?.getItem("sb_auto_ts") || 0);
+    if (Date.now() - last < 60_000) return false; // chống vòng lặp chuyển hướng
+    sess?.setItem("sb_auto_ts", String(Date.now()));
+    $("#sso-auto").classList.remove("hidden");
+    $("#sso-box").classList.add("hidden");
+    location.replace(ssoUrl());
+    return true;
   }
 
   async function tryHeaderSso() {
@@ -133,19 +160,31 @@
     }
   }
 
-  function logout() {
+  function logout(manual) {
     state.token = "";
     store?.removeItem("sb_token");
+    if (manual === true) {
+      sess?.setItem("sb_no_auto", "1");
+      if (state.authModes?.oidc) {
+        $("#sso-hint").textContent = "Đã thoát khỏi app. Bấm nút trên để vào lại bằng tài khoản Microsoft.";
+        $("#sso-hint").className = "alert alert--info";
+      }
+    }
     $("#app").classList.add("hidden");
     $("#login-screen").classList.remove("hidden");
   }
-  $("#logout").addEventListener("click", logout);
+  $("#logout").addEventListener("click", () => logout(true));
 
   async function boot() {
     state.config = await api("/api/config");
     state.user = state.config.user;
     state.role = state.config.role || "viewer";
     state.blockGroup = state.config.block_group || state.blockGroup;
+    if (state.config.auth_method === "entra-oidc" || state.config.auth_method === "entra-header") {
+      try { localStorage.setItem("sb_last_upn", state.config.user); } catch {}
+    }
+    sess?.removeItem("sb_no_auto");
+    sess?.removeItem("sb_auto_ts");
     $$(".js-block-group").forEach((el) => (el.textContent = state.blockGroup));
     $("#login-screen").classList.add("hidden");
     $("#app").classList.remove("hidden");
@@ -1180,6 +1219,8 @@
       }
     }
     // 3) Header SSO qua Entra Application Proxy
-    if (modes?.header) await tryHeaderSso();
+    if (modes?.header && (await tryHeaderSso())) return;
+    // 4) SSO Microsoft tự động: đã xác thực ở App Proxy → Entra trả về ngay, không hỏi mật khẩu/MFA lần 2
+    autoSso(modes);
   })();
 })();

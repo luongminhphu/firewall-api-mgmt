@@ -465,3 +465,15 @@ input:disabled { opacity: .65; cursor: not-allowed; background: var(--surface-2)
 }
 
 .only-mobile { display: none; }
+
+/* ---- SSO một lần (v1.5.1) */
+.sso-auto { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4) 0; color: var(--text-muted); }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent);
+  animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
+.link-btn { background: none; border: 0; padding: var(--space-2) 0; color: var(--text-muted); text-decoration: underline;
+  cursor: pointer; font: inherit; }
+.link-btn:hover { color: var(--text); }
+.alert--info { background: color-mix(in oklab, var(--accent) 12%, transparent); color: var(--text);
+  border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent); }

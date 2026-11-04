@@ -4,3 +4,6 @@ __pycache__/
 *.db
 .venv/
 dist/
+
+# Cấu hình riêng của site (không đưa lên Git)
+deploy/k8s/overlays/prod/local-config.yaml

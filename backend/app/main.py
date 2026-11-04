@@ -150,6 +150,7 @@ def auth_modes():
         "oidc_ready": ready,
         "oidc_message": msg,
         "header": "header" in modes,
+        "oidc_auto": settings.OIDC_AUTO_LOGIN and "oidc" in modes and ready,
     }
 
 
@@ -231,11 +232,11 @@ _FLOW_COOKIE = "srb_oidc"
 
 
 @app.get("/api/auth/oidc/login")
-def oidc_login():
+def oidc_login(hint: str = Query(default="")):
     if "oidc" not in settings.auth_modes:
         raise HTTPException(404, "Chưa bật đăng nhập Microsoft (AUTH_MODES)")
     try:
-        url, cookie = sso.build_authorize_url()
+        url, cookie = sso.build_authorize_url(hint)
     except sso.AuthError as exc:
         raise HTTPException(500, str(exc)) from exc
     resp = RedirectResponse(url, status_code=302)

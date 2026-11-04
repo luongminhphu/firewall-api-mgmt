@@ -9,6 +9,7 @@ Mô hình bảo vệ hai lớp khi truy cập từ Internet:
 from __future__ import annotations
 
 import base64
+import re
 import hashlib
 import hmac
 import ipaddress
@@ -80,8 +81,15 @@ def unpack_flow(cookie: str) -> dict:
 
 
 # ------------------------------------------------------------------- OIDC
-def build_authorize_url() -> tuple[str, str]:
-    """Trả về (URL chuyển hướng tới Entra ID, cookie trạng thái)."""
+_HINT_RE = re.compile(r"^[A-Za-z0-9._%+'-]{1,64}@[A-Za-z0-9.-]{1,190}$")
+
+
+def build_authorize_url(login_hint: str = "") -> tuple[str, str]:
+    """Trả về (URL chuyển hướng tới Entra ID, cookie trạng thái).
+
+    Mặc định KHÔNG gửi `prompt` → Entra dùng lại phiên vừa xác thực ở Application Proxy (SSO, không MFA lần 2).
+    `login_hint` (UPN lần đăng nhập trước) giúp Entra chọn đúng tài khoản khi trình duyệt có nhiều tài khoản.
+    """
     ok, msg = oidc_ready()
     if not ok:
         raise AuthError(msg)
@@ -99,8 +107,15 @@ def build_authorize_url() -> tuple[str, str]:
         "nonce": nonce,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
-        "prompt": "select_account",
     }
+    hint = (login_hint or "").strip()
+    if hint and _HINT_RE.match(hint):
+        params["login_hint"] = hint
+    prompt = settings.OIDC_PROMPT
+    if prompt in ("login", "none", "consent") or (prompt == "select_account" and "login_hint" not in params):
+        params["prompt"] = prompt  # Entra không cho dùng login_hint cùng select_account
+    if settings.OIDC_DOMAIN_HINT:
+        params["domain_hint"] = settings.OIDC_DOMAIN_HINT
     url = f"{_authority()}/oauth2/authorize?" + urllib.parse.urlencode(params)
     cookie = pack_flow({"s": state, "n": nonce, "v": verifier, "exp": int(time.time()) + 600})
     return url, cookie

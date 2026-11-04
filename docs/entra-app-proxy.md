@@ -109,33 +109,64 @@ App registrations → chọn đúng app `SOC Rapid Block` vừa tạo ở bướ
    (ví dụ `GRP-SOC-Oncall` = Operator, `GRP-Infra-Admin` = Admin). Người không có role sẽ bị từ chối đăng nhập.
 5. Ghi lại **Directory (tenant) ID** và **Application (client) ID** ở trang Overview.
 
-### 5.2 Cấu hình trên KubeSphere
+### 5.2 Cấu hình trên cluster (overlay `prod`, từ v1.5.1)
+
+Cấu hình riêng của site nằm trong `deploy/k8s/overlays/prod/local-config.yaml` — file này **không có trong Git**, nên
+`git pull` + `kubectl apply` không còn ghi đè `AUTH_MODES` về `local` như khi apply thẳng `base/`.
 
 ```bash
+cd ~/firewall-api-mgmt
 NS=sophos-blocker
-# Thêm client secret vào Secret hiện có (giữ nguyên các khóa khác)
+# 1) Client secret vào Secret hiện có (giữ nguyên các khóa khác)
 kubectl -n $NS patch secret soc-rapid-block-secrets --type merge \
   -p '{"stringData":{"OIDC_CLIENT_SECRET":"<client-secret-value>"}}'
 
-# Bật OIDC (giữ local trong giai đoạn chuyển đổi, sau đó đổi thành "oidc")
-kubectl -n $NS patch configmap soc-rapid-block-config --type merge -p '{"data":{
-  "AUTH_MODES":"oidc,local",
-  "OIDC_TENANT_ID":"<tenant-id>",
-  "OIDC_CLIENT_ID":"<client-id>",
-  "OIDC_REDIRECT_URI":"https://<External URL>/api/auth/oidc/callback"
-}}'
+# 2) Cấu hình site (làm 1 lần), điền tenant ID, client ID, External URL
+cp deploy/k8s/overlays/prod/local-config.example.yaml deploy/k8s/overlays/prod/local-config.yaml
+vi deploy/k8s/overlays/prod/local-config.yaml
+
+# 3) Triển khai / nâng cấp từ nay luôn dùng overlay
+kubectl apply -k deploy/k8s/overlays/prod/
 kubectl -n $NS rollout restart deploy/soc-rapid-block-app
 ```
 
-> Lưu ý: `kubectl apply -k deploy/k8s/base/` sẽ ghi đè ConfigMap về giá trị trong Git (OIDC rỗng, `AUTH_MODES=local`).
-> Khi nâng cấp sau này, hoặc chạy lại lệnh `patch` ở trên, hoặc sửa trực tiếp `deploy/k8s/base/configmap.yaml` trong repo
-> (tenant ID/client ID không phải bí mật; client secret luôn để trong Secret).
+### 5.3 SSO đúng một lần, đúng tài khoản
+
+Luồng khi đã cấu hình đúng:
+
+```
+Mở External URL ─▶ App Proxy pre-auth (đăng nhập + MFA — lần DUY NHẤT)
+                ─▶ app chưa có phiên ─▶ tự chuyển /api/auth/oidc/login (không prompt, có login_hint/domain_hint)
+                ─▶ Entra thấy phiên vừa đăng nhập ─▶ trả code ngay, không hỏi gì ─▶ app xác minh id_token
+                ─▶ ghép UPN với tab Người dùng ─▶ vào thẳng màn hình chính, đúng quyền Write/Readonly
+```
+
+Điều kiện để không bị hỏi lần hai:
+
+1. **Dùng chính app registration mà App Proxy đã tạo** (cùng Client ID với enterprise app đang publish) cho OIDC.
+   Conditional Access/MFA áp lên một app duy nhất; phiên Entra từ bước pre-auth được dùng lại.
+2. `OIDC_PROMPT` để trống (mặc định). `select_account` buộc hiện bảng chọn tài khoản, `login` buộc nhập lại mật khẩu
+   ([Microsoft Learn — tham số prompt](https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc)).
+3. App gửi `login_hint` = UPN lần đăng nhập trước và `domain_hint` → Entra chọn đúng tài khoản khi trình duyệt có nhiều
+   tài khoản Microsoft.
+
+Đảm bảo **đúng tài khoản được phân quyền**:
+
+- Enterprise app → **Properties → Assignment required = Yes**, chỉ gán nhóm SOC/Infra → người ngoài danh sách bị chặn ngay
+  ở App Proxy.
+- Tab **Người dùng**: thêm từng người với loại **Microsoft (Entra ID)**, tên đăng nhập = UPN (vd `phu.luong@hsc.com.vn`),
+  chọn Write/Readonly. Đặt `USERS_STRICT=true` để chỉ người có trong danh sách mới vào app (App Role không còn đủ).
+- `OIDC_REQUIRE_MFA_CLAIM=true` → app từ chối token không có MFA.
+- Nút **Thoát** chỉ thoát app; app không tự đăng nhập lại cho tới khi bấm nút Microsoft (tránh vòng lặp trên máy dùng chung).
+  Muốn thoát hẳn Microsoft: đóng trình duyệt hoặc đăng xuất tại myaccount.microsoft.com.
+- Đăng nhập mật khẩu chỉ còn là liên kết nhỏ "Đăng nhập bằng mật khẩu (khẩn cấp)"; khi ổn định đặt `AUTH_MODES=oidc`
+  hoặc `SHARED_PASSWORD_LOGIN=false`.
 
 Pod app cần đi ra `https://login.microsoftonline.com` (lấy JWKS và đổi code lấy token). Nếu cluster bắt buộc
 egress qua proxy, đặt thêm biến `HTTPS_PROXY`/`NO_PROXY` cho Deployment.
 
-Kiểm tra: mở External URL → Microsoft đăng nhập + MFA → màn hình app hiện nút **"Đăng nhập bằng tài khoản công ty (MFA)"**
-→ bấm → vào app, góc phải hiện tên + vai trò. Khi đã chạy ổn định, đổi `AUTH_MODES` thành `oidc` để **tắt hẳn mật khẩu chung**.
+Kiểm tra: mở External URL bằng cửa sổ ẩn danh → Microsoft đăng nhập + MFA **một lần** → app hiện "Đang đăng nhập bằng
+tài khoản Microsoft…" trong tích tắc → vào thẳng màn hình chính, góc phải hiện UPN + quyền. Khi đã chạy ổn định, đổi `AUTH_MODES` thành `oidc` để **tắt hẳn mật khẩu chung**.
 
 > Nếu tenant dùng MFA qua Conditional Access, claim `amr` thường đã có `mfa`; có thể bật
 > `OIDC_REQUIRE_MFA_CLAIM=true` để app từ chối token không có MFA (phòng trường hợp CA bị tắt nhầm).

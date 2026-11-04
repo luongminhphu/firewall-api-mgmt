@@ -1,0 +1,22 @@
+# Sao chép thành local-config.yaml rồi điền giá trị thật. Chỉ ghi các khóa cần đổi so với base/configmap.yaml.
+# Tenant ID / Client ID không phải bí mật. Client secret để trong Secret soc-rapid-block-secrets (khóa OIDC_CLIENT_SECRET).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: soc-rapid-block-config
+  namespace: sophos-blocker
+data:
+  # SSO một lần qua Entra Application Proxy: proxy xác thực + MFA, app tự nhận phiên Microsoft (không hỏi lại)
+  AUTH_MODES: "oidc,local"            # sau khi chạy ổn định đổi thành "oidc" để tắt hẳn đăng nhập mật khẩu
+  OIDC_TENANT_ID: "<directory-tenant-id>"
+  OIDC_CLIENT_ID: "<application-client-id>"
+  OIDC_REDIRECT_URI: "https://<external-url-app-proxy>/api/auth/oidc/callback"
+  OIDC_AUTO_LOGIN: "true"             # mở app là tự đăng nhập Microsoft
+  OIDC_PROMPT: ""                     # để trống = dùng lại phiên App Proxy; KHÔNG đặt select_account
+  OIDC_DOMAIN_HINT: "hsc.com.vn"
+  OIDC_REQUIRE_MFA_CLAIM: "true"      # từ chối token không có MFA
+
+  # Chỉ người có trong tab Người dùng mới vào được (đúng account được phân quyền)
+  USERS_STRICT: "true"
+  # Tắt mật khẩu chung APP_PASSWORD sau khi đã có tài khoản quản trị riêng
+  SHARED_PASSWORD_LOGIN: "true"

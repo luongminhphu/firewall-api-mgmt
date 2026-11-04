@@ -64,6 +64,13 @@ class Settings:
     ROLE_VIEWER: str = os.getenv("ROLE_VIEWER", "SRB.Viewer")
     # Bắt buộc token có claim amr chứa "mfa" (Conditional Access vẫn là lớp chính).
     OIDC_REQUIRE_MFA_CLAIM: bool = _bool(os.getenv("OIDC_REQUIRE_MFA_CLAIM"), False)
+    # SSO một lần (v1.5.1):
+    #  OIDC_AUTO_LOGIN=true → mở app là tự chuyển sang Microsoft; đã đăng nhập ở App Proxy thì Entra trả về ngay, không hỏi lại.
+    #  OIDC_PROMPT="" (mặc định) → dùng phiên Microsoft hiện có. "select_account" = luôn hiện chọn tài khoản, "login" = luôn nhập lại.
+    #  OIDC_DOMAIN_HINT=hsc.com.vn → bỏ bước dò tenant theo email.
+    OIDC_AUTO_LOGIN: bool = _bool(os.getenv("OIDC_AUTO_LOGIN"), True)
+    OIDC_PROMPT: str = os.getenv("OIDC_PROMPT", "").strip().lower()
+    OIDC_DOMAIN_HINT: str = os.getenv("OIDC_DOMAIN_HINT", "").strip()
 
     # --- Header-based SSO qua Entra Application Proxy ---
     HEADER_USER: str = os.getenv("HEADER_USER", "X-SRB-UPN")
@@ -84,7 +91,7 @@ class Settings:
     HEADER_OPERATORS: str = os.getenv("HEADER_OPERATORS", "")
 
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "1.5.0"
+    APP_VERSION: str = "1.5.1"
 
     @property
     def auth_modes(self) -> list[str]:

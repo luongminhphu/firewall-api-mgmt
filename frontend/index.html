@@ -32,6 +32,10 @@
             <p class="muted">Chặn IP dò quét trên nhiều Sophos Firewall trong vài giây</p>
           </div>
         </div>
+        <div id="sso-auto" class="sso-auto hidden" role="status">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Đang đăng nhập bằng tài khoản Microsoft…</span>
+        </div>
         <div id="sso-box" class="sso-box hidden">
           <a class="btn btn--ms btn--block" id="sso-btn" href="/api/auth/oidc/login">
             <svg viewBox="0 0 21 21" width="18" height="18" aria-hidden="true">
@@ -40,10 +44,10 @@
             </svg>
             Đăng nhập bằng tài khoản công ty (MFA)
           </a>
-          <p class="muted tiny">Xác thực qua Microsoft Entra ID. Quyền thao tác theo App Role được IT gán.</p>
+          <p class="muted tiny" id="sso-note">Xác thực qua Microsoft Entra ID. Quyền theo danh sách người dùng của app hoặc App Role do IT gán.</p>
           <p id="sso-hint" class="alert alert--warn hidden"></p>
         </div>
-        <div id="sso-divider" class="divider hidden"><span>hoặc mật khẩu ứng dụng</span></div>
+        <button type="button" id="local-toggle" class="link-btn tiny hidden">Đăng nhập bằng mật khẩu (khẩn cấp)</button>
         <div id="local-box">
         <label class="field">
           <span>Tên đăng nhập</span>
