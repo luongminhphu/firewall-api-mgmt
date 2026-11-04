@@ -71,11 +71,20 @@ class Settings:
     # CHỈ tin header khi request đến từ các dải này (IP máy cài Private Network Connector).
     TRUSTED_PROXY_CIDRS: str = os.getenv("TRUSTED_PROXY_CIDRS", "")
     HEADER_DEFAULT_ROLE: str = os.getenv("HEADER_DEFAULT_ROLE", "viewer")
+
+    # Quản lý người dùng (v1.5.0)
+    # USERS_STRICT=true → đăng nhập Microsoft chỉ chấp nhận tài khoản có trong danh sách người dùng của app.
+    USERS_STRICT: bool = os.getenv("USERS_STRICT", "false").lower() in ("1", "true", "yes")
+    # SHARED_PASSWORD_LOGIN=false → tắt đăng nhập bằng mật khẩu chung APP_PASSWORD (chỉ còn tài khoản riêng / Microsoft).
+    SHARED_PASSWORD_LOGIN: bool = os.getenv("SHARED_PASSWORD_LOGIN", "true").lower() in ("1", "true", "yes")
+    PASSWORD_MIN_LENGTH: int = int(os.getenv("PASSWORD_MIN_LENGTH", "10"))
+    LOGIN_MAX_FAILS: int = int(os.getenv("LOGIN_MAX_FAILS", "5"))
+    LOGIN_LOCK_MINUTES: int = int(os.getenv("LOGIN_LOCK_MINUTES", "10"))
     HEADER_ADMINS: str = os.getenv("HEADER_ADMINS", "")      # UPN, phân tách dấu phẩy
     HEADER_OPERATORS: str = os.getenv("HEADER_OPERATORS", "")
 
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "1.4.0"
+    APP_VERSION: str = "1.5.0"
 
     @property
     def auth_modes(self) -> list[str]:

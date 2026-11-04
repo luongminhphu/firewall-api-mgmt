@@ -68,12 +68,13 @@ def _sign(body: str) -> str:
     return hmac.new(settings.SESSION_SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
 
 
-def issue_token(user: str = "soc", role: str = "admin", method: str = "local", name: str = "") -> str:
+def issue_token(user: str = "soc", role: str = "admin", method: str = "local", name: str = "",
+                src: str = "") -> str:
     import json
 
     role = role if role in ROLES else "viewer"
     payload = {
-        "u": user, "r": role, "m": method, "n": name or user,
+        "u": user, "r": role, "m": method, "n": name or user, "s": src,
         "exp": int(time.time()) + settings.SESSION_TTL_HOURS * 3600,
     }
     body = _b64(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode())

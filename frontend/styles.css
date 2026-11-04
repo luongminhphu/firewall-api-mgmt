@@ -428,3 +428,40 @@ input::placeholder, textarea::placeholder { color: color-mix(in oklab, var(--tex
 }
 .locked-group .lock-ic { color: var(--accent); flex: none; }
 h2 .js-block-group { text-transform: none; letter-spacing: 0; color: var(--accent); }
+
+/* ---- Người dùng (v1.5) */
+.seg.is-disabled { opacity: .55; pointer-events: none; }
+#u-auth .seg-btn, #u-perm .seg-btn { flex: 1; }
+.btn--danger-ghost { color: var(--danger); }
+.btn--danger-ghost:hover { border-color: color-mix(in oklab, var(--danger) 50%, transparent); }
+.dialog {
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text);
+  padding: var(--space-5); width: min(420px, calc(100vw - 32px));
+}
+.dialog::backdrop { background: rgb(0 0 0 / .55); }
+.dialog h2 { margin: 0 0 var(--space-4); font-size: var(--text-base); }
+.dialog-actions { justify-content: flex-end; margin-top: var(--space-3); }
+#u-table td:last-child { text-align: right; width: 1%; white-space: nowrap; }
+#u-table td:last-child .btn + .btn { margin-left: var(--space-1); }
+.grid--users { grid-template-columns: minmax(0, 1fr) minmax(0, 380px); }
+input:disabled { opacity: .65; cursor: not-allowed; background: var(--surface-2); }
+#who { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 1440px) and (min-width: 721px) {
+  .tab { padding: var(--space-2) var(--space-3); }
+  .topbar .brand-name { display: none; }
+  #who { max-width: 270px; }
+}
+@media (max-width: 720px) {
+  #u-table th:nth-child(2), #u-table td:nth-child(2),
+  #u-table th:nth-child(4), #u-table td:nth-child(4),
+  #u-table th:nth-child(5), #u-table td:nth-child(5) { display: none; }
+  .only-mobile { display: inline-flex !important; margin-top: var(--space-1); }
+  #u-table td:last-child .btn { display: block; width: 100%; }
+  #u-table td:last-child .btn + .btn { margin: var(--space-1) 0 0; }
+}
+.dialog, .dialog input, .dialog button { font-family: inherit; }
+@media (max-width: 1080px) {
+  .grid--users { grid-template-columns: minmax(0, 1fr); }
+}
+
+.only-mobile { display: none; }

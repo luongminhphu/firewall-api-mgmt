@@ -190,6 +190,50 @@ class GroupSnapshot(Base):
     taken_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
 
 
+class AppUser(Base):
+    """Người dùng của app. Quyền: write (chặn/bỏ chặn) | readonly (chỉ xem); is_admin = quản trị user & firewall."""
+
+    __tablename__ = "app_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(120), unique=True, index=True)  # luôn lowercase
+    display_name: Mapped[str] = mapped_column(String(120), default="")
+    auth_type: Mapped[str] = mapped_column(String(16), default="local")  # local | microsoft
+    password_hash: Mapped[str] = mapped_column(Text, default="")
+    permission: Mapped[str] = mapped_column(String(16), default="readonly")  # write | readonly
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(120), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def role(self) -> str:
+        if self.is_admin:
+            return "admin"
+        return "operator" if self.permission == "write" else "viewer"
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "username": self.username,
+            "display_name": self.display_name,
+            "auth_type": self.auth_type,
+            "has_password": bool(self.password_hash),
+            "permission": "write" if self.is_admin else self.permission,
+            "is_admin": self.is_admin,
+            "role": self.role,
+            "enabled": self.enabled,
+            "note": self.note,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "last_login": self.last_login.isoformat() if self.last_login else None,
+        }
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)
 

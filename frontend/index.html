@@ -46,16 +46,16 @@
         <div id="sso-divider" class="divider hidden"><span>hoặc mật khẩu ứng dụng</span></div>
         <div id="local-box">
         <label class="field">
-          <span>Tên người trực</span>
-          <input id="login-user" placeholder="vd: phu.luong" value="soc" />
+          <span>Tên đăng nhập</span>
+          <input id="login-user" placeholder="vd: phu.luong" autocomplete="username" />
         </label>
         <label class="field">
-          <span>Mật khẩu ứng dụng</span>
-          <input id="login-pass" type="password" placeholder="APP_PASSWORD" required />
+          <span>Mật khẩu</span>
+          <input id="login-pass" type="password" placeholder="Mật khẩu cá nhân" autocomplete="current-password" required />
         </label>
         <button class="btn btn--primary btn--block" type="submit">Đăng nhập</button>
         <p class="muted tiny">
-          Mật khẩu lấy từ biến môi trường <code>APP_PASSWORD</code> trên máy chủ.
+          Dùng tài khoản do quản trị viên cấp. Mật khẩu chung <code>APP_PASSWORD</code> chỉ dùng khi khẩn cấp.
         </p>
         </div>
         <p id="login-error" class="alert alert--error hidden"></p>
@@ -72,7 +72,7 @@
             <path d="M10.5 16.5h4L17 11l2.5 10 2-5.5h3" stroke="currentColor"
               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
-          <span>SOC Rapid Block</span>
+          <span class="brand-name">SOC Rapid Block</span>
         </div>
         <nav class="tabs" id="tabs">
           <button class="tab is-active" data-tab="block">Chặn nhanh</button>
@@ -80,9 +80,11 @@
           <button class="tab" data-tab="firewalls">Firewall</button>
           <button class="tab" data-tab="changes">Lịch sử thay đổi</button>
           <button class="tab" data-tab="audit">Audit log</button>
+          <button class="tab hidden" data-tab="users" id="tab-users">Người dùng</button>
         </nav>
         <div class="topbar-right">
           <span class="chip" id="who"></span>
+          <button class="btn btn--ghost btn--sm hidden" id="my-pass-btn" type="button">Đổi mật khẩu</button>
           <button class="btn btn--ghost btn--icon" id="theme-toggle" title="Đổi giao diện sáng/tối">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
               <circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" />
@@ -332,7 +334,9 @@ Ví dụ:
                   <option value="unblock">Bỏ chặn</option>
                   <option value="test">Kiểm tra kết nối</option>
                   <option value="firewall_cud">Thay đổi firewall</option>
-                  <option value="login">Đăng nhập SSO</option>
+                  <option value="login">Đăng nhập</option>
+                  <option value="user_mgmt">Quản lý người dùng</option>
+                  <option value="policy_violation">Vi phạm chính sách</option>
                 </select>
                 <input id="a-search" placeholder="Tìm IP, firewall, lý do…" />
                 <button class="btn" id="a-reload" type="button">Tải lại</button>
@@ -352,7 +356,104 @@ Ví dụ:
             </div>
           </div>
         </section>
+
+        <!-- --------------------------------------------------- TAB: USERS -->
+        <section class="panel" data-panel="users">
+          <div class="grid grid--fw grid--users">
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <h2>Người dùng</h2>
+                  <p class="muted tiny" id="u-policy"></p>
+                </div>
+                <div class="row row--tight">
+                  <input id="u-search" placeholder="Tìm tên, quyền…" />
+                  <button class="btn" id="u-new" type="button">Thêm người dùng</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="table" id="u-table">
+                  <thead>
+                    <tr>
+                      <th>Tên đăng nhập</th><th>Loại</th><th>Quyền</th><th>Trạng thái</th>
+                      <th>Đăng nhập gần nhất</th><th></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <details class="hint">
+                <summary>Quyền Write và Readonly khác nhau thế nào?</summary>
+                <ul class="tiny">
+                  <li><strong>Readonly</strong>: xem IP Host Group, lịch sử thay đổi, audit log. Không chặn/bỏ chặn được.</li>
+                  <li><strong>Write</strong>: thêm quyền chặn, bỏ chặn IP, kiểm tra kết nối, đồng bộ lịch sử.</li>
+                  <li><strong>Quản trị viên</strong>: Write + quản lý firewall và người dùng.</li>
+                  <li>Khóa, xóa hoặc đổi quyền có hiệu lực ngay ở thao tác kế tiếp của người đó, không cần chờ hết phiên.</li>
+                </ul>
+              </details>
+            </div>
+            <div class="card">
+              <div class="card-head">
+                <h2 id="u-form-title">Thêm người dùng</h2>
+                <button class="btn btn--ghost btn--sm hidden" id="u-form-reset" type="button">Hủy sửa</button>
+              </div>
+              <form id="u-form" autocomplete="off">
+                <input type="hidden" id="u-id" />
+                <label class="field"><span>Tên đăng nhập *</span>
+                  <input id="u-username" placeholder="phu.luong hoặc phu.luong@hsc.com.vn" required /></label>
+                <label class="field"><span>Họ tên</span>
+                  <input id="u-display" placeholder="Lương Minh Phú" /></label>
+                <div class="field"><span>Loại đăng nhập</span>
+                  <div class="seg" id="u-auth">
+                    <button type="button" class="seg-btn is-active" data-v="local">Mật khẩu riêng</button>
+                    <button type="button" class="seg-btn" data-v="microsoft">Microsoft (Entra ID)</button>
+                  </div>
+                  <p class="muted tiny" id="u-auth-hint"></p>
+                </div>
+                <div class="field"><span>Quyền</span>
+                  <div class="seg" id="u-perm">
+                    <button type="button" class="seg-btn" data-v="write">Write</button>
+                    <button type="button" class="seg-btn is-active" data-v="readonly">Readonly</button>
+                  </div>
+                </div>
+                <div class="row row--2">
+                  <label class="check"><input type="checkbox" id="u-admin" />
+                    <span>Quản trị viên (firewall + người dùng)</span></label>
+                  <label class="check"><input type="checkbox" id="u-enabled" checked />
+                    <span>Đang hoạt động</span></label>
+                </div>
+                <div class="row row--2" id="u-pass-row">
+                  <label class="field"><span id="u-pass-label">Mật khẩu *</span>
+                    <input id="u-pass" type="password" autocomplete="new-password" /></label>
+                  <label class="field"><span>Nhập lại mật khẩu</span>
+                    <input id="u-pass2" type="password" autocomplete="new-password" /></label>
+                </div>
+                <label class="field"><span>Ghi chú</span>
+                  <input id="u-note" placeholder="SOC ca đêm, trực Tết 2027…" /></label>
+                <button class="btn btn--primary btn--block" type="submit">Lưu người dùng</button>
+                <p id="u-form-msg" class="alert hidden"></p>
+              </form>
+            </div>
+          </div>
+        </section>
       </main>
+
+      <dialog id="pass-dialog" class="dialog">
+        <form id="pass-form" method="dialog" autocomplete="off">
+          <h2>Đổi mật khẩu</h2>
+          <label class="field"><span>Mật khẩu hiện tại</span>
+            <input id="pd-cur" type="password" autocomplete="current-password" required /></label>
+          <label class="field"><span>Mật khẩu mới</span>
+            <input id="pd-new" type="password" autocomplete="new-password" required /></label>
+          <label class="field"><span>Nhập lại mật khẩu mới</span>
+            <input id="pd-new2" type="password" autocomplete="new-password" required /></label>
+          <p id="pd-msg" class="alert hidden"></p>
+          <div class="row row--tight dialog-actions">
+            <button class="btn btn--ghost" type="button" id="pd-cancel">Hủy</button>
+            <button class="btn btn--primary" type="submit" id="pd-save">Lưu mật khẩu</button>
+          </div>
+        </form>
+      </dialog>
 
       <div id="toast" class="toast hidden"></div>
     </div>

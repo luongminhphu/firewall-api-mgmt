@@ -167,12 +167,8 @@ def exchange_code(code: str, flow: dict) -> dict:
     claims = validate_id_token(body["id_token"], flow["n"])
     if settings.OIDC_REQUIRE_MFA_CLAIM and "mfa" not in (claims.get("amr") or []):
         raise AuthError("Phiên đăng nhập chưa qua MFA")
+    # role có thể None: khi đó app xét danh sách người dùng nội bộ (main.resolve_sso) trước khi từ chối
     role = role_from_claims(claims)
-    if not role:
-        raise AuthError(
-            "Tài khoản chưa được gán App Role cho SOC Rapid Block "
-            f"({settings.ROLE_ADMIN} / {settings.ROLE_OPERATOR} / {settings.ROLE_VIEWER})"
-        )
     upn = claims.get("preferred_username") or claims.get("upn") or claims.get("email") or claims["sub"]
     return {"user": upn.lower(), "name": claims.get("name") or upn, "role": role, "method": "entra-oidc"}
 

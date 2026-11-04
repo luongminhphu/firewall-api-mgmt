@@ -41,3 +41,11 @@ data:
   HEADER_DEFAULT_ROLE: "viewer"
   HEADER_ADMINS: ""
   HEADER_OPERATORS: ""
+  # ---- Quản lý người dùng (v1.5) -------------------------------------------
+  # true = vẫn cho đăng nhập mật khẩu chung APP_PASSWORD (đường khẩn cấp). Đặt "false" sau khi đã tạo tài khoản quản trị.
+  SHARED_PASSWORD_LOGIN: "true"
+  # true = đăng nhập Microsoft chỉ chấp nhận người có trong tab Người dùng
+  USERS_STRICT: "false"
+  PASSWORD_MIN_LENGTH: "10"
+  LOGIN_MAX_FAILS: "5"
+  LOGIN_LOCK_MINUTES: "10"

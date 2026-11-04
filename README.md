@@ -4,6 +4,9 @@ Mini app HTML5 + FastAPI giúp team SOC/NOC dán thẳng đoạn chat Teams (ho�
 bóc IP tự động và đẩy vào **IP Host Group** trên **nhiều Sophos Firewall** cùng lúc qua XML API —
 thao tác được từ điện thoại trong ngày nghỉ lễ Tết.
 
+**Mới ở v1.5.0** — tab **Người dùng** (chỉ Quản trị viên): thêm / sửa / xóa người dùng, quyền **Write** hoặc **Readonly**,
+cờ Quản trị viên, khóa tài khoản, đặt lại mật khẩu; người dùng tự đổi mật khẩu. Khóa / hạ quyền / xóa có hiệu lực ngay.
+
 **Mới ở v1.4.0** — tên IP Host = chính địa chỉ IP/CIDR (`45.138.12.16`, `185.220.101.0/24`) thay cho `SOC_BLOCK_45_138_12_16`.
 Object kiểu cũ đã có trong group vẫn được nhận ra (không tạo trùng), bỏ chặn/xóa bình thường. Nếu trên firewall đã có object
 trùng tên IP nhưng trỏ tới địa chỉ khác, app báo lỗi và không dùng object đó.
@@ -106,6 +109,10 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 | `TRUSTED_PROXY_CIDRS` | IP connector được tin header SSO (chỉ dùng với `header`) |
 | `HEADER_USER` / `HEADER_NAME` | Tên header danh tính (mặc định `X-SRB-UPN` / `X-SRB-NAME`) |
 | `HEADER_ADMINS` / `HEADER_OPERATORS` / `HEADER_DEFAULT_ROLE` | Phân quyền theo UPN khi dùng header SSO |
+| `SHARED_PASSWORD_LOGIN` | `true` (mặc định) = vẫn cho đăng nhập bằng mật khẩu chung `APP_PASSWORD` làm đường khẩn cấp; `false` = chỉ tài khoản riêng / Microsoft |
+| `USERS_STRICT` | `true` = đăng nhập Microsoft chỉ chấp nhận người có trong tab Người dùng (bỏ qua App Role) |
+| `PASSWORD_MIN_LENGTH` | Độ dài tối thiểu mật khẩu người dùng (mặc định 10, bắt buộc có chữ và số) |
+| `LOGIN_MAX_FAILS` / `LOGIN_LOCK_MINUTES` | Sai mật khẩu N lần thì khóa tạm M phút (mặc định 5 lần / 10 phút) |
 
 ### Khuyến nghị vận hành
 
@@ -190,6 +197,24 @@ hiện có của group được giữ nguyên.
 | Vận hành (`SRB.Operator`) | ✓ | ✓ | — |
 | Quản trị (`SRB.Admin`) | ✓ | ✓ | ✓ |
 
+**Tab Người dùng** (chỉ Quản trị viên) — quản lý tài khoản của app:
+
+| Quyền | Xem group / lịch sử / audit | Chặn, bỏ chặn, kiểm tra, đồng bộ | Quản lý firewall + người dùng |
+|---|---|---|---|
+| Readonly | ✓ | — | — |
+| Write | ✓ | ✓ | — |
+| Write + Quản trị viên | ✓ | ✓ | ✓ |
+
+- **Loại đăng nhập**: *Mật khẩu riêng* (tên + mật khẩu, băm PBKDF2-SHA256 310.000 vòng) hoặc *Microsoft (Entra ID)*
+  (tên đăng nhập = UPN, đăng nhập qua MFA, app không giữ mật khẩu).
+- Người dùng Microsoft có trong danh sách → dùng quyền đặt trong app; không có → dùng App Role Entra (hoặc bị từ chối nếu
+  `USERS_STRICT=true`).
+- Quyền được kiểm tra lại ở **mỗi request**: khóa, hạ quyền hay xóa người dùng có hiệu lực ngay, không chờ hết phiên.
+- Chống tự khóa: không tự bỏ quyền quản trị / tự khóa / tự xóa chính mình; luôn phải còn ít nhất một Quản trị viên đang hoạt động.
+- Mật khẩu chung `APP_PASSWORD` không dùng được để mạo danh tài khoản đã có trong danh sách. Sau khi đã tạo đủ tài khoản
+  quản trị, nên đặt `SHARED_PASSWORD_LOGIN=false`.
+- Mọi thao tác ghi audit `user_mgmt` (ai tạo/sửa/xóa ai, đổi gì), đăng nhập thành công/thất bại ghi audit `login`.
+
 **Tab Audit log** — toàn bộ thao tác (ai, lúc nào, IP nào, firewall nào, kết quả, lý do), lọc + **Xuất CSV**.
 
 ### Cơ chế an toàn
@@ -241,6 +266,7 @@ Bộ kiểm thử hồi quy (mock firewall kiểm tra chặt thứ tự thẻ XM
 ```bash
 bash tests/run_e2e.sh                              # SSO, RBAC, chặn/bỏ chặn, lịch sử thay đổi, hash chain
 bash tests/run_e2e.sh tests/iphostgroup_test.py    # payload IPHostGroup + hardening SCANPORT GROUP
+bash tests/run_e2e.sh tests/users_test.py          # quản lý người dùng, quyền Write/Readonly, khóa/xóa tức thì
 bash tests/run_e2e.sh tests/object_naming_test.py    # tên IP Host = IP/CIDR, tương thích object SOC_BLOCK_* cũ
 cd backend && PYTHONPATH=. python3 ../tests/oidc_flow_test.py
 ```
@@ -253,6 +279,7 @@ cd backend && PYTHONPATH=. python3 ../tests/oidc_flow_test.py
 backend/app/config.py    cấu hình từ biến môi trường
 backend/app/crypto.py    mã hóa AES-256-GCM + token phiên HMAC (kèm vai trò)
 backend/app/policy.py    chính sách hardening: group cố định SCANPORT GROUP
+backend/app/users.py     quản lý người dùng: băm mật khẩu, quyền Write/Readonly, chống dò mật khẩu
 backend/app/auth.py      đăng nhập Microsoft Entra ID (OIDC + PKCE) và header SSO App Proxy
 backend/app/changelog.py lịch sử thay đổi group: hash chain, snapshot, phát hiện thay đổi ngoài app
 backend/app/db.py        model Firewall, AuditLog, GroupChange, GroupSnapshot (SQLAlchemy)
