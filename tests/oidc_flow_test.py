@@ -18,7 +18,7 @@ sso._jwks_client=FakeJWKS()
 def mk(nonce, **over):
     now=int(time.time())
     c={"iss":"https://login.microsoftonline.com/tid-hsc/v2.0","aud":"cid-srb","sub":"abc","tid":"tid-hsc","iat":now,"exp":now+600,
-       "nonce":nonce,"preferred_username":"Phu.Luong@hsc.com.vn","name":"Lương Minh Phú","roles":["SRB.Operator"],"amr":["pwd","mfa"]}
+       "nonce":nonce,"oid":"oid-phu","preferred_username":"Phu.Luong@hsc.com.vn","name":"Lương Minh Phú","roles":["SRB.Operator"],"amr":["pwd","mfa"]}
     c.update(over); return jwt.encode(c,key,algorithm="RS256")
 nxt={}
 class R:

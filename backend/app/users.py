@@ -82,6 +82,12 @@ def find(db: Session, username: str) -> AppUser | None:
     return db.scalar(select(AppUser).where(AppUser.username == username.strip().lower()))
 
 
+def find_by_oid(db: Session, oid: str) -> AppUser | None:
+    if not oid:
+        return None
+    return db.scalar(select(AppUser).where(AppUser.entra_oid == oid))
+
+
 def count_admins(db: Session, exclude_id: int | None = None) -> int:
     stmt = select(func.count()).select_from(AppUser).where(AppUser.is_admin.is_(True), AppUser.enabled.is_(True))
     if exclude_id is not None:
@@ -101,6 +107,8 @@ def apply_fields(u: AppUser, payload: dict, creating: bool) -> None:
         at = (payload.get("auth_type") or "local").strip().lower()
         if at not in AUTH_TYPES:
             raise UserError("Loại đăng nhập phải là local hoặc microsoft")
+        if at != u.auth_type:
+            u.entra_oid = None  # đổi loại đăng nhập → gỡ liên kết tài khoản Microsoft cũ
         u.auth_type = at
     if "permission" in payload or creating:
         perm = (payload.get("permission") or "readonly").strip().lower()

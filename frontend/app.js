@@ -895,7 +895,7 @@
         <td><div class="mono">${esc(u.username)}${self ? ' <span class="muted">(bạn)</span>' : ""}</div>
             <div class="muted">${esc(u.display_name || "")}</div>
             ${u.enabled ? "" : '<span class="chip chip--err only-mobile">Đã khóa</span>'}</td>
-        <td class="nowrap">${u.auth_type === "microsoft" ? "Microsoft" : "Mật khẩu"}</td>
+        <td class="nowrap">${u.auth_type === "microsoft" ? "Microsoft" + (u.entra_linked ? '<div class="muted small">đã liên kết Entra</div>' : '<div class="muted small">chờ đăng nhập lần đầu</div>') : "Mật khẩu"}</td>
         <td>${permChip(u)}</td>
         <td>${u.enabled ? '<span class="chip chip--ok">Hoạt động</span>' : '<span class="chip chip--err">Đã khóa</span>'}</td>
         <td class="nowrap">${esc(fmtTime(u.last_login) || "—")}</td>

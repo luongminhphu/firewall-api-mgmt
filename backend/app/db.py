@@ -208,6 +208,8 @@ class AppUser(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Object ID bất biến của tài khoản Entra, gắn ở lần đăng nhập Microsoft đầu tiên (UPN có thể đổi/tái sử dụng)
+    entra_oid: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     @property
     def role(self) -> str:
@@ -231,11 +233,24 @@ class AppUser(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
+            "entra_linked": bool(self.entra_oid),
         }
 
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    _migrate()
+
+
+def _migrate() -> None:
+    """Bổ sung cột mới cho DB đã có (create_all không ALTER bảng cũ)."""
+    from sqlalchemy import inspect, text
+
+    cols = {c["name"] for c in inspect(engine).get_columns("app_users")}
+    if "entra_oid" not in cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE app_users ADD COLUMN entra_oid VARCHAR(64)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_app_users_entra_oid ON app_users (entra_oid)"))
 
 
 def get_session():

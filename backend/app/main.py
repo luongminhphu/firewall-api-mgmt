@@ -212,12 +212,26 @@ def login(request: Request, payload: dict = Body(...), db: Session = Depends(get
 def resolve_sso(db: Session, p: dict) -> dict:
     """Ghép danh tính Microsoft với danh sách người dùng của app.
     Có trong danh sách → dùng quyền của app; không có → dùng App Role/header (trừ khi USERS_STRICT)."""
-    u = um.find(db, p["user"])
+    oid = p.get("oid") or ""
+    u = um.find_by_oid(db, oid) if oid else None
+    if u is None:
+        u = um.find(db, p["user"])
+        if u is not None:
+            if u.auth_type != "microsoft":
+                # Tài khoản mật khẩu trùng tên không được dùng cho đăng nhập Microsoft
+                raise sso.AuthError("Tên này là tài khoản mật khẩu trong app, không phải tài khoản Microsoft")
+            if u.entra_oid and u.entra_oid != oid:
+                raise sso.AuthError("UPN này đã gắn với một tài khoản Entra khác (UPN bị tái sử dụng) — "
+                                    "quản trị viên cần kiểm tra và tạo lại người dùng")
+            if oid and not u.entra_oid:
+                u.entra_oid = oid  # gắn oid ở lần đăng nhập đầu tiên
+    elif u.auth_type != "microsoft":
+        raise sso.AuthError("Liên kết Microsoft không hợp lệ cho tài khoản này")
     if u:
         if not u.enabled:
             raise sso.AuthError("Tài khoản đã bị khóa trong SOC Rapid Block — liên hệ quản trị viên")
         um.touch_login(db, u)
-        return {**p, "role": u.role, "name": u.display_name or p["name"], "src": "db"}
+        return {**p, "user": u.username, "role": u.role, "name": u.display_name or p["name"], "src": "db"}
     if settings.USERS_STRICT:
         raise sso.AuthError("Tài khoản chưa có trong danh sách người dùng của SOC Rapid Block")
     if not p.get("role"):

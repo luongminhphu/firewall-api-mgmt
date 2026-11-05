@@ -31,6 +31,7 @@ data:
   # = <External URL của App Proxy>/api/auth/oidc/callback
   OIDC_REDIRECT_URI: ""
   OIDC_REQUIRE_MFA_CLAIM: "false"
+  OIDC_ALLOW_GUESTS: "false"
   # SSO một lần (v1.5.1): tự chuyển sang Microsoft, dùng lại phiên App Proxy (không chọn tài khoản / MFA lần 2)
   OIDC_AUTO_LOGIN: "true"
   OIDC_PROMPT: ""

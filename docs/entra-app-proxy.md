@@ -156,7 +156,11 @@ Mở External URL ─▶ App Proxy pre-auth (đăng nhập + MFA — lần DUY N
   ở App Proxy.
 - Tab **Người dùng**: thêm từng người với loại **Microsoft (Entra ID)**, tên đăng nhập = UPN (vd `phu.luong@hsc.com.vn`),
   chọn Write/Readonly. Đặt `USERS_STRICT=true` để chỉ người có trong danh sách mới vào app (App Role không còn đủ).
-- `OIDC_REQUIRE_MFA_CLAIM=true` → app từ chối token không có MFA.
+- MFA được bảo đảm bởi **Conditional Access gắn với chính enterprise app này** (Entra không phát token khi chưa đạt MFA).
+  id_token v2.0 thường không có claim `amr`; `OIDC_REQUIRE_MFA_CLAIM=true` chỉ từ chối khi token CÓ `amr` mà thiếu `mfa`.
+- Từ v1.5.2 app định danh theo **Object ID (`oid`)** bất biến: lần đăng nhập Microsoft đầu tiên, `oid` được gắn vào người dùng
+  (cột Loại hiện "đã liên kết Entra"). Nếu UPN sau này bị cấp lại cho người khác, app từ chối. Tài khoản khách (guest) bị từ chối
+  (`OIDC_ALLOW_GUESTS=false`). Tài khoản loại "Mật khẩu" trùng tên không dùng được cho đăng nhập Microsoft.
 - Nút **Thoát** chỉ thoát app; app không tự đăng nhập lại cho tới khi bấm nút Microsoft (tránh vòng lặp trên máy dùng chung).
   Muốn thoát hẳn Microsoft: đóng trình duyệt hoặc đăng xuất tại myaccount.microsoft.com.
 - Đăng nhập mật khẩu chỉ còn là liên kết nhỏ "Đăng nhập bằng mật khẩu (khẩn cấp)"; khi ổn định đặt `AUTH_MODES=oidc`
@@ -168,8 +172,8 @@ egress qua proxy, đặt thêm biến `HTTPS_PROXY`/`NO_PROXY` cho Deployment.
 Kiểm tra: mở External URL bằng cửa sổ ẩn danh → Microsoft đăng nhập + MFA **một lần** → app hiện "Đang đăng nhập bằng
 tài khoản Microsoft…" trong tích tắc → vào thẳng màn hình chính, góc phải hiện UPN + quyền. Khi đã chạy ổn định, đổi `AUTH_MODES` thành `oidc` để **tắt hẳn mật khẩu chung**.
 
-> Nếu tenant dùng MFA qua Conditional Access, claim `amr` thường đã có `mfa`; có thể bật
-> `OIDC_REQUIRE_MFA_CLAIM=true` để app từ chối token không có MFA (phòng trường hợp CA bị tắt nhầm).
+> id_token v2.0 của Entra thường không chứa `amr`, nên app không thể tự kiểm MFA từ token. Hãy đảm bảo policy
+> Conditional Access "Require MFA" áp lên enterprise app này (không chỉ App Proxy chung).
 
 ## 6. Phương án thay thế: Header-based SSO
 

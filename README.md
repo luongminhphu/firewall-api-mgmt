@@ -4,6 +4,10 @@ Mini app HTML5 + FastAPI giúp team SOC/NOC dán thẳng đoạn chat Teams (ho�
 bóc IP tự động và đẩy vào **IP Host Group** trên **nhiều Sophos Firewall** cùng lúc qua XML API —
 thao tác được từ điện thoại trong ngày nghỉ lễ Tết.
 
+**Mới ở v1.5.2** — Sửa lỗi đăng nhập Microsoft: endpoint Entra ID đúng chuẩn v2.0 (`/oauth2/v2.0/authorize`, `/oauth2/v2.0/token`,
+`/discovery/v2.0/keys`; bản cũ gọi sai đường dẫn → 404). Định danh theo `oid` bất biến, chặn tài khoản khách, không dùng claim `email`,
+id_token không có `amr` không còn bị từ chối nhầm. Test mới `tests/entra_review_test.py` đối chiếu endpoint với discovery thật của Microsoft.
+
 **Mới ở v1.5.1** — SSO một lần qua Entra Application Proxy: app tự nhận phiên Microsoft vừa xác thực (không hiện màn hình
 đăng nhập, không chọn tài khoản, không MFA lần 2). Cấu hình site chuyển sang `deploy/k8s/overlays/prod/local-config.yaml`
 (không bị `git pull`/`kubectl apply` ghi đè). Từ nay triển khai bằng `kubectl apply -k deploy/k8s/overlays/prod/`.
@@ -108,7 +112,8 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 | `LOCAL_ROLE` | Vai trò cấp cho đăng nhập mật khẩu chung (mặc định `admin`) |
 | `OIDC_TENANT_ID` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | Thông tin App registration trên Entra ID |
 | `OIDC_REDIRECT_URI` | `<External URL>/api/auth/oidc/callback` |
-| `OIDC_REQUIRE_MFA_CLAIM` | `true` = từ chối token không có claim `amr=mfa` |
+| `OIDC_REQUIRE_MFA_CLAIM` | `true` = từ chối token có claim `amr` nhưng thiếu `mfa` (id_token v2.0 thường không có `amr`; MFA do Conditional Access bảo đảm) |
+| `OIDC_ALLOW_GUESTS` | `false` (mặc định) = từ chối tài khoản khách B2B |
 | `OIDC_AUTO_LOGIN` / `OIDC_PROMPT` / `OIDC_DOMAIN_HINT` | SSO một lần: tự chuyển sang Microsoft (mặc định `true`), `prompt` để trống = dùng lại phiên App Proxy, gợi ý domain (vd `hsc.com.vn`) |
 | `ROLE_ADMIN` / `ROLE_OPERATOR` / `ROLE_VIEWER` | Giá trị App Role (mặc định `SRB.Admin` / `SRB.Operator` / `SRB.Viewer`) |
 | `TRUSTED_PROXY_CIDRS` | IP connector được tin header SSO (chỉ dùng với `header`) |
@@ -271,7 +276,7 @@ Bộ kiểm thử hồi quy (mock firewall kiểm tra chặt thứ tự thẻ XM
 ```bash
 bash tests/run_e2e.sh                              # SSO, RBAC, chặn/bỏ chặn, lịch sử thay đổi, hash chain
 bash tests/run_e2e.sh tests/iphostgroup_test.py    # payload IPHostGroup + hardening SCANPORT GROUP
-cd backend && PYTHONPATH=. python3 ../tests/sso_once_test.py && cd ..   # SSO một lần
+cd backend && PYTHONPATH=. python3 ../tests/sso_once_test.py && PYTHONPATH=. python3 ../tests/entra_review_test.py && cd ..   # SSO / Entra
 bash tests/run_e2e.sh tests/users_test.py          # quản lý người dùng, quyền Write/Readonly, khóa/xóa tức thì
 bash tests/run_e2e.sh tests/object_naming_test.py    # tên IP Host = IP/CIDR, tương thích object SOC_BLOCK_* cũ
 cd backend && PYTHONPATH=. python3 ../tests/oidc_flow_test.py

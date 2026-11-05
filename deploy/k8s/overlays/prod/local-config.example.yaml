@@ -14,7 +14,8 @@ data:
   OIDC_AUTO_LOGIN: "true"             # mở app là tự đăng nhập Microsoft
   OIDC_PROMPT: ""                     # để trống = dùng lại phiên App Proxy; KHÔNG đặt select_account
   OIDC_DOMAIN_HINT: "hsc.com.vn"
-  OIDC_REQUIRE_MFA_CLAIM: "true"      # từ chối token không có MFA
+  OIDC_REQUIRE_MFA_CLAIM: "true"      # từ chối token có amr nhưng thiếu mfa (MFA chính do Conditional Access)
+  OIDC_ALLOW_GUESTS: "false"          # chặn tài khoản khách B2B
 
   # Chỉ người có trong tab Người dùng mới vào được (đúng account được phân quyền)
   USERS_STRICT: "true"

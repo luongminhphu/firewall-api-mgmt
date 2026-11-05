@@ -42,8 +42,26 @@ def role_at_least(role: str, needed: str) -> bool:
     return ROLE_RANK.get(role, -1) >= ROLE_RANK[needed]
 
 
-def _authority() -> str:
-    return f"{settings.OIDC_AUTHORITY.rstrip('/')}/{settings.OIDC_TENANT_ID}/v2.0"
+def _tenant_base() -> str:
+    return f"{settings.OIDC_AUTHORITY.rstrip('/')}/{settings.OIDC_TENANT_ID}"
+
+
+def _issuer() -> str:
+    """Issuer của token v2.0: https://login.microsoftonline.com/{tenant}/v2.0"""
+    return f"{_tenant_base()}/v2.0"
+
+
+# Endpoint đúng theo OpenID discovery của Entra ID v2.0 (/{tenant}/v2.0/.well-known/openid-configuration)
+def authorize_endpoint() -> str:
+    return f"{_tenant_base()}/oauth2/v2.0/authorize"
+
+
+def token_endpoint() -> str:
+    return f"{_tenant_base()}/oauth2/v2.0/token"
+
+
+def jwks_uri() -> str:
+    return f"{_tenant_base()}/discovery/v2.0/keys"
 
 
 def oidc_ready() -> tuple[bool, str]:
@@ -116,7 +134,7 @@ def build_authorize_url(login_hint: str = "") -> tuple[str, str]:
         params["prompt"] = prompt  # Entra không cho dùng login_hint cùng select_account
     if settings.OIDC_DOMAIN_HINT:
         params["domain_hint"] = settings.OIDC_DOMAIN_HINT
-    url = f"{_authority()}/oauth2/authorize?" + urllib.parse.urlencode(params)
+    url = authorize_endpoint() + "?" + urllib.parse.urlencode(params)
     cookie = pack_flow({"s": state, "n": nonce, "v": verifier, "exp": int(time.time()) + 600})
     return url, cookie
 
@@ -124,7 +142,7 @@ def build_authorize_url(login_hint: str = "") -> tuple[str, str]:
 def _jwks() -> PyJWKClient:
     global _jwks_client
     if _jwks_client is None:
-        _jwks_client = PyJWKClient(f"{_authority()}/discovery/v2.0/keys", cache_keys=True, lifespan=3600)
+        _jwks_client = PyJWKClient(jwks_uri(), cache_keys=True, lifespan=3600)
     return _jwks_client
 
 
@@ -136,7 +154,7 @@ def validate_id_token(id_token: str, nonce: str) -> dict:
             key=key,
             algorithms=["RS256"],
             audience=settings.OIDC_CLIENT_ID,
-            issuer=_authority(),
+            issuer=_issuer(),
             options={"require": ["exp", "iat", "aud", "iss", "sub"]},
             leeway=120,
         )
@@ -146,6 +164,12 @@ def validate_id_token(id_token: str, nonce: str) -> dict:
         raise AuthError("Sai nonce — có dấu hiệu phát lại token")
     if claims.get("tid") != settings.OIDC_TENANT_ID:
         raise AuthError("Tài khoản không thuộc tenant của công ty")
+    # Tài khoản khách (B2B guest / Microsoft account cá nhân): claim idp khác issuer → từ chối
+    idp = claims.get("idp")
+    if idp and idp != claims.get("iss") and not settings.OIDC_ALLOW_GUESTS:
+        raise AuthError("Tài khoản khách (guest) không được phép đăng nhập")
+    if not claims.get("oid"):
+        raise AuthError("id_token thiếu claim oid — kiểm tra scope 'profile'")
     return claims
 
 
@@ -172,7 +196,7 @@ def exchange_code(code: str, flow: dict) -> dict:
         "scope": "openid profile email",
     }
     try:
-        resp = httpx.post(f"{_authority()}/oauth2/token", data=data, timeout=15)
+        resp = httpx.post(token_endpoint(), data=data, timeout=15)
     except httpx.HTTPError as exc:
         raise AuthError(f"Không gọi được Entra ID token endpoint: {exc}") from exc
     body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
@@ -180,12 +204,19 @@ def exchange_code(code: str, flow: dict) -> dict:
         raise AuthError(f"Entra ID từ chối: {body.get('error_description') or resp.text[:300]}")
 
     claims = validate_id_token(body["id_token"], flow["n"])
-    if settings.OIDC_REQUIRE_MFA_CLAIM and "mfa" not in (claims.get("amr") or []):
+    # id_token v2.0 thường KHÔNG có claim amr; MFA được bảo đảm bởi Conditional Access gắn với chính app này
+    # (Entra không phát token nếu chưa đạt MFA). Nếu token có amr mà không có "mfa" → từ chối.
+    amr = claims.get("amr")
+    if settings.OIDC_REQUIRE_MFA_CLAIM and amr is not None and "mfa" not in amr:
         raise AuthError("Phiên đăng nhập chưa qua MFA")
     # role có thể None: khi đó app xét danh sách người dùng nội bộ (main.resolve_sso) trước khi từ chối
     role = role_from_claims(claims)
-    upn = claims.get("preferred_username") or claims.get("upn") or claims.get("email") or claims["sub"]
-    return {"user": upn.lower(), "name": claims.get("name") or upn, "role": role, "method": "entra-oidc"}
+    # Không dùng email (Microsoft: không dùng cho phân quyền). UPN để hiển thị/ghép lần đầu; oid để định danh.
+    upn = (claims.get("preferred_username") or claims.get("upn") or "").strip()
+    if not upn:
+        raise AuthError("id_token thiếu preferred_username — kiểm tra scope 'profile'")
+    return {"user": upn.lower(), "name": claims.get("name") or upn, "role": role, "method": "entra-oidc",
+            "oid": claims["oid"]}
 
 
 # ----------------------------------------------------------------- header

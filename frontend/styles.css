@@ -477,3 +477,4 @@ input:disabled { opacity: .65; cursor: not-allowed; background: var(--surface-2)
 .link-btn:hover { color: var(--text); }
 .alert--info { background: color-mix(in oklab, var(--accent) 12%, transparent); color: var(--text);
   border: 1px solid color-mix(in oklab, var(--accent) 35%, transparent); }
+.small { font-size: 12px; }
