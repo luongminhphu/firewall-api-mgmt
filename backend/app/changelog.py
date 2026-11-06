@@ -93,7 +93,9 @@ def record(
             ch.row_hash = hashlib.sha256(ch.hash_payload().encode()).hexdigest()
             prev = ch.row_hash
             db.add(ch)
-        db.flush()
+        # Commit ngay trong khóa: từ v1.6 có luồng quét cache chạy nền song song với thao tác
+        # người dùng; nếu nhả khóa trước khi commit, hai phiên có thể đọc cùng prev_hash → đứt chuỗi.
+        db.commit()
     return batch_id
 
 

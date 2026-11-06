@@ -64,6 +64,11 @@ class Settings:
     ROLE_VIEWER: str = os.getenv("ROLE_VIEWER", "SRB.Viewer")
     # Bắt buộc token có claim amr chứa "mfa" (Conditional Access vẫn là lớp chính).
     OIDC_REQUIRE_MFA_CLAIM: bool = _bool(os.getenv("OIDC_REQUIRE_MFA_CLAIM"), False)
+    # Cache IP Host Group (v1.6): quá TTL thì vẫn trả cache ngay và quét lại nền (stale-while-revalidate)
+    GROUP_CACHE_TTL_MINUTES: int = int(os.getenv("GROUP_CACHE_TTL_MINUTES", "30"))
+    GROUP_CACHE_MIN_REFRESH_SECONDS: int = int(os.getenv("GROUP_CACHE_MIN_REFRESH_SECONDS", "5"))
+    GROUP_CACHE_WARMUP: bool = _bool(os.getenv("GROUP_CACHE_WARMUP"), True)
+    LOGO_MAX_KB: int = int(os.getenv("LOGO_MAX_KB", "300"))
     OIDC_ALLOW_GUESTS: bool = _bool(os.getenv("OIDC_ALLOW_GUESTS"), False)
     # SSO một lần (v1.5.1):
     #  OIDC_AUTO_LOGIN=true → mở app là tự chuyển sang Microsoft; đã đăng nhập ở App Proxy thì Entra trả về ngay, không hỏi lại.
@@ -92,7 +97,7 @@ class Settings:
     HEADER_OPERATORS: str = os.getenv("HEADER_OPERATORS", "")
 
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "1.5.2"
+    APP_VERSION: str = "1.6.0"
 
     @property
     def auth_modes(self) -> list[str]:

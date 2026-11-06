@@ -32,6 +32,11 @@ data:
   OIDC_REDIRECT_URI: ""
   OIDC_REQUIRE_MFA_CLAIM: "false"
   OIDC_ALLOW_GUESTS: "false"
+  # Cache IP Host Group (v1.6.0)
+  GROUP_CACHE_TTL_MINUTES: "30"
+  GROUP_CACHE_MIN_REFRESH_SECONDS: "5"
+  GROUP_CACHE_WARMUP: "true"
+  LOGO_MAX_KB: "300"
   # SSO một lần (v1.5.1): tự chuyển sang Microsoft, dùng lại phiên App Proxy (không chọn tài khoản / MFA lần 2)
   OIDC_AUTO_LOGIN: "true"
   OIDC_PROMPT: ""

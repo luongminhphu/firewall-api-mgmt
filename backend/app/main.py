@@ -1,26 +1,30 @@
 """SOC Rapid Block — API backend (FastAPI) cho mini app chặn IP trên Sophos Firewall."""
 from __future__ import annotations
 
+import base64
+import binascii
 import csv
 import datetime as dt
 import io
 import os
+import re
 import urllib.parse
 from typing import Any
 
-from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from . import auth as sso
 from . import changelog
+from . import group_cache as gc
 from . import users as um
 from .config import settings
 from .crypto import MasterKeyMissing, decrypt, encrypt, issue_token, verify_principal
-from .db import AppUser, AuditLog, Firewall, GroupChange, get_session, init_db
+from .db import AppSetting, AppUser, AuditLog, Firewall, GroupChange, get_session, init_db
 from .ipparse import extract, host_object_name
 from .policy import BLOCK_GROUP, GroupPolicyError, enforce_group
 from .service import (
@@ -56,6 +60,10 @@ def _startup() -> None:
             {Firewall.default_group: BLOCK_GROUP}, synchronize_session=False
         )
         db.commit()
+    if settings.GROUP_CACHE_WARMUP:
+        import threading
+
+        threading.Thread(target=gc.warmup, name="group-cache-warmup", daemon=True).start()
 
 
 # ------------------------------------------------------------------- helpers
@@ -343,6 +351,7 @@ def list_firewalls(db: Session = Depends(get_session), user: str = Depends(curre
 @app.post("/api/firewalls")
 def create_firewall(
     request: Request,
+    bg: BackgroundTasks,
     payload: dict = Body(...),
     db: Session = Depends(get_session),
     p: dict = Depends(admin),
@@ -376,6 +385,7 @@ def create_firewall(
     audit(db, action="firewall_cud", fw=fw, target="create", result="ok",
           message=f"{fw.host}:{fw.port}", actor=user, client_ip=client_ip_of(request))
     db.commit()
+    bg.add_task(gc.refresh_now, fw.id, force=True)
     return fw.to_dict()
 
 
@@ -383,6 +393,7 @@ def create_firewall(
 def update_firewall(
     fw_id: int,
     request: Request,
+    bg: BackgroundTasks,
     payload: dict = Body(...),
     db: Session = Depends(get_session),
     p: dict = Depends(admin),
@@ -411,6 +422,8 @@ def update_firewall(
     audit(db, action="firewall_cud", fw=fw, target="update", result="ok",
           actor=user, client_ip=client_ip_of(request))
     db.commit()
+    gc.mark_dirty(db, [fw.id])
+    bg.add_task(gc.refresh_now, fw.id, force=True)  # host/tài khoản có thể đã đổi
     return fw.to_dict()
 
 
@@ -425,6 +438,7 @@ def delete_firewall(
     fw = get_fw(db, fw_id)
     name, host = fw.name, f"{fw.host}:{fw.port}"
     db.query(AuditLog).filter(AuditLog.firewall_id == fw.id).update({"firewall_id": None})
+    gc.drop(db, fw.id)
     db.delete(fw)
     db.commit()
     audit(db, action="firewall_cud", fw=None, target=f"delete {name}", result="ok",
@@ -463,73 +477,86 @@ def fw_groups(
     fw_id: int, db: Session = Depends(get_session), user: str = Depends(current_user)
 ):
     fw = get_fw(db, fw_id)
-    try:
-        g = client_for(fw).get_group(BLOCK_GROUP)  # chỉ đọc group cố định, không liệt kê group khác
-    except (SophosError, SophosAuthError, ValueError) as exc:
-        raise HTTPException(502, str(exc)) from exc
-    return {
-        "firewall": fw.name,
-        "default_group": BLOCK_GROUP,
-        "locked": True,
-        "groups": [{**g, "count": len(g["hosts"])}] if g else [],
-    }
+    row = gc.get_row(db, fw.id)
+    if row is None or row.scanned_at is None:
+        row = gc.scan(db, fw)  # chưa có cache: quét trực tiếp một lần
+    d = gc.data(row)
+    if row.status == "error" and not d:
+        raise HTTPException(502, row.error)
+    groups = []
+    if d.get("exists"):
+        groups = [{"name": d.get("group", BLOCK_GROUP), "description": d.get("description", ""),
+                   "ip_family": d.get("ip_family", ""), "count": d.get("total", 0)}]
+    return {"firewall": fw.name, "default_group": BLOCK_GROUP, "locked": True, "groups": groups,
+            "cache": gc.meta(row)}
+
+
+def _schedule_refresh(bg: BackgroundTasks, fw_ids: list[int], force: bool = True) -> None:
+    for fid in dict.fromkeys(fw_ids):
+        bg.add_task(gc.refresh_now, fid, force=force)
 
 
 @app.get("/api/firewalls/{fw_id}/group-members")
 def fw_group_members(
     fw_id: int,
     request: Request,
+    bg: BackgroundTasks,
     group: str = Query(default=""),
     q: str = Query(default=""),
+    refresh: bool = Query(default=False),
     db: Session = Depends(get_session),
     user: str = Depends(current_user),
 ):
+    """Trả danh sách từ cache (nhanh). refresh=1: quét lại firewall ngay. Cache cũ/dirty: trả ngay + quét nền."""
     group = locked_group(db, request, group, user)
     fw = get_fw(db, fw_id)
-    try:
-        cli = client_for(fw)
-        g = cli.get_group(group)
-        if not g:
-            raise HTTPException(404, f"Group '{group}' không tồn tại trên {fw.name}")
-        details = {h["name"]: h for h in cli.get_hosts(g["hosts"])} if g["hosts"] else {}
-    except (SophosError, SophosAuthError, ValueError) as exc:
-        raise HTTPException(502, str(exc)) from exc
-
-    try:
-        changelog.detect_drift(db, fw, g["name"], {n: _host_value(details.get(n, {})) for n in g["hosts"]})
-        db.commit()
-    except Exception:  # noqa: BLE001
-        db.rollback()
-
-    members = []
-    for name in g["hosts"]:
-        d = details.get(name, {})
-        value = d.get("ip_address") or d.get("start_ip") or ""
-        if d.get("host_type") == "IPRange" and d.get("start_ip"):
-            value = f"{d['start_ip']} - {d.get('end_ip', '')}"
-        elif d.get("host_type") == "Network" and d.get("subnet"):
-            try:
-                import ipaddress
-
-                net = ipaddress.ip_network(f"{d['ip_address']}/{d['subnet']}", strict=False)
-                value = str(net)
-            except ValueError:
-                value = f"{d['ip_address']}/{d['subnet']}"
-        members.append(
-            {
-                "object": name,
-                "host_type": d.get("host_type", ""),
-                "value": value,
-                "description": d.get("description", ""),
-            }
-        )
+    row = gc.get_row(db, fw.id)
+    source = "cache"
+    if refresh and row is not None and not gc.can_force(row):
+        refresh = False  # vừa quét xong vài giây trước — dùng luôn kết quả đó
+    if row is None or row.scanned_at is None or refresh:
+        row = gc.scan(db, fw, group)
+        source = "live"
+    else:
+        m = gc.meta(row)
+        if (m["stale"] or m["dirty"]) and not m["refreshing"]:
+            row.refreshing_since = dt.datetime.now(dt.timezone.utc)
+            db.commit()
+            _schedule_refresh(bg, [fw.id])
+    d = gc.data(row)
+    if not d:
+        raise HTTPException(502, row.error or f"Không đọc được group trên {fw.name}")
+    if not d.get("exists"):
+        raise HTTPException(404, f"Group '{group}' không tồn tại trên {fw.name}")
+    members = d.get("members", [])
     if q:
         needle = q.lower().strip()
         members = [m for m in members if needle in m["object"].lower() or needle in m["value"].lower()]
     return {
-        "firewall": fw.name, "group": g["name"], "description": g["description"],
-        "ip_family": g["ip_family"], "total": len(g["hosts"]), "members": members,
+        "firewall": fw.name, "group": d.get("group", group), "description": d.get("description", ""),
+        "ip_family": d.get("ip_family", ""), "total": d.get("total", 0), "members": members,
+        "source": source, "cache": gc.meta(row),
     }
+
+
+@app.get("/api/firewalls/{fw_id}/group-cache")
+def fw_group_cache(fw_id: int, db: Session = Depends(get_session), user: str = Depends(current_user)):
+    """Trạng thái cache (nhẹ, để giao diện hỏi định kỳ khi đang quét lại)."""
+    fw = get_fw(db, fw_id)
+    row = gc.get_row(db, fw.id)
+    return {"firewall_id": fw.id, "firewall": fw.name, "total": gc.data(row).get("total"), **gc.meta(row)}
+
+
+@app.get("/api/group-cache")
+def group_cache_overview(db: Session = Depends(get_session), user: str = Depends(current_user)):
+    """Tổng quan cache SCANPORT GROUP của mọi firewall (không kèm danh sách thành viên)."""
+    out = []
+    for fw in db.scalars(select(Firewall).order_by(Firewall.name)):
+        row = gc.get_row(db, fw.id)
+        d = gc.data(row)
+        out.append({"firewall_id": fw.id, "firewall": fw.name, "site": fw.site, "enabled": fw.enabled,
+                    "exists": d.get("exists"), "total": d.get("total"), **gc.meta(row)})
+    return {"group": BLOCK_GROUP, "ttl_minutes": settings.GROUP_CACHE_TTL_MINUTES, "firewalls": out}
 
 
 # ------------------------------------------------------------------- parsing
@@ -547,6 +574,7 @@ def parse_text(payload: dict = Body(...), user: str = Depends(current_user)):
 @app.post("/api/block")
 def block(
     request: Request,
+    bg: BackgroundTasks,
     payload: dict = Body(...),
     db: Session = Depends(get_session),
     p: dict = Depends(operator),
@@ -573,12 +601,19 @@ def block(
         )
         for fw in fws
     ]
-    return {"entries": entries, "rejected": rejected, "results": results}
+    if not payload.get("dry_run"):
+        changed = [r["firewall_id"] for r in results if r.get("summary", {}).get("added")]
+        gc.mark_dirty(db, changed)
+        _schedule_refresh(bg, changed)  # quét lại group sau khi trả kết quả để cache khớp firewall
+    return {"entries": entries, "rejected": rejected, "results": results,
+            "cache_refresh": [r["firewall_id"] for r in results if r.get("summary", {}).get("added")]
+            if not payload.get("dry_run") else []}
 
 
 @app.post("/api/unblock")
 def unblock(
     request: Request,
+    bg: BackgroundTasks,
     payload: dict = Body(...),
     db: Session = Depends(get_session),
     p: dict = Depends(operator),
@@ -599,7 +634,10 @@ def unblock(
         )
         for fw in fws
     ]
-    return {"targets": targets, "results": results}
+    changed = [r["firewall_id"] for r in results if r.get("summary", {}).get("removed")]
+    gc.mark_dirty(db, changed)
+    _schedule_refresh(bg, changed)
+    return {"targets": targets, "results": results, "cache_refresh": changed}
 
 
 # --------------------------------------------------------------------- audit
@@ -740,6 +778,7 @@ def changes_verify(db: Session = Depends(get_session), user: str = Depends(curre
 @app.post("/api/changes/sync")
 def changes_sync(
     request: Request,
+    bg: BackgroundTasks,
     payload: dict = Body(default={}),
     db: Session = Depends(get_session),
     p: dict = Depends(operator),
@@ -761,7 +800,90 @@ def changes_sync(
         except (SophosError, SophosAuthError, ValueError) as exc:
             db.rollback()
             out.append({"firewall": fw.name, "group": group, "ok": False, "error": str(exc)})
+    _schedule_refresh(bg, [fw.id for fw in fws])
     return {"results": out}
+
+
+# ------------------------------------------------------------------ branding
+_LOGO_MIME = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
+_SVG_BAD = re.compile(r"<\s*script|<\s*foreignObject|\bon[a-z]+\s*=|javascript:|<\s*iframe|<\s*embed|<\s*object"
+                      r"|xlink:href\s*=\s*[\"'](?!#)|href\s*=\s*[\"'](?!#)", re.I)
+
+
+def _logo_row(db: Session) -> AppSetting | None:
+    return db.get(AppSetting, "logo")
+
+
+@app.get("/api/branding")
+def branding(db: Session = Depends(get_session)):
+    """Công khai (màn hình đăng nhập cần): có logo hay không + mốc cập nhật để chống cache trình duyệt."""
+    row = _logo_row(db)
+    has = bool(row and row.value)
+    v = int(row.updated_at.timestamp()) if has and row.updated_at else 0
+    return {"app_name": "SOC Rapid Block", "has_logo": has, "logo_url": f"/api/branding/logo?v={v}" if has else "",
+            "logo_max_kb": settings.LOGO_MAX_KB}
+
+
+@app.get("/api/branding/logo", include_in_schema=False)
+def branding_logo(db: Session = Depends(get_session)):
+    row = _logo_row(db)
+    if not row or not row.value:
+        raise HTTPException(404, "Chưa có logo")
+    meta, _, b64 = row.value.partition(",")
+    mime = meta.removeprefix("data:").removesuffix(";base64")
+    return Response(
+        content=base64.b64decode(b64), media_type=mime,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "X-Content-Type-Options": "nosniff",
+            # SVG mở trực tiếp cũng không chạy được script
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+        },
+    )
+
+
+@app.put("/api/branding/logo")
+def set_logo(request: Request, payload: dict = Body(...), db: Session = Depends(get_session),
+             p: dict = Depends(admin)):
+    url = str(payload.get("data_url") or "")
+    m = re.fullmatch(r"data:([a-z+/]+);base64,([A-Za-z0-9+/=\s]+)", url, re.S)
+    if not m or m.group(1) not in _LOGO_MIME:
+        raise HTTPException(400, "Logo phải là PNG, JPEG, WebP hoặc SVG")
+    try:
+        raw = base64.b64decode(m.group(2), validate=False)
+    except (ValueError, binascii.Error) as exc:
+        raise HTTPException(400, "Dữ liệu logo không hợp lệ") from exc
+    if len(raw) > settings.LOGO_MAX_KB * 1024:
+        raise HTTPException(400, f"Logo tối đa {settings.LOGO_MAX_KB} KB")
+    mime = m.group(1)
+    sig = {"image/png": raw[:8] == b"\x89PNG\r\n\x1a\n", "image/jpeg": raw[:3] == b"\xff\xd8\xff",
+           "image/webp": raw[:4] == b"RIFF" and raw[8:12] == b"WEBP"}
+    if mime == "image/svg+xml":
+        txt = raw.decode("utf-8", "replace")
+        if "<svg" not in txt.lower() or _SVG_BAD.search(txt):
+            raise HTTPException(400, "SVG chứa script, sự kiện hoặc liên kết ngoài — không cho phép")
+    elif not sig.get(mime):
+        raise HTTPException(400, "Nội dung file không khớp định dạng ảnh")
+    row = _logo_row(db) or AppSetting(key="logo")
+    row.value = f"data:{mime};base64," + base64.b64encode(raw).decode()
+    row.updated_by = p["user"]
+    row.updated_at = dt.datetime.now(dt.timezone.utc)
+    db.merge(row)
+    audit(db, action="branding", fw=None, target="logo", result="ok",
+          message=f"Cập nhật logo {mime} {len(raw)} byte", actor=p["user"], client_ip=client_ip_of(request))
+    db.commit()
+    return branding(db)
+
+
+@app.delete("/api/branding/logo")
+def delete_logo(request: Request, db: Session = Depends(get_session), p: dict = Depends(admin)):
+    row = _logo_row(db)
+    if row:
+        db.delete(row)
+        audit(db, action="branding", fw=None, target="logo", result="ok", message="Gỡ logo",
+              actor=p["user"], client_ip=client_ip_of(request))
+        db.commit()
+    return branding(db)
 
 
 # --------------------------------------------------------------------- users
@@ -909,6 +1031,8 @@ def _render_index() -> HTMLResponse:
     v = settings.APP_VERSION
     html = html.replace('src="app.js"', f'src="app.js?v={v}"').replace(
         'href="styles.css"', f'href="styles.css?v={v}"'
+    ).replace('href="hsc-tokens.css"', f'href="hsc-tokens.css?v={v}"').replace(
+        'href="fonts.css"', f'href="fonts.css?v={v}"'
     )
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 

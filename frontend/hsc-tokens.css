@@ -1,0 +1,434 @@
+/* HSC Design System — token reference.
+   Every value below is copied verbatim from the HSC Design System export
+   (Figma collection "theming", June 2026). A consuming project's global
+   entry point should just be these @import lines, in this order: */
+/*
+@import url("tokens/colors.css");
+@import url("tokens/alpha.css");
+@import url("tokens/fonts.css");
+@import url("tokens/typography.css");
+@import url("tokens/spacing.css");
+@import url("tokens/elevation.css");
+@import url("tokens/semantic.css");
+@import url("tokens/base.css");
+*/
+
+/* ── fonts.css ──────────────────────────────────────────────────────────
+   Inter and Inter Display are self-hosted (Thin→Black, upright and
+   italic — 36 @font-face rules, omitted here for length). Inter Display
+   carries H1–H4; Inter carries UI, body and numerics. SF Pro Display
+   (named in the original export) is retired from the stack. */
+
+/* ── colors.css — primitive color scales. Mode-agnostic raw values. ──── */
+:root {
+  /* SR */
+  --sr10: #260002;
+  --sr20: #66191F;
+  --sr30: #8F282D;
+  --sr40: #B82E37;
+  --sr50: #FF0011;
+  --sr60: #E5454D;
+  --sr70: #FF525A;
+  --sr80: #FF7077;
+  --sr90: #FF8F94;
+  --sr100: #FFADB1;
+  /* SG */
+  --sg10: #002A09;
+  --sg20: #10521E;
+  --sg30: #187A2C;
+  --sg40: #21A33B;
+  --sg50: #00FF11;
+  --sg60: #34CB52;
+  --sg70: #50CE69;
+  --sg80: #85D695;
+  --sg90: #B6E2BF;
+  --sg100: #DBF0DF;
+  /* SB */
+  --sb10: #0B2D5C;
+  --sb20: #0F3C7A;
+  --sb30: #11468F;
+  --sb40: #165AB8;
+  --sb50: #2681FF;
+  --sb60: #588EDA;
+  --sb70: #7BA5E0;
+  --sb80: #9DBCE7;
+  --sb90: #C7D8F0;
+  --sb100: #DFE9F6;
+  /* SC */
+  --sc10: #05363D;
+  --sc20: #095A66;
+  --sc30: #147E8F;
+  --sc40: #23A4B8;
+  --sc50: #5ACEE0;
+  --sc60: #78D5E3;
+  --sc70: #A4E0EA;
+  --sc80: #C3E5EA;
+  --sc90: #E2F1F4;
+  --sc100: #F4F6F6;
+  /* SM */
+  --sm10: #440066;
+  --sm20: #6D01A3;
+  --sm30: #7B0BB3;
+  --sm40: #9918D9;
+  --sm50: #B729FE;
+  --sm60: #BB5CEB;
+  --sm70: #CD8CEE;
+  --sm80: #E0BAF3;
+  --sm90: #EFDDF8;
+  --sm100: #FBF7FD;
+  /* SY */
+  --sy10: #8F7611;
+  --sy20: #A38613;
+  --sy30: #B89717;
+  --sy40: #CCAE18;
+  --sy50: #FFD400;
+  --sy60: #D9B420;
+  --sy70: #DEC14F;
+  --sy80: #E1CB75;
+  --sy90: #E4D59A;
+  --sy100: #EAE1BD;
+  /* Neutral ramp */
+  --n10: #000000;
+  --n20: #14171A;
+  --n30: #222629;
+  --n40: #272C33;
+  --n50: #2F353D;
+  --n60: #33383D;
+  --n70: #454B52;
+  --n80: #4D545C;
+  --n90: #636970;
+  --n100: #898C8F;
+
+  /* Common */
+  --cm10: #FFFFFF;
+  --cm20: #000000;
+
+  /* Brand constants (marketing, outside the dark UI scale) */
+  --logo-blue: #074B9B;
+  --brand: #2681FF;
+  --brand-deep: #00468C;
+  --p100: #00468C;
+  --cover-gradient: linear-gradient(135deg, #0058AF 0%, #00468C 100%); /* @kind color */
+}
+
+/* ── alpha.css — alpha palettes. `*-aN` where N ≈ opacity %.
+   Pale #D6E7FF tints sit on dark surfaces; navy #0B2D5C tints on light ones. */
+:root {
+  /* neutral — #D6E7FF */
+  --neutral-a4: rgba(214, 231, 255, 0.04);
+  --neutral-a8: rgba(214, 231, 255, 0.08);
+  --neutral-a12: rgba(214, 231, 255, 0.12);
+  --neutral-a16: rgba(214, 231, 255, 0.16);
+  --neutral-a20: rgba(214, 231, 255, 0.20);
+  --neutral-a24: rgba(214, 231, 255, 0.24);
+  --neutral-a32: rgba(214, 231, 255, 0.32);
+  --neutral-a40: rgba(214, 231, 255, 0.40);
+  --neutral-a52: rgba(214, 231, 255, 0.52);
+  --neutral-a64: rgba(214, 231, 255, 0.64);
+  --neutral-a72: rgba(214, 231, 255, 0.72);
+  --neutral-a88: rgba(214, 231, 255, 0.88);
+  /* white — #D6E7FF */
+  --white-a4: rgba(214, 231, 255, 0.04);
+  --white-a8: rgba(214, 231, 255, 0.08);
+  --white-a12: rgba(214, 231, 255, 0.12);
+  --white-a16: rgba(214, 231, 255, 0.16);
+  --white-a20: rgba(214, 231, 255, 0.20);
+  --white-a24: rgba(214, 231, 255, 0.24);
+  --white-a32: rgba(214, 231, 255, 0.32);
+  --white-a40: rgba(214, 231, 255, 0.40);
+  --white-a52: rgba(214, 231, 255, 0.52);
+  --white-a64: rgba(214, 231, 255, 0.64);
+  --white-a72: rgba(214, 231, 255, 0.72);
+  --white-a88: rgba(214, 231, 255, 0.88);
+  /* black — #0B2D5C */
+  --black-a4: rgba(11, 45, 92, 0.04);
+  --black-a8: rgba(11, 45, 92, 0.08);
+  --black-a12: rgba(11, 45, 92, 0.12);
+  --black-a16: rgba(11, 45, 92, 0.16);
+  --black-a20: rgba(11, 45, 92, 0.20);
+  --black-a24: rgba(11, 45, 92, 0.24);
+  --black-a32: rgba(11, 45, 92, 0.32);
+  --black-a40: rgba(11, 45, 92, 0.40);
+  --black-a52: rgba(11, 45, 92, 0.52);
+  --black-a64: rgba(11, 45, 92, 0.64);
+  --black-a72: rgba(11, 45, 92, 0.72);
+  --black-a88: rgba(11, 45, 92, 0.88);
+  /* neutral-invert — #0B2D5C */
+  --neutral-invert-a4: rgba(11, 45, 92, 0.04);
+  --neutral-invert-a8: rgba(11, 45, 92, 0.08);
+  --neutral-invert-a12: rgba(11, 45, 92, 0.12);
+  --neutral-invert-a16: rgba(11, 45, 92, 0.16);
+  --neutral-invert-a20: rgba(11, 45, 92, 0.20);
+  --neutral-invert-a24: rgba(11, 45, 92, 0.24);
+  --neutral-invert-a32: rgba(11, 45, 92, 0.32);
+  --neutral-invert-a40: rgba(11, 45, 92, 0.40);
+  --neutral-invert-a52: rgba(11, 45, 92, 0.52);
+  --neutral-invert-a64: rgba(11, 45, 92, 0.64);
+  --neutral-invert-a72: rgba(11, 45, 92, 0.72);
+  --neutral-invert-a88: rgba(11, 45, 92, 0.88);
+  /* blue — #3377FF */
+  --blue-a4: rgba(51, 119, 255, 0.04);
+  --blue-a8: rgba(51, 119, 255, 0.08);
+  --blue-a12: rgba(51, 119, 255, 0.12);
+  --blue-a16: rgba(51, 119, 255, 0.16);
+  --blue-a20: rgba(51, 119, 255, 0.20);
+  --blue-a24: rgba(51, 119, 255, 0.24);
+  --blue-a32: rgba(51, 119, 255, 0.32);
+  --blue-a40: rgba(51, 119, 255, 0.40);
+  --blue-a52: rgba(51, 119, 255, 0.52);
+  --blue-a64: rgba(51, 119, 255, 0.64);
+  --blue-a72: rgba(51, 119, 255, 0.72);
+  --blue-a88: rgba(51, 119, 255, 0.88);
+  /* green — #00FF10 */
+  --green-a4: rgba(0, 255, 16, 0.04);
+  --green-a8: rgba(0, 255, 16, 0.08);
+  --green-a12: rgba(0, 255, 16, 0.12);
+  --green-a16: rgba(0, 255, 16, 0.16);
+  --green-a20: rgba(0, 255, 16, 0.20);
+  --green-a24: rgba(0, 255, 16, 0.24);
+  --green-a32: rgba(0, 255, 16, 0.32);
+  --green-a40: rgba(0, 255, 16, 0.40);
+  --green-a52: rgba(0, 255, 16, 0.52);
+  --green-a64: rgba(0, 255, 16, 0.64);
+  --green-a72: rgba(0, 255, 16, 0.72);
+  --green-a88: rgba(0, 255, 16, 0.88);
+  /* red — #FF0011 */
+  --red-a4: rgba(255, 0, 17, 0.04);
+  --red-a8: rgba(255, 0, 17, 0.08);
+  --red-a12: rgba(255, 0, 17, 0.12);
+  --red-a16: rgba(255, 0, 17, 0.16);
+  --red-a20: rgba(255, 0, 17, 0.20);
+  --red-a24: rgba(255, 0, 17, 0.24);
+  --red-a32: rgba(255, 0, 17, 0.32);
+  --red-a40: rgba(255, 0, 17, 0.40);
+  --red-a52: rgba(255, 0, 17, 0.52);
+  --red-a64: rgba(255, 0, 17, 0.64);
+  --red-a72: rgba(255, 0, 17, 0.72);
+  --red-a88: rgba(255, 0, 17, 0.88);
+  /* yellow — #FFD400 */
+  --yellow-a4: rgba(255, 212, 0, 0.04);
+  --yellow-a8: rgba(255, 212, 0, 0.08);
+  --yellow-a12: rgba(255, 212, 0, 0.12);
+  --yellow-a16: rgba(255, 212, 0, 0.16);
+  --yellow-a20: rgba(255, 212, 0, 0.20);
+  --yellow-a24: rgba(255, 212, 0, 0.24);
+  --yellow-a32: rgba(255, 212, 0, 0.32);
+  --yellow-a40: rgba(255, 212, 0, 0.40);
+  --yellow-a52: rgba(255, 212, 0, 0.52);
+  --yellow-a64: rgba(255, 212, 0, 0.64);
+  --yellow-a72: rgba(255, 212, 0, 0.72);
+  --yellow-a88: rgba(255, 212, 0, 0.88);
+}
+
+/* ── typography.css ────────────────────────────────────────────────── */
+:root {
+  --font-display: "Inter Display", "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --font-numeric: var(--font-body);
+
+  --fw-regular: 400; /* @kind font */
+  --fw-medium: 500; /* @kind font */
+  --fw-semibold: 600; /* @kind font */
+  --fw-bold: 700; /* @kind font */
+
+  --fs-h1: 64px;  --lh-h1: 72px;
+  --fs-h2: 52px;  --lh-h2: 60px;
+  --fs-h3: 44px;  --lh-h3: 52px;
+  --fs-h4: 36px;  --lh-h4: 44px;
+  --fs-h5: 32px;  --lh-h5: 40px;
+  --fs-h6: 28px;  --lh-h6: 36px;
+  --fs-body-lg: 24px; --lh-body-lg: 32px;
+  --fs-body: 16px;    --lh-body: 24px;
+  --fs-body-sm: 14px; --lh-body-sm: 22px;
+  --fs-caption: 12px; --lh-caption: 16px;
+  --fs-micro: 10px;   --lh-micro: 16px;
+
+  --numeric-features: tabular-nums lining-nums; /* @kind other */
+}
+
+/* ── spacing.css — 8px grid on a 4px baseline. ────────────────────────── */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 72px;
+  --space-10: 100px;
+
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 20px;
+  --radius-pill: 100px;
+
+  --control-h-sm: 28px;
+  --control-h-md: 36px;
+  --control-h-lg: 44px;
+}
+
+/* ── elevation.css — soft, cool, low-opacity shadows + motion. ────────── */
+:root {
+  --z100: 0 0 1px rgba(55, 66, 77, 0.40);
+  --z200: 0 2px 4px rgba(9, 30, 66, 0.08), 0 0 1px rgba(55, 66, 77, 0.40);
+  --z300: 0 6px 12px rgba(9, 30, 66, 0.10), 0 0 1px rgba(55, 66, 77, 0.40);
+  --z400: 0 12px 20px rgba(55, 66, 77, 0.12), 0 0 1px rgba(55, 66, 77, 0.40);
+  --z500: 0 16px 32px rgba(55, 66, 77, 0.32), 0 0 1px rgba(55, 66, 77, 0.40);
+  --z600: 0 24px 48px rgba(0, 0, 0, 0.48), 0 0 1px rgba(55, 66, 77, 0.40);
+
+  --motion-fast: 120ms; /* @kind other */
+  --motion-base: 160ms; /* @kind other */
+  --motion-slow: 200ms; /* @kind other */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1); /* @kind other */
+}
+
+/* ── semantic.css — Dark is the product default (`:root`).
+   `[data-theme="light"]` overrides the semantic layer only; primitives never change. ── */
+:root {
+  /* Surfaces */
+  --bg-app: var(--n10);
+  --bg-surface: var(--n20);
+  --bg-surface-2: var(--n30);
+  --bg-heading: var(--n30);
+  --bg-elevated: var(--n50);
+  --background: var(--n10);
+  --section-background: var(--n20);
+
+  /* Web / mobile shells */
+  --theme-web-background: var(--n10);
+  --theme-web-surface: var(--n20);
+  --theme-web-surface-raised: var(--n30);
+  --theme-mobile-background: var(--n20);
+  --theme-mobile-surface: var(--n30);
+  --theme-mobile-surface-raised: var(--n40);
+
+  /* Borders */
+  --border: var(--n50);
+  --border-strong: var(--n80);
+  --border-subtle: var(--neutral-a12);
+
+  /* Ink */
+  --text-primary: var(--cm10);
+  --text-secondary: var(--neutral-a52);
+  --text-tertiary: var(--neutral-a32);
+  --text-disable: var(--neutral-a32);
+  --text-brand: var(--brand);
+  --text-white: var(--cm10);
+  --text-black: var(--cm20);
+  --text-inverse: var(--cm20);
+  --logo-brand: var(--logo-blue);
+
+  /* Price movement — the defining convention of the product */
+  --price-increase: var(--sg50);
+  --price-reduced: var(--sr50);
+  --price-reference: var(--sy50);
+  --price-ceil: var(--sm50);
+  --price-floor: var(--sc50);
+
+  /* Status */
+  --status-success: var(--sg50);
+  --status-error: var(--sr50);
+  --status-warning: var(--sy50);
+  --status-info: var(--sb50);
+
+  /* Interaction */
+  --overlay-hover: var(--blue-a12);
+  --overlay-pressed: var(--blue-a20);
+  --focus-ring: var(--brand);
+  --scrim: rgba(0, 0, 0, 0.80);
+
+  /* Buttons */
+  --btn-primary-bg: #3377FF;
+  --btn-primary-bg-hover: #5A92FF;
+  --btn-primary-bg-pressed: #1F5FD6;
+  --btn-primary-fg: var(--cm10);
+  --btn-secondary-bg: var(--n60);
+  --btn-secondary-bg-hover: var(--n70);
+  --btn-secondary-fg: var(--cm10);
+  --btn-ghost-bg: transparent;
+  --btn-ghost-bg-hover: var(--overlay-hover);
+  --btn-ghost-fg: var(--text-primary);
+  --btn-buy-bg: var(--sg40);
+  --btn-buy-bg-hover: #26BC44;
+  --btn-buy-fg: var(--cm10);
+  --btn-sell-bg: var(--sr70);
+  --btn-sell-bg-hover: #FF6C73;
+  --btn-sell-fg: var(--cm10);
+  --btn-login-ready-bg: var(--btn-primary-bg);
+  --btn-login-ready-fg: var(--cm10);
+  --btn-login-disabled-bg: var(--n50);
+  --btn-login-disabled-fg: var(--text-disable);
+  --fab-bg: var(--btn-primary-bg);
+  --fab-fg: var(--cm10);
+
+  /* Fields */
+  --field-bg: var(--bg-elevated);
+  --field-border: var(--border-strong);
+  --field-border-focus: var(--brand);
+  --field-fg: var(--text-primary);
+  --field-placeholder: var(--text-tertiary);
+
+  /* Chart strokes */
+  --chart-portfolio: #C552FF;
+  --chart-optimized: #2681FF;
+  --chart-index: #FFB020;
+}
+
+[data-theme="light"] {
+  --bg-app: #FFFFFF;
+  --bg-surface: #F4F6F8;
+  --bg-surface-2: #FFFFFF;
+  --bg-heading: #EDF1F5;
+  --bg-elevated: #E5EBF2;
+  --background: #FFFFFF;
+  --section-background: #F4F6F8;
+  --theme-web-background: #FFFFFF;
+  --theme-web-surface: #F4F6F8;
+  --theme-web-surface-raised: #FFFFFF;
+  --theme-mobile-background: #F4F6F8;
+  --theme-mobile-surface: #FFFFFF;
+  --theme-mobile-surface-raised: #FFFFFF;
+
+  --border: var(--black-a12);
+  --border-strong: var(--black-a32);
+  --border-subtle: var(--black-a8);
+
+  --text-primary: #0B2D5C;
+  --text-secondary: var(--black-a72);
+  --text-tertiary: var(--black-a40);
+  --text-disable: var(--black-a32);
+  --text-white: var(--cm20);
+  --text-black: var(--cm10);
+  --text-inverse: var(--cm10);
+
+  --btn-secondary-bg: #E5EBF2;
+  --btn-secondary-fg: #0B2D5C;
+  --btn-ghost-fg: #0B2D5C;
+  --btn-login-disabled-bg: #E5EBF2;
+
+  --field-bg: #FFFFFF;
+  --field-border: var(--black-a32);
+
+  --scrim: rgba(11, 45, 92, 0.56);
+}
+
+/* ── base.css — minimal base layer. Dark-first. ───────────────────────── */
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: var(--fw-regular);
+}
+a { color: var(--text-brand); text-decoration: none; }
+a:hover { color: var(--sb60); text-decoration: underline; }
+[data-numeric], .hsc-num { font-variant-numeric: var(--numeric-features); }
+*:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+::selection { background: var(--blue-a32); }

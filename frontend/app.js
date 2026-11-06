@@ -200,7 +200,96 @@
       toast("Chưa cấu hình MASTER_KEY — không thể lưu credential firewall", "err");
     }
     await loadFirewalls();
+    loadBranding();
   }
+
+  // ---------------------------------------------------------------- branding
+  const brandState = { hasLogo: false, url: "", maxKb: 300, pending: null };
+  async function loadBranding() {
+    try {
+      const r = await api("/api/branding");
+      brandState.hasLogo = !!r.has_logo;
+      brandState.url = r.logo_url ? `${API}${r.logo_url}` : "";
+      brandState.maxKb = r.logo_max_kb || 300;
+    } catch {
+      brandState.hasLogo = false;
+    }
+    $$(".js-brand-logo").forEach((img) => {
+      if (brandState.hasLogo) {
+        img.src = brandState.url;
+        img.hidden = false;
+      } else {
+        img.removeAttribute("src");
+        img.hidden = true;
+      }
+    });
+    $$(".js-brand-divider").forEach((el) => (el.hidden = !brandState.hasLogo));
+    $$(".js-default-logo").forEach((el) => el.classList.toggle("hidden", brandState.hasLogo));
+    renderLogoCard();
+  }
+
+  function renderLogoCard() {
+    const box = $("#logo-preview");
+    if (!box) return;
+    $("#logo-max").textContent = brandState.maxKb;
+    const src = brandState.pending?.dataUrl || (brandState.hasLogo ? brandState.url : "");
+    box.innerHTML = src
+      ? `<img src="${esc(src)}" alt="Xem trước logo" />`
+      : `<span class="muted tiny">Chưa có logo — đang dùng biểu tượng mặc định</span>`;
+    $("#logo-save").disabled = !brandState.pending;
+    $("#logo-save").classList.toggle("btn--primary", !!brandState.pending);
+    $("#logo-remove").disabled = !brandState.hasLogo || !!brandState.pending;
+  }
+
+  function logoMsg(text, kind) {
+    const el = $("#logo-msg");
+    el.textContent = text;
+    el.className = `alert alert--${kind}`;
+    if (!text) el.className = "alert hidden";
+  }
+
+  $("#logo-pick").addEventListener("click", () => $("#logo-file").click());
+  $("#logo-file").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    const okType = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"].includes(f.type);
+    if (!okType) return logoMsg("Chỉ nhận PNG, JPG, WebP hoặc SVG.", "error");
+    if (f.size > brandState.maxKb * 1024)
+      return logoMsg(`Tệp ${Math.ceil(f.size / 1024)} KB vượt giới hạn ${brandState.maxKb} KB.`, "error");
+    const reader = new FileReader();
+    reader.onload = () => {
+      brandState.pending = { dataUrl: reader.result, name: f.name };
+      logoMsg(`Xem trước ${f.name} — bấm Lưu logo để áp dụng cho mọi người dùng.`, "info");
+      renderLogoCard();
+    };
+    reader.readAsDataURL(f);
+  });
+  $("#logo-save").addEventListener("click", async () => {
+    if (!brandState.pending) return;
+    const btn = $("#logo-save");
+    btn.disabled = true;
+    try {
+      await api("/api/branding/logo", { method: "PUT", body: { data_url: brandState.pending.dataUrl } });
+      brandState.pending = null;
+      logoMsg("Đã lưu logo.", "ok");
+      toast("Đã cập nhật logo", "ok");
+      await loadBranding();
+    } catch (ex) {
+      logoMsg(ex.message, "error");
+      renderLogoCard();
+    }
+  });
+  $("#logo-remove").addEventListener("click", async () => {
+    if (!confirm("Gỡ logo và dùng lại biểu tượng mặc định?")) return;
+    try {
+      await api("/api/branding/logo", { method: "DELETE" });
+      logoMsg("Đã gỡ logo.", "ok");
+      await loadBranding();
+    } catch (ex) {
+      logoMsg(ex.message, "error");
+    }
+  });
 
   // ------------------------------------------------------------------- tabs
   $("#tabs").addEventListener("click", (e) => {
@@ -571,6 +660,7 @@
         },
       });
       renderBlockResult(r);
+      if (r.cache_refresh?.length) watchCache(r.cache_refresh);
       const okCount = r.results.filter((x) => x.ok).length;
       toast(
         dry
@@ -648,7 +738,106 @@
   }
 
   $("#g-fw").addEventListener("change", loadGroupsForSelectedFw);
-  $("#g-reload").addEventListener("click", loadMembers);
+  $("#g-reload").addEventListener("click", () => loadMembers({ refresh: true }));
+  $("#g-ov-reload").addEventListener("click", loadOverview);
+  $("#g-overview").addEventListener("click", (e) => {
+    const it = e.target.closest("[data-fw]");
+    if (!it) return;
+    $("#g-fw").value = it.dataset.fw;
+    loadGroupsForSelectedFw();
+  });
+
+  // ------------------------------------------------------------ group cache
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmtScan = (iso) => {
+    if (!iso) return "chưa quét";
+    const d = new Date(new Date(iso).toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${pad(d.getDate())}/${pad(
+      d.getMonth() + 1
+    )}/${d.getFullYear()}`;
+  };
+  const fmtAge = (s) => {
+    if (s == null) return "";
+    if (s < 60) return `${s} giây trước`;
+    if (s < 3600) return `${Math.floor(s / 60)} phút trước`;
+    if (s < 86400) return `${Math.floor(s / 3600)} giờ trước`;
+    return `${Math.floor(s / 86400)} ngày trước`;
+  };
+  function cacheTag(c) {
+    if (c.refreshing || c.dirty) return `<span class="chip chip--info"><span class="spinner spinner--xs" aria-hidden="true"></span>Đang quét lại</span>`;
+    if (c.status === "error") return `<span class="chip chip--err" title="${esc(c.error)}">Lỗi lần quét cuối</span>`;
+    if (!c.cached) return `<span class="chip">Chưa có cache</span>`;
+    if (c.stale) return `<span class="chip chip--warn">Cũ hơn TTL</span>`;
+    return `<span class="chip chip--ok">Mới</span>`;
+  }
+
+  async function loadOverview() {
+    const box = $("#g-overview");
+    if (!box.children.length) box.innerHTML = `<div class="skeleton"></div>`;
+    try {
+      const r = await api("/api/group-cache");
+      $("#g-ov-note").textContent = `Danh sách ${r.group} được lưu cache (TTL ${r.ttl_minutes} phút) để hiển thị tức thì; tự quét lại sau mỗi lần chặn/bỏ chặn.`;
+      const cur = $("#g-fw").value;
+      box.innerHTML = r.firewalls.length
+        ? r.firewalls
+            .map(
+              (f) => `<button type="button" class="fw-cache${String(f.firewall_id) === cur ? " is-current" : ""}" data-fw="${f.firewall_id}">
+                <span class="fw-cache__name">${esc(f.firewall)}</span>
+                <span class="fw-cache__count mono">${f.total ?? "—"}<small> IP</small></span>
+                <span class="fw-cache__time tiny muted" title="Thời điểm quét gần nhất">${f.cached ? fmtScan(f.scanned_at) : "Chưa quét"}</span>
+                ${cacheTag(f)}
+              </button>`
+            )
+            .join("")
+        : `<p class="empty">Chưa có firewall nào.</p>`;
+      return r;
+    } catch (ex) {
+      box.innerHTML = `<p class="alert alert--error">${esc(ex.message)}</p>`;
+    }
+  }
+
+  // Sau khi chặn/bỏ chặn: backend đánh dấu dirty + quét nền. Hỏi trạng thái mỗi giây đến khi xong.
+  const watching = new Set();
+  function watchCache(ids) {
+    ids.forEach((id) => {
+      if (watching.has(id)) return;
+      watching.add(id);
+      let tries = 0;
+      const tick = async () => {
+        tries += 1;
+        let c = null;
+        try {
+          c = await api(`/api/firewalls/${id}/group-cache`);
+        } catch {}
+        const busy = c && (c.dirty || c.refreshing);
+        if (busy && tries < 60) {
+          if (String(id) === $("#g-fw").value) renderCacheMeta(null, c);
+          setTimeout(tick, 1000);
+          return;
+        }
+        watching.delete(id);
+        if ($('[data-panel="groups"]').classList.contains("is-active")) {
+          loadOverview();
+          if (String(id) === $("#g-fw").value) loadMembers({ quiet: true });
+        }
+      };
+      setTimeout(tick, 800);
+    });
+    if ($('[data-panel="groups"]').classList.contains("is-active")) loadOverview();
+  }
+
+  function renderCacheMeta(r, c) {
+    const el = $("#g-cache");
+    if (!el) return;
+    const src = r?.source === "live" ? "Vừa quét trực tiếp từ firewall" : "Từ cache";
+    const busy = c.dirty || c.refreshing;
+    el.innerHTML = `${cacheTag(c)}
+      <span class="muted">${r ? src + " · " : ""}cập nhật lúc <strong class="mono">${fmtScan(c.scanned_at)}</strong>${
+      c.age_s != null ? ` (${fmtAge(c.age_s)})` : ""
+    }${c.scan_ms != null ? ` · quét mất ${c.scan_ms < 1000 ? c.scan_ms + " ms" : (c.scan_ms / 1000).toFixed(1) + " giây"}` : ""}</span>
+      ${c.status === "error" && c.error ? `<span class="chip chip--err">${esc(c.error)}</span>` : ""}`;
+    el.classList.toggle("is-busy", busy);
+  }
   $("#g-search").addEventListener("input", () => renderMembers(filterMembers()));
 
   async function loadGroupsForSelectedFw() {
@@ -669,30 +858,44 @@
       $("#g-meta").innerHTML = `<span class="chip chip--err">${esc(ex.message)}</span>`;
       renderMembers([]);
     }
+    loadOverview();
   }
 
-  async function loadMembers() {
+  async function loadMembers({ refresh = false, quiet = false } = {}) {
     const id = $("#g-fw").value;
     const group = state.blockGroup;
     if (!id) return;
-    $("#g-table").querySelector("tbody").innerHTML =
-      `<tr><td colspan="5"><div class="skeleton"></div></td></tr>`;
+    const btn = $("#g-reload");
+    if (!quiet)
+      $("#g-table").querySelector("tbody").innerHTML =
+        `<tr><td colspan="5"><div class="skeleton"></div></td></tr>`;
+    if (refresh) {
+      btn.disabled = true;
+      $("#g-cache") && ($("#g-cache").innerHTML = `<span class="chip chip--info"><span class="spinner spinner--xs" aria-hidden="true"></span>Đang quét lại từ firewall…</span>`);
+    }
     try {
       const r = await api(
-        `/api/firewalls/${id}/group-members?group=${encodeURIComponent(group)}`
+        `/api/firewalls/${id}/group-members?group=${encodeURIComponent(group)}${refresh ? "&refresh=1" : ""}`
       );
       state.groupMembers = r.members;
       $("#g-meta").innerHTML = `
         <span>Firewall: <strong>${esc(r.firewall)}</strong></span>
         <span>Group: <strong>${esc(r.group)}</strong></span>
-        <span>Thành viên: <strong>${r.total}</strong></span>
+        <span>Thành viên: <strong class="mono">${r.total}</strong></span>
         <span>IP family: ${esc(r.ip_family)}</span>
-        ${r.description ? `<span>${esc(r.description)}</span>` : ""}`;
+        ${r.description ? `<span>${esc(r.description)}</span>` : ""}
+        <span class="cache-meta" id="g-cache"></span>`;
+      if (r.cache) {
+        renderCacheMeta(r, r.cache);
+        if (r.cache.dirty || r.cache.refreshing) watchCache([Number(id)]);
+      }
       renderMembers(filterMembers());
+      if (refresh) loadOverview();
     } catch (ex) {
       $("#g-meta").innerHTML = `<span class="chip chip--err">${esc(ex.message)}</span>`;
       renderMembers([]);
     }
+    btn.disabled = false;
   }
 
   const filterMembers = () => {
@@ -773,8 +976,9 @@
           return `<div class="result-fw">${head}${rows}</div>`;
         })
         .join("");
-      toast("Đã cập nhật group", "ok");
-      await loadMembers();
+      toast("Đã cập nhật group — đang quét lại để làm mới cache", "ok");
+      if (r.cache_refresh?.length) watchCache(r.cache_refresh);
+      await loadMembers({ quiet: true });
     } catch (ex) {
       toast(ex.message, "err");
     }
@@ -886,7 +1090,7 @@
         .join(" ").toLowerCase().includes(q));
     const tb = $("#u-table tbody");
     if (!rows.length) {
-      tb.innerHTML = `<tr><td colspan="6" class="muted">${userState.list.length ? "Không có kết quả" : "Chưa có người dùng nào — thêm người đầu tiên ở khung bên phải."}</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="6"><p class="empty">${userState.list.length ? "Không có kết quả" : "Chưa có người dùng nào — thêm người đầu tiên ở khung bên phải."}</p></td></tr>`;
       return;
     }
     tb.innerHTML = rows.map((u) => {
@@ -1187,6 +1391,7 @@
     if (hash.has("sso") || hash.has("sso_error")) {
       history.replaceState(null, "", location.pathname + location.search);
     }
+    loadBranding(); // logo cũng hiện ở màn hình đăng nhập (endpoint công khai)
     const modes = await initLogin();
     if (hash.has("sso_error")) {
       showLoginError("Đăng nhập Microsoft thất bại: " + hash.get("sso_error"));

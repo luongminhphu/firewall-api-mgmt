@@ -4,6 +4,14 @@ Mini app HTML5 + FastAPI giúp team SOC/NOC dán thẳng đoạn chat Teams (ho�
 bóc IP tự động và đẩy vào **IP Host Group** trên **nhiều Sophos Firewall** cùng lúc qua XML API —
 thao tác được từ điện thoại trong ngày nghỉ lễ Tết.
 
+**Mới ở v1.6.0** — Danh sách IP Host Group hiển thị tức thì nhờ cache lưu trong PostgreSQL (dùng chung mọi pod):
+mở tab chỉ đọc cache (~5 ms thay vì gọi firewall vài giây), cache cũ hơn `GROUP_CACHE_TTL_MINUTES` thì vẫn hiển thị ngay và quét lại nền;
+sau mỗi lần chặn/bỏ chặn app tự quét lại firewall bị thay đổi để cập nhật cache, nút "Quét lại" đọc trực tiếp từ firewall
+(giãn cách `GROUP_CACHE_MIN_REFRESH_SECONDS`). Quét lỗi thì giữ dữ liệu cũ + hiện cảnh báo. Thẻ tổng quan cho mọi firewall:
+số IP, thời điểm quét, trạng thái. Giao diện chuyển sang HSC Design System (Inter tự host, token màu HSC, sáng/tối), quản trị viên
+tải logo riêng (tab Người dùng → "Logo hiển thị"; PNG/JPG/WebP/SVG ≤ `LOGO_MAX_KB`, SVG có script/liên kết ngoài bị từ chối).
+Bảng mới `group_cache`, `app_settings` tự tạo khi khởi động, không cần migrate.
+
 **Mới ở v1.5.2** — Sửa lỗi đăng nhập Microsoft: endpoint Entra ID đúng chuẩn v2.0 (`/oauth2/v2.0/authorize`, `/oauth2/v2.0/token`,
 `/discovery/v2.0/keys`; bản cũ gọi sai đường dẫn → 404). Định danh theo `oid` bất biến, chặn tài khoản khách, không dùng claim `email`,
 id_token không có `amr` không còn bị từ chối nhầm. Test mới `tests/entra_review_test.py` đối chiếu endpoint với discovery thật của Microsoft.
@@ -113,6 +121,10 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 | `OIDC_TENANT_ID` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | Thông tin App registration trên Entra ID |
 | `OIDC_REDIRECT_URI` | `<External URL>/api/auth/oidc/callback` |
 | `OIDC_REQUIRE_MFA_CLAIM` | `true` = từ chối token có claim `amr` nhưng thiếu `mfa` (id_token v2.0 thường không có `amr`; MFA do Conditional Access bảo đảm) |
+| `GROUP_CACHE_TTL_MINUTES` | Tuổi tối đa của cache IP Host Group trước khi tự quét lại nền (mặc định 30) |
+| `GROUP_CACHE_MIN_REFRESH_SECONDS` | Giãn cách tối thiểu giữa hai lần bấm "Quét lại" (mặc định 5) |
+| `GROUP_CACHE_WARMUP` | `true` = quét toàn bộ firewall khi app khởi động để cache sẵn |
+| `LOGO_MAX_KB` | Dung lượng tối đa logo tải lên (mặc định 300) |
 | `OIDC_ALLOW_GUESTS` | `false` (mặc định) = từ chối tài khoản khách B2B |
 | `OIDC_AUTO_LOGIN` / `OIDC_PROMPT` / `OIDC_DOMAIN_HINT` | SSO một lần: tự chuyển sang Microsoft (mặc định `true`), `prompt` để trống = dùng lại phiên App Proxy, gợi ý domain (vd `hsc.com.vn`) |
 | `ROLE_ADMIN` / `ROLE_OPERATOR` / `ROLE_VIEWER` | Giá trị App Role (mặc định `SRB.Admin` / `SRB.Operator` / `SRB.Viewer`) |
@@ -279,6 +291,7 @@ bash tests/run_e2e.sh tests/iphostgroup_test.py    # payload IPHostGroup + harde
 cd backend && PYTHONPATH=. python3 ../tests/sso_once_test.py && PYTHONPATH=. python3 ../tests/entra_review_test.py && cd ..   # SSO / Entra
 bash tests/run_e2e.sh tests/users_test.py          # quản lý người dùng, quyền Write/Readonly, khóa/xóa tức thì
 bash tests/run_e2e.sh tests/object_naming_test.py    # tên IP Host = IP/CIDR, tương thích object SOC_BLOCK_* cũ
+bash tests/run_e2e.sh tests/group_cache_test.py     # cache IP Host Group, quét lại sau chặn/bỏ chặn, logo
 cd backend && PYTHONPATH=. python3 ../tests/oidc_flow_test.py
 ```
 
@@ -288,6 +301,7 @@ cd backend && PYTHONPATH=. python3 ../tests/oidc_flow_test.py
 
 ```
 backend/app/config.py    cấu hình từ biến môi trường
+backend/app/group_cache.py  cache IP Host Group theo firewall (quét, khóa chống quét trùng, TTL)
 backend/app/crypto.py    mã hóa AES-256-GCM + token phiên HMAC (kèm vai trò)
 backend/app/policy.py    chính sách hardening: group cố định SCANPORT GROUP
 backend/app/users.py     quản lý người dùng: băm mật khẩu, quyền Write/Readonly, chống dò mật khẩu
@@ -298,7 +312,8 @@ backend/app/ipparse.py   bóc & kiểm tra IP/CIDR, safe-list
 backend/app/sophos.py    client XML API Sophos
 backend/app/service.py   luồng block/unblock/test + ghi audit
 backend/app/main.py      REST API + phục vụ frontend tĩnh
-frontend/                giao diện HTML5 (không framework)
+frontend/                giao diện HTML5 (không framework), token HSC Design System (hsc-tokens.css),
+                         font Inter tự host (assets/fonts, giấy phép OFL); icon dạng Lucide; logo do admin tải lên
 mock/mock_sophos.py      firewall Sophos giả lập để kiểm thử
 ```
 

@@ -190,6 +190,34 @@ class GroupSnapshot(Base):
     taken_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
 
 
+class GroupCache(Base):
+    """Cache danh sách thành viên IP Host Group theo từng firewall (v1.6) — hiển thị nhanh, quét lại sau mỗi thay đổi."""
+
+    __tablename__ = "group_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    firewall_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    group_name: Mapped[str] = mapped_column(String(120))
+    data_json: Mapped[str] = mapped_column(Text, default="{}")  # {description, ip_family, total, exists, members[]}
+    status: Mapped[str] = mapped_column(String(16), default="ok")  # ok | error
+    error: Mapped[str] = mapped_column(Text, default="")
+    scanned_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scan_ms: Mapped[int] = mapped_column(Integer, default=0)
+    dirty: Mapped[bool] = mapped_column(Boolean, default=False)  # có thay đổi, chờ quét lại
+    refreshing_since: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AppSetting(Base):
+    """Cấu hình giao diện dạng key/value (logo...)."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+    updated_by: Mapped[str] = mapped_column(String(120), default="")
+    updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class AppUser(Base):
     """Người dùng của app. Quyền: write (chặn/bỏ chặn) | readonly (chỉ xem); is_admin = quản trị user & firewall."""
 
