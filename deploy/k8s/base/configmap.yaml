@@ -9,6 +9,9 @@ data:
   # Từ v1.4.0 object mới đặt tên = IP/CIDR; HOST_PREFIX chỉ để nhận diện object kiểu cũ (SOC_BLOCK_*)
   HOST_PREFIX: "SOC_BLOCK_"
   API_TIMEOUT: "30"
+  API_CONNECT_TIMEOUT: "10"
+  GROUP_SCAN_TIMEOUT: "180"
+  HOST_LOOKUP_LIMIT: "25"
   ALLOW_PRIVATE: "false"
   # Safe-list: dải sẽ KHÔNG BAO GIỜ bị chặn.
   # Bổ sung dải VPN, đối tác, văn phòng của bạn vào đây trước khi go-live.
@@ -33,7 +36,11 @@ data:
   OIDC_REQUIRE_MFA_CLAIM: "false"
   OIDC_ALLOW_GUESTS: "false"
   # Cache IP Host Group (v1.6.0)
-  GROUP_CACHE_TTL_MINUTES: "30"
+  GROUP_CACHE_TTL_MINUTES: "1440"
+  GROUP_CACHE_DAILY_AT: "02:00"
+  GROUP_CACHE_CHECK_MINUTES: "10"
+  GROUP_CACHE_ERROR_RETRY_MINUTES: "30"
+  GROUP_CACHE_REFRESH_WAIT: "8"
   GROUP_CACHE_MIN_REFRESH_SECONDS: "5"
   GROUP_CACHE_WARMUP: "true"
   LOGO_MAX_KB: "300"

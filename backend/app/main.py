@@ -31,6 +31,9 @@ from .service import (
     _host_value,
     audit,
     block_on_firewall,
+    cached_details,
+    derive_host,
+    resolve_hosts,
     client_for,
     normalize_entries,
     test_firewall,
@@ -60,10 +63,11 @@ def _startup() -> None:
             {Firewall.default_group: BLOCK_GROUP}, synchronize_session=False
         )
         db.commit()
+    # Bộ lập lịch cache: lần đầu quét firewall chưa có cache/quá hạn, sau đó quét đầy đủ hằng ngày (TTL / GROUP_CACHE_DAILY_AT)
     if settings.GROUP_CACHE_WARMUP:
         import threading
 
-        threading.Thread(target=gc.warmup, name="group-cache-warmup", daemon=True).start()
+        threading.Thread(target=gc.scheduler_loop, name="group-cache-scheduler", daemon=True).start()
 
 
 # ------------------------------------------------------------------- helpers
@@ -423,7 +427,7 @@ def update_firewall(
           actor=user, client_ip=client_ip_of(request))
     db.commit()
     gc.mark_dirty(db, [fw.id])
-    bg.add_task(gc.refresh_now, fw.id, force=True)  # host/tài khoản có thể đã đổi
+    bg.add_task(gc.refresh_now, fw.id, force=True, mode="full")  # host/tài khoản có thể đã đổi
     return fw.to_dict()
 
 
@@ -479,10 +483,13 @@ def fw_groups(
     fw = get_fw(db, fw_id)
     row = gc.get_row(db, fw.id)
     if row is None or row.scanned_at is None:
-        row = gc.scan(db, fw)  # chưa có cache: quét trực tiếp một lần
+        row = _scan_wait(db, fw, "full") or row  # chưa có cache: quét (chờ tối đa GROUP_CACHE_REFRESH_WAIT giây)
     d = gc.data(row)
-    if row.status == "error" and not d:
-        raise HTTPException(502, row.error)
+    if row is None or not d:
+        if row is not None and row.status == "error":
+            raise HTTPException(502, row.error)
+        return {"firewall": fw.name, "default_group": BLOCK_GROUP, "locked": True, "groups": [],
+                "pending": True, "cache": gc.meta(row)}
     groups = []
     if d.get("exists"):
         groups = [{"name": d.get("group", BLOCK_GROUP), "description": d.get("description", ""),
@@ -491,9 +498,43 @@ def fw_groups(
             "cache": gc.meta(row)}
 
 
-def _schedule_refresh(bg: BackgroundTasks, fw_ids: list[int], force: bool = True) -> None:
+def _schedule_refresh(bg: BackgroundTasks, fw_ids: list[int], force: bool = True, mode: str = "lite",
+                      hints: dict[int, dict] | None = None) -> None:
+    """Sau thao tác ghi: quét NHẸ (group theo tên + chi tiết từ cache/tên) — nhanh kể cả firewall nhiều object."""
     for fid in dict.fromkeys(fw_ids):
-        bg.add_task(gc.refresh_now, fid, force=force)
+        bg.add_task(gc.refresh_now, fid, force=force, mode=mode, hints=(hints or {}).get(fid))
+
+
+def _scan_wait(db: Session, fw, mode: str = "full"):
+    """Quét trong luồng riêng, chờ tối đa GROUP_CACHE_REFRESH_WAIT giây.
+
+    Xong kịp → trả row mới. Firewall chậm → trả None, lượt quét vẫn chạy nền; giao diện hỏi /group-cache để cập nhật.
+    Tránh request treo quá timeout của Entra App Proxy (~85 giây) / NGINX.
+    """
+    import threading
+
+    t = threading.Thread(target=gc.refresh_now, args=(fw.id,), kwargs={"force": True, "mode": mode},
+                         name=f"scan-{fw.id}", daemon=True)
+    t.start()
+    t.join(settings.GROUP_CACHE_REFRESH_WAIT)
+    db.expire_all()
+    row = gc.get_row(db, fw.id)
+    return None if t.is_alive() else row
+
+
+def _block_hints(results: list[dict], reason: str) -> dict[int, dict]:
+    """Chi tiết object vừa tạo (giá trị + ghi chú = lý do) để cache hiển thị đủ ngay, không cần đọc lại firewall."""
+    out: dict[int, dict] = {}
+    for r in results:
+        h = {}
+        for row in r.get("rows", []):
+            if row.get("result") == "added" and row.get("object"):
+                v = row.get("value", "")
+                d = derive_host(v) or {}
+                h[row["object"]] = {**d, "name": row["object"], "description": (reason or "")[:255], "derived": False}
+        if h:
+            out[r["firewall_id"]] = h
+    return out
 
 
 @app.get("/api/firewalls/{fw_id}/group-members")
@@ -515,14 +556,20 @@ def fw_group_members(
     if refresh and row is not None and not gc.can_force(row):
         refresh = False  # vừa quét xong vài giây trước — dùng luôn kết quả đó
     if row is None or row.scanned_at is None or refresh:
-        row = gc.scan(db, fw, group)
-        source = "live"
+        new = _scan_wait(db, fw, "full")
+        if new is not None:
+            row, source = new, "live"
+        else:
+            row = gc.get_row(db, fw.id)  # firewall chậm: trả cache cũ (nếu có), lượt quét tiếp tục nền
+            if row is None or not gc.data(row):
+                return {"firewall": fw.name, "group": group, "description": "", "ip_family": "", "total": 0,
+                        "members": [], "source": "pending", "pending": True, "cache": gc.meta(row)}
     else:
         m = gc.meta(row)
         if (m["stale"] or m["dirty"]) and not m["refreshing"]:
             row.refreshing_since = dt.datetime.now(dt.timezone.utc)
             db.commit()
-            _schedule_refresh(bg, [fw.id])
+            _schedule_refresh(bg, [fw.id], mode="full" if m["stale"] else "lite")
     d = gc.data(row)
     if not d:
         raise HTTPException(502, row.error or f"Không đọc được group trên {fw.name}")
@@ -556,7 +603,8 @@ def group_cache_overview(db: Session = Depends(get_session), user: str = Depends
         d = gc.data(row)
         out.append({"firewall_id": fw.id, "firewall": fw.name, "site": fw.site, "enabled": fw.enabled,
                     "exists": d.get("exists"), "total": d.get("total"), **gc.meta(row)})
-    return {"group": BLOCK_GROUP, "ttl_minutes": settings.GROUP_CACHE_TTL_MINUTES, "firewalls": out}
+    return {"group": BLOCK_GROUP, "ttl_minutes": settings.GROUP_CACHE_TTL_MINUTES,
+            "daily_at": settings.GROUP_CACHE_DAILY_AT, "firewalls": out}
 
 
 # ------------------------------------------------------------------- parsing
@@ -604,7 +652,8 @@ def block(
     if not payload.get("dry_run"):
         changed = [r["firewall_id"] for r in results if r.get("summary", {}).get("added")]
         gc.mark_dirty(db, changed)
-        _schedule_refresh(bg, changed)  # quét lại group sau khi trả kết quả để cache khớp firewall
+        # quét nhẹ lại group sau khi trả kết quả để cache khớp firewall (kèm chi tiết object vừa tạo)
+        _schedule_refresh(bg, changed, hints=_block_hints(results, payload.get("reason") or ""))
     return {"entries": entries, "rejected": rejected, "results": results,
             "cache_refresh": [r["firewall_id"] for r in results if r.get("summary", {}).get("added")]
             if not payload.get("dry_run") else []}
@@ -792,7 +841,8 @@ def changes_sync(
             cli = client_for(fw)
             g = cli.get_group(group)
             hosts = list(g["hosts"]) if g else []
-            details = {h["name"]: _host_value(h) for h in cli.get_hosts(hosts)} if hosts else {}
+            det, _ = resolve_hosts(cli, hosts, cached_details(db, fw.id)) if hosts else ({}, [])
+            details = {n: _host_value(h) for n, h in det.items()}
             res = changelog.detect_drift(db, fw, group, {h: details.get(h, "") for h in hosts})
             db.commit()
             out.append({"firewall": fw.name, "group": group, "ok": True, "exists": bool(g),

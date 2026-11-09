@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import datetime as dt
+import ipaddress
+import json
+import logging
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import changelog
 from .config import settings
 from .crypto import decrypt
-from .db import AuditLog, Firewall
+from .db import AuditLog, Firewall, GroupCache
 from .ipparse import classify, host_object_name, legacy_object_name
 from .policy import BLOCK_GROUP, BLOCK_GROUP_FAMILY, GroupPolicyError
 from .sophos import SophosAuthError, SophosClient, SophosError, build_iphostgroup_xml, pretty_xml
@@ -22,7 +26,86 @@ def client_for(fw: Firewall) -> SophosClient:
         password=decrypt(fw.password_enc),
         verify_ssl=fw.verify_ssl,
         timeout=settings.API_TIMEOUT,
+        connect_timeout=settings.API_CONNECT_TIMEOUT,
     )
+
+
+log = logging.getLogger("service")
+
+
+def derive_host(name: str) -> dict | None:
+    """Suy ra chi tiết IP Host từ tên object (không cần gọi firewall).
+
+    Từ v1.4 tên object = chính IP/CIDR (`45.1.2.3`, `185.220.101.0/24`); bản cũ dùng `SOC_BLOCK_45_1_2_3`,
+    `SOC_BLOCK_185_220_101_0-24`. Tên khác (object tạo tay) trả về None → phải tra trên firewall.
+    """
+    raw = name.strip()
+    if settings.HOST_PREFIX and raw.startswith(settings.HOST_PREFIX):
+        raw = raw[len(settings.HOST_PREFIX):].replace("_", ".").replace("-", "/")
+    try:
+        if "/" in raw:
+            net = ipaddress.ip_network(raw, strict=False)
+            if net.version != 4:
+                return None
+            if net.prefixlen == 32:
+                return {"name": name, "host_type": "IP", "ip_address": str(net.network_address), "subnet": "",
+                        "start_ip": "", "end_ip": "", "description": "", "derived": True}
+            return {"name": name, "host_type": "Network", "ip_address": str(net.network_address),
+                    "subnet": str(net.netmask), "start_ip": "", "end_ip": "", "description": "", "derived": True}
+        ip = ipaddress.ip_address(raw)
+        if ip.version != 4:
+            return None
+        return {"name": name, "host_type": "IP", "ip_address": str(ip), "subnet": "",
+                "start_ip": "", "end_ip": "", "description": "", "derived": True}
+    except ValueError:
+        return None
+
+
+def cached_details(db: Session, fw_id: int) -> dict[str, dict]:
+    """Chi tiết IP Host đã biết từ lượt quét đầy đủ gần nhất (bảng group_cache)."""
+    row = db.scalar(select(GroupCache).where(GroupCache.firewall_id == fw_id))
+    if not row or not row.data_json:
+        return {}
+    try:
+        data = json.loads(row.data_json)
+    except ValueError:
+        return {}
+    return {d["name"]: d for d in data.get("details", []) if isinstance(d, dict) and d.get("name")}
+
+
+def resolve_hosts(cli: SophosClient, names: list[str], known: dict[str, dict] | None = None,
+                  *, full_timeout: int | None = None) -> tuple[dict[str, dict], list[str]]:
+    """Chi tiết các IP Host theo tên mà KHÔNG đọc toàn bộ IP Host của firewall nếu không cần.
+
+    Thứ tự: cache lượt quét đầy đủ → suy ra từ tên (IP/CIDR) → tra từng tên (≤ HOST_LOOKUP_LIMIT)
+    → nếu còn nhiều hơn thì mới đọc cả danh sách. Trả (chi tiết, danh sách tên chưa xác định được).
+    """
+    known = known or {}
+    out: dict[str, dict] = {}
+    unknown: list[str] = []
+    for n in names:
+        if n in known:
+            out[n] = known[n]
+        elif (d := derive_host(n)) is not None:
+            out[n] = d
+        else:
+            unknown.append(n)
+    if not unknown:
+        return out, []
+    try:
+        if len(unknown) <= settings.HOST_LOOKUP_LIMIT:
+            for n in unknown:
+                h = cli.get_host(n)
+                if h:
+                    out[n] = h
+        else:
+            want = set(unknown)
+            for h in cli.get_hosts(timeout=full_timeout or settings.GROUP_SCAN_TIMEOUT):
+                if h["name"] in want:
+                    out[h["name"]] = h
+    except SophosError as exc:
+        log.warning("Không tra được chi tiết %d IP Host: %s", len(unknown), exc)
+    return out, [n for n in unknown if n not in out]
 
 
 def audit(
@@ -163,18 +246,21 @@ def block_on_firewall(
     group_hosts = list(existing_group["hosts"])
 
     # Giá trị IP/CIDR của các thành viên hiện có (để nhận ra IP đã bị chặn, kể cả object tên kiểu cũ)
+    # v1.6.1: không đọc toàn bộ IP Host (chậm/timeout với firewall nhiều object) — dùng cache + suy từ tên.
     _all_hosts: list[dict] | None = None
 
     def all_hosts() -> list[dict]:
+        """Chỉ dùng khi hiếm gặp: firewall báo đã có object khác cùng IP (mã 503)."""
         nonlocal _all_hosts
         if _all_hosts is None:
-            _all_hosts = cli.get_hosts()
+            _all_hosts = cli.get_hosts(timeout=settings.GROUP_SCAN_TIMEOUT)
         return _all_hosts
 
     member_value: dict[str, str] = {}
     if group_hosts:
         try:
-            member_value = {h["name"]: _host_value(h) for h in all_hosts() if h["name"] in group_hosts}
+            det, _ = resolve_hosts(cli, group_hosts, cached_details(db, fw.id))
+            member_value = {n: _host_value(h) for n, h in det.items()}
         except Exception:  # noqa: BLE001
             member_value = {}
     in_group = {host_object_name(v): n for n, v in member_value.items() if v}
@@ -183,8 +269,7 @@ def block_on_firewall(
     try:
         changelog.detect_drift(
             db, fw, group, {h: "" for h in group_hosts},
-            resolve_values=lambda names: {n: member_value.get(n, "") for n in names}
-            if member_value else {h["name"]: _host_value(h) for h in cli.get_hosts(names)},
+            resolve_values=lambda names: {n: member_value.get(n, "") for n in names},
         )
     except Exception:  # noqa: BLE001 — không để drift chặn thao tác khẩn cấp
         pass
@@ -212,7 +297,7 @@ def block_on_firewall(
             if res.ok:
                 row.update(result="added", code=res.code, message=res.message)
             elif res.code == "502":  # đã có object đúng tên — chỉ dùng lại nếu trỏ đúng địa chỉ
-                cur = next((h for h in all_hosts() if h["name"] == obj), None)
+                cur = cli.get_host(obj)
                 cur_val = _host_value(cur) if cur else ""
                 if cur and host_object_name(cur_val) == obj:
                     row.update(result="existed", code=res.code, message="Object đã tồn tại, dùng lại")
@@ -334,8 +419,8 @@ def unblock_on_firewall(
         if not g:
             raise SophosError(f"Group '{group}' không tồn tại trên firewall này", "526")
         hosts = list(g["hosts"])
-        details = cli.get_hosts(hosts) if hosts else []
-        ip_of = {h["name"]: _host_value(h) for h in details}
+        det, _ = resolve_hosts(cli, hosts, cached_details(db, fw.id)) if hosts else ({}, [])
+        ip_of = {n: _host_value(h) for n, h in det.items()}
     except (SophosError, SophosAuthError, ValueError) as exc:
         msg = str(exc)
         mark_status(db, fw, "error", msg)

@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 import subprocess
 import tempfile
 from typing import Any
@@ -55,6 +56,21 @@ def _save(state: dict) -> None:
 
 
 STATE = _load()
+# Mô phỏng firewall chậm: số giây trễ khi Get toàn bộ IPHost (không Filter)
+FULL_DELAY = float(os.getenv("MOCK_FULL_IPHOST_DELAY", "0"))
+STATS = {"iphost_full": 0, "iphost_one": 0}
+
+
+@app.get("/_stats")
+def stats():
+    return STATS
+
+
+@app.post("/_delay")
+def set_delay(seconds: float = 0):
+    global FULL_DELAY
+    FULL_DELAY = seconds
+    return {"delay": FULL_DELAY}
 
 
 def _resp(body: str) -> Response:
@@ -119,8 +135,19 @@ def controller(reqxml: str = Form(default="")):
             return _resp("".join(out))
 
         if "IPHost" in get:
+            node = get.get("IPHost") or {}
+            name_filter = None
+            if isinstance(node, dict) and node.get("Filter"):
+                key = node["Filter"].get("key") or node["Filter"].get("Key")
+                if isinstance(key, dict):
+                    name_filter = key.get("#text")
+            STATS["iphost_full" if name_filter is None else "iphost_one"] += 1
+            if name_filter is None and FULL_DELAY:
+                time.sleep(FULL_DELAY)  # mô phỏng firewall nhiều object trả toàn bộ IP Host rất chậm
             out = []
             for name, h in STATE["hosts"].items():
+                if name_filter is not None and name != name_filter:
+                    continue
                 out.append(
                     f'<IPHost transactionid=""><Name>{name}</Name><IPFamily>IPv4</IPFamily>'
                     f"<HostType>{h['HostType']}</HostType>"

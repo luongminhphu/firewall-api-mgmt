@@ -141,12 +141,14 @@ class SophosClient:
         password: str,
         verify_ssl: bool = False,
         timeout: int = 30,
+        connect_timeout: int | None = None,
     ):
         self.url = f"https://{host}:{port}/webconsole/APIController"
         self.username = username
         self.password = password
         self.verify_ssl = verify_ssl
         self.timeout = timeout
+        self.connect_timeout = min(connect_timeout or timeout, timeout)
 
     # ------------------------------------------------------------------ core
     def _login_block(self) -> str:
@@ -157,10 +159,12 @@ class SophosClient:
             "</Login>"
         )
 
-    def _post(self, inner_xml: str) -> dict:
+    def _post(self, inner_xml: str, timeout: int | None = None) -> dict:
         reqxml = f"<Request>{self._login_block()}{inner_xml}</Request>"
+        read_t = timeout or self.timeout
+        tmo = httpx.Timeout(read_t, connect=min(self.connect_timeout, read_t))
         try:
-            with httpx.Client(verify=self.verify_ssl, timeout=self.timeout) as client:
+            with httpx.Client(verify=self.verify_ssl, timeout=tmo) as client:
                 resp = client.post(
                     self.url,
                     data={"reqxml": reqxml},
@@ -168,8 +172,10 @@ class SophosClient:
                 )
         except httpx.ConnectError as exc:
             raise SophosError(f"Không kết nối được tới {self.url} ({exc})") from exc
+        except httpx.ConnectTimeout as exc:
+            raise SophosError(f"Không kết nối được tới {self.url} trong {self.connect_timeout} giây", "timeout") from exc
         except httpx.TimeoutException as exc:
-            raise SophosError(f"Hết thời gian chờ khi gọi {self.url}") from exc
+            raise SophosError(f"Hết thời gian chờ ({read_t} giây) khi gọi {self.url}", "timeout") from exc
         except httpx.HTTPError as exc:  # cert, proxy, ...
             raise SophosError(f"Lỗi HTTP khi gọi firewall: {exc}") from exc
 
@@ -259,10 +265,25 @@ class SophosClient:
                 }
         return None
 
-    def get_hosts(self, names: list[str] | None = None) -> list[dict]:
-        """Đọc chi tiết IP Host. Nếu `names` rỗng thì lấy toàn bộ."""
-        inner = "<Get><IPHost></IPHost></Get>"
-        data = self._post(inner)
+    @staticmethod
+    def _host_dict(h: dict) -> dict:
+        return {
+            "name": h.get("Name"),
+            "host_type": h.get("HostType") or "",
+            "ip_address": h.get("IPAddress") or "",
+            "subnet": h.get("Subnet") or "",
+            "start_ip": h.get("StartIPAddress") or "",
+            "end_ip": h.get("EndIPAddress") or "",
+            "description": h.get("Description") or "",
+        }
+
+    def get_hosts(self, names: list[str] | None = None, timeout: int | None = None) -> list[dict]:
+        """Đọc TOÀN BỘ IP Host trên firewall rồi lọc theo `names` (nặng với firewall nhiều object).
+
+        Chỉ dùng cho lượt quét đầy đủ chạy nền (kèm timeout dài) hoặc trường hợp hiếm cần tra theo địa chỉ.
+        Thao tác tương tác dùng `get_host` / `service.resolve_hosts`.
+        """
+        data = self._post("<Get><IPHost></IPHost></Get>", timeout=timeout)
         wanted = set(names or [])
         out = []
         for h in _as_list(data.get("IPHost")):
@@ -270,18 +291,26 @@ class SophosClient:
                 continue
             if wanted and h["Name"] not in wanted:
                 continue
-            out.append(
-                {
-                    "name": h.get("Name"),
-                    "host_type": h.get("HostType") or "",
-                    "ip_address": h.get("IPAddress") or "",
-                    "subnet": h.get("Subnet") or "",
-                    "start_ip": h.get("StartIPAddress") or "",
-                    "end_ip": h.get("EndIPAddress") or "",
-                    "description": h.get("Description") or "",
-                }
-            )
+            out.append(self._host_dict(h))
         return out
+
+    def get_host(self, name: str) -> dict | None:
+        """Đọc đúng một IP Host theo tên (Filter Name =) — nhẹ, không phụ thuộc số object trên firewall."""
+        inner = (
+            "<Get><IPHost><Filter>"
+            f'<key name="Name" criteria="=">{_esc(name)}</key>'
+            "</Filter></IPHost></Get>"
+        )
+        try:
+            data = self._post(inner)
+        except SophosError as exc:
+            if exc.code == "526":
+                return None
+            raise
+        for h in _as_list(data.get("IPHost")):
+            if isinstance(h, dict) and h.get("Name") == name:
+                return self._host_dict(h)
+        return None
 
     # ------------------------------------------------------------ write: host
     def add_ip_host(self, name: str, kind: str, value: str, description: str = "") -> OpResult:

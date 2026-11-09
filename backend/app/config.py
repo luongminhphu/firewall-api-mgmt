@@ -31,6 +31,12 @@ class Settings:
 
     # Timeout gọi API firewall (giây).
     API_TIMEOUT: int = int(os.getenv("API_TIMEOUT", "30"))
+    # Timeout bắt tay TCP/TLS (giây) — firewall chết/không route thì báo lỗi nhanh, không chờ hết API_TIMEOUT.
+    API_CONNECT_TIMEOUT: int = int(os.getenv("API_CONNECT_TIMEOUT", "10"))
+    # Timeout đọc riêng cho lượt quét đầy đủ chạy nền (đọc mọi IP Host trên firewall) — firewall nhiều object cần lâu hơn.
+    GROUP_SCAN_TIMEOUT: int = int(os.getenv("GROUP_SCAN_TIMEOUT", "180"))
+    # Tra cứu chi tiết theo tên tối đa N object mỗi lượt; nhiều hơn thì đọc cả danh sách IP Host (GROUP_SCAN_TIMEOUT).
+    HOST_LOOKUP_LIMIT: int = int(os.getenv("HOST_LOOKUP_LIMIT", "25"))
 
     # Danh sách IP/CIDR không bao giờ được chặn (an toàn), phân tách bằng dấu phẩy.
     SAFE_LIST: str = os.getenv(
@@ -65,7 +71,15 @@ class Settings:
     # Bắt buộc token có claim amr chứa "mfa" (Conditional Access vẫn là lớp chính).
     OIDC_REQUIRE_MFA_CLAIM: bool = _bool(os.getenv("OIDC_REQUIRE_MFA_CLAIM"), False)
     # Cache IP Host Group (v1.6): quá TTL thì vẫn trả cache ngay và quét lại nền (stale-while-revalidate)
-    GROUP_CACHE_TTL_MINUTES: int = int(os.getenv("GROUP_CACHE_TTL_MINUTES", "30"))
+    # v1.6.1: mặc định 24 giờ. Sau mỗi lần chặn/bỏ chặn vẫn cập nhật ngay; TTL chỉ quyết định chu kỳ quét đầy đủ định kỳ.
+    GROUP_CACHE_TTL_MINUTES: int = int(os.getenv("GROUP_CACHE_TTL_MINUTES", "1440"))
+    # Giờ quét đầy đủ hằng ngày theo giờ Việt Nam (HH:MM), vd "02:00". Để trống = chỉ theo TTL.
+    GROUP_CACHE_DAILY_AT: str = os.getenv("GROUP_CACHE_DAILY_AT", "").strip()
+    # Chu kỳ bộ lập lịch kiểm tra cache (phút) và thời gian chờ trước khi thử lại firewall đang lỗi (phút).
+    GROUP_CACHE_CHECK_MINUTES: int = int(os.getenv("GROUP_CACHE_CHECK_MINUTES", "10"))
+    GROUP_CACHE_ERROR_RETRY_MINUTES: int = int(os.getenv("GROUP_CACHE_ERROR_RETRY_MINUTES", "30"))
+    # Bấm "Quét lại": chờ tối đa N giây để trả kết quả mới, quá thì trả cache + tiếp tục quét nền (tránh timeout App Proxy/NGINX).
+    GROUP_CACHE_REFRESH_WAIT: int = int(os.getenv("GROUP_CACHE_REFRESH_WAIT", "8"))
     GROUP_CACHE_MIN_REFRESH_SECONDS: int = int(os.getenv("GROUP_CACHE_MIN_REFRESH_SECONDS", "5"))
     GROUP_CACHE_WARMUP: bool = _bool(os.getenv("GROUP_CACHE_WARMUP"), True)
     LOGO_MAX_KB: int = int(os.getenv("LOGO_MAX_KB", "300"))
@@ -97,7 +111,7 @@ class Settings:
     HEADER_OPERATORS: str = os.getenv("HEADER_OPERATORS", "")
 
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "1.6.0"
+    APP_VERSION: str = "1.6.1"
 
     @property
     def auth_modes(self) -> list[str]:

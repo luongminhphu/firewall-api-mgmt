@@ -767,16 +767,21 @@
     if (c.refreshing || c.dirty) return `<span class="chip chip--info"><span class="spinner spinner--xs" aria-hidden="true"></span>Đang quét lại</span>`;
     if (c.status === "error") return `<span class="chip chip--err" title="${esc(c.error)}">Lỗi lần quét cuối</span>`;
     if (!c.cached) return `<span class="chip">Chưa có cache</span>`;
-    if (c.stale) return `<span class="chip chip--warn">Cũ hơn TTL</span>`;
+    if (c.details_mode === "partial")
+      return `<span class="chip chip--warn" title="${esc(c.note || "")}">Chi tiết chưa đầy đủ</span>`;
+    if (c.stale) return `<span class="chip chip--warn">Đến hạn quét lại</span>`;
     return `<span class="chip chip--ok">Mới</span>`;
   }
+  const fmtTtl = (m) => (m >= 60 && m % 60 === 0 ? `${m / 60} giờ` : `${m} phút`);
 
   async function loadOverview() {
     const box = $("#g-overview");
     if (!box.children.length) box.innerHTML = `<div class="skeleton"></div>`;
     try {
       const r = await api("/api/group-cache");
-      $("#g-ov-note").textContent = `Danh sách ${r.group} được lưu cache (TTL ${r.ttl_minutes} phút) để hiển thị tức thì; tự quét lại sau mỗi lần chặn/bỏ chặn.`;
+      $("#g-ov-note").textContent =
+        `Danh sách ${r.group} được lưu cache để hiển thị tức thì: cập nhật ngay sau mỗi lần chặn/bỏ chặn, ` +
+        `quét đầy đủ định kỳ mỗi ${fmtTtl(r.ttl_minutes)}${r.daily_at ? ` và lúc ${r.daily_at} hằng ngày` : ""}.`;
       const cur = $("#g-fw").value;
       box.innerHTML = r.firewalls.length
         ? r.firewalls
@@ -831,11 +836,15 @@
     if (!el) return;
     const src = r?.source === "live" ? "Vừa quét trực tiếp từ firewall" : "Từ cache";
     const busy = c.dirty || c.refreshing;
+    const full = c.full_scanned_at
+      ? ` · quét đầy đủ lúc <strong class="mono">${fmtScan(c.full_scanned_at)}</strong>, kế tiếp ~<span class="mono">${fmtScan(c.next_full_scan_at)}</span>`
+      : "";
     el.innerHTML = `${cacheTag(c)}
       <span class="muted">${r ? src + " · " : ""}cập nhật lúc <strong class="mono">${fmtScan(c.scanned_at)}</strong>${
       c.age_s != null ? ` (${fmtAge(c.age_s)})` : ""
-    }${c.scan_ms != null ? ` · quét mất ${c.scan_ms < 1000 ? c.scan_ms + " ms" : (c.scan_ms / 1000).toFixed(1) + " giây"}` : ""}</span>
-      ${c.status === "error" && c.error ? `<span class="chip chip--err">${esc(c.error)}</span>` : ""}`;
+    }${c.scan_ms != null ? ` · quét mất ${c.scan_ms < 1000 ? c.scan_ms + " ms" : (c.scan_ms / 1000).toFixed(1) + " giây"}` : ""}${full}</span>
+      ${c.status === "error" && c.error ? `<span class="chip chip--err">${esc(c.error)}</span>` : ""}
+      ${c.details_mode === "partial" && c.note ? `<span class="cache-note tiny">${esc(c.note)}</span>` : ""}`;
     el.classList.toggle("is-busy", busy);
   }
   $("#g-search").addEventListener("input", () => renderMembers(filterMembers()));
@@ -846,6 +855,11 @@
     $("#g-meta").innerHTML = `<span class="skeleton" style="width:220px"></span>`;
     try {
       const r = await api(`/api/firewalls/${id}/groups`);
+      if (r.pending) {
+        await loadMembers();
+        loadOverview();
+        return;
+      }
       if (!r.groups.length) {
         $("#g-meta").innerHTML = `<span class="chip chip--err">Chưa có IP Host Group '${esc(
           state.blockGroup
@@ -878,6 +892,17 @@
         `/api/firewalls/${id}/group-members?group=${encodeURIComponent(group)}${refresh ? "&refresh=1" : ""}`
       );
       state.groupMembers = r.members;
+      if (r.pending) {
+        $("#g-meta").innerHTML = `<span class="cache-meta" id="g-cache"></span>`;
+        $("#g-cache").innerHTML = `<span class="chip chip--info"><span class="spinner spinner--xs" aria-hidden="true"></span>Đang quét lần đầu</span>
+          <span class="muted">Firewall phản hồi chậm — danh sách sẽ tự hiện khi quét xong.</span>`;
+        $("#g-table").querySelector("tbody").innerHTML = `<tr><td colspan="5"><div class="skeleton"></div></td></tr>`;
+        watchCache([Number(id)]);
+        btn.disabled = false;
+        return;
+      }
+      if (refresh && r.source === "cache" && r.cache?.refreshing)
+        toast("Firewall phản hồi chậm — đang hiển thị cache, quét tiếp ở chế độ nền", "");
       $("#g-meta").innerHTML = `
         <span>Firewall: <strong>${esc(r.firewall)}</strong></span>
         <span>Group: <strong>${esc(r.group)}</strong></span>

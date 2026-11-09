@@ -4,6 +4,14 @@ Mini app HTML5 + FastAPI giúp team SOC/NOC dán thẳng đoạn chat Teams (ho�
 bóc IP tự động và đẩy vào **IP Host Group** trên **nhiều Sophos Firewall** cùng lúc qua XML API —
 thao tác được từ điện thoại trong ngày nghỉ lễ Tết.
 
+**Mới ở v1.6.1** — Sửa lỗi "Hết thời gian chờ" với firewall chậm khi quét object group:
+- Nguyên nhân: bản cũ đọc **toàn bộ** IP Host object trên firewall (`<Get><IPHost/>`) để lấy chi tiết thành viên SCANPORT GROUP, dùng cả khi chặn và bỏ chặn. Firewall có nhiều object sẽ vượt `API_TIMEOUT` 30 giây.
+- Chặn/bỏ chặn không còn phụ thuộc lệnh nặng này: chi tiết lấy từ cache, suy từ tên object (tên = IP) hoặc tra cứu từng object theo tên (tối đa `HOST_LOOKUP_LIMIT`).
+- Sau mỗi lần chặn/bỏ chặn: quét nhẹ (chỉ đọc group + object liên quan) để cập nhật cache ngay.
+- Quét đầy đủ có timeout riêng `GROUP_SCAN_TIMEOUT` (mặc định 180 giây); nếu vẫn quá hạn, cache vẫn cập nhật danh sách thành viên và gắn nhãn "Chi tiết chưa đầy đủ".
+- TTL cache mặc định 24 giờ (`GROUP_CACHE_TTL_MINUTES=1440`) + quét đầy đủ hằng ngày lúc `GROUP_CACHE_DAILY_AT` (mặc định 02:00 giờ VN).
+- Nút "Quét lại" chờ tối đa `GROUP_CACHE_REFRESH_WAIT` giây rồi chạy tiếp ở chế độ nền (tránh timeout của App Proxy).
+
 **Mới ở v1.6.0** — Danh sách IP Host Group hiển thị tức thì nhờ cache lưu trong PostgreSQL (dùng chung mọi pod):
 mở tab chỉ đọc cache (~5 ms thay vì gọi firewall vài giây), cache cũ hơn `GROUP_CACHE_TTL_MINUTES` thì vẫn hiển thị ngay và quét lại nền;
 sau mỗi lần chặn/bỏ chặn app tự quét lại firewall bị thay đổi để cập nhật cache, nút "Quét lại" đọc trực tiếp từ firewall
@@ -121,7 +129,13 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 | `OIDC_TENANT_ID` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | Thông tin App registration trên Entra ID |
 | `OIDC_REDIRECT_URI` | `<External URL>/api/auth/oidc/callback` |
 | `OIDC_REQUIRE_MFA_CLAIM` | `true` = từ chối token có claim `amr` nhưng thiếu `mfa` (id_token v2.0 thường không có `amr`; MFA do Conditional Access bảo đảm) |
-| `GROUP_CACHE_TTL_MINUTES` | Tuổi tối đa của cache IP Host Group trước khi tự quét lại nền (mặc định 30) |
+| `GROUP_CACHE_TTL_MINUTES` | Chu kỳ quét đầy đủ IP Host Group (mặc định 1440 = 24 giờ) |
+| `GROUP_CACHE_DAILY_AT` | Giờ quét đầy đủ hằng ngày, định dạng HH:MM giờ VN (mặc định 02:00, để trống để tắt) |
+| `GROUP_CACHE_REFRESH_WAIT` | Số giây nút "Quét lại" chờ trước khi chuyển sang chạy nền (mặc định 8) |
+| `GROUP_CACHE_ERROR_RETRY_MINUTES` | Thử quét lại sau lỗi (mặc định 30 phút) |
+| `API_CONNECT_TIMEOUT` | Timeout kết nối TCP/TLS tới firewall (mặc định 10 giây) |
+| `GROUP_SCAN_TIMEOUT` | Timeout riêng cho quét đầy đủ IP Host trên firewall nhiều object (mặc định 180 giây) |
+| `HOST_LOOKUP_LIMIT` | Số object tối đa tra cứu từng cái theo tên trước khi đọc toàn bộ (mặc định 25) |
 | `GROUP_CACHE_MIN_REFRESH_SECONDS` | Giãn cách tối thiểu giữa hai lần bấm "Quét lại" (mặc định 5) |
 | `GROUP_CACHE_WARMUP` | `true` = quét toàn bộ firewall khi app khởi động để cache sẵn |
 | `LOGO_MAX_KB` | Dung lượng tối đa logo tải lên (mặc định 300) |
@@ -292,6 +306,7 @@ cd backend && PYTHONPATH=. python3 ../tests/sso_once_test.py && PYTHONPATH=. pyt
 bash tests/run_e2e.sh tests/users_test.py          # quản lý người dùng, quyền Write/Readonly, khóa/xóa tức thì
 bash tests/run_e2e.sh tests/object_naming_test.py    # tên IP Host = IP/CIDR, tương thích object SOC_BLOCK_* cũ
 bash tests/run_e2e.sh tests/group_cache_test.py     # cache IP Host Group, quét lại sau chặn/bỏ chặn, logo
+GROUP_SCAN_TIMEOUT=3 API_TIMEOUT=2 GROUP_CACHE_REFRESH_WAIT=2 bash tests/run_e2e.sh tests/slow_fw_test.py  # firewall chậm
 cd backend && PYTHONPATH=. python3 ../tests/oidc_flow_test.py
 ```
 
