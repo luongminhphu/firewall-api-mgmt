@@ -91,6 +91,8 @@ backend/app/
   modules/                firewalls/, ipblock/ (chặn/bỏ chặn, cache group, lịch sử thay đổi), audit/, branding/
 ```
 
+Frontend: ES module thuần, không build — `frontend/js/main.js` (ghép nối) + `pages/*` (từng tab) + `components/*`.
+
 Kiểm thử: `bash tests/run_e2e.sh tests/<tên>_test.py` (SQLite); thêm `E2E_DATABASE_URL=postgresql+psycopg2://…`
 để chạy trên PostgreSQL. `tests/contract_test.py` khóa danh sách API và hình dạng response.
 

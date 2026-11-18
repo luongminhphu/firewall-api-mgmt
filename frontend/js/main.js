@@ -1,115 +1,20 @@
-/* SOC Rapid Block — điểm khởi động frontend (ES module, không build step) */
-import { API, api, setUnauthorizedHandler } from "./api.js";
+/* SOC Rapid Block — điểm ghép nối frontend (ES module, không build step):
+   khởi động sau đăng nhập (boot), điều hướng tab, phân quyền giao diện, sáng/tối, trình tự đăng nhập lúc mở trang.
+   Nghiệp vụ từng màn hình nằm ở pages/*, dùng chung ở api.js / store.js / components/*. */
+import { API, api } from "./api.js";
 import { toast } from "./components/toast.js";
 import { loadAudit } from "./pages/audit.js";
+import { loadBranding } from "./pages/branding.js";
 import { loadChanges } from "./pages/changes.js";
 import { loadFirewalls } from "./pages/firewalls.js";
 import { loadGroupsForSelectedFw } from "./pages/groups.js";
 import { loadUsers } from "./pages/users.js";
 import { initRouter, showInitial } from "./router.js";
-// Các trang tự gắn sự kiện khi được nạp (kể cả trang không export gì cho main, vd Chặn nhanh)
-import "./pages/block.js";
+import { autoSso, initLogin, logout, sess, setAfterLogin, showLoginError, tryHeaderSso } from "./session.js";
 import { can, ROLE_LABEL, state, tokenStore as store } from "./store.js";
 import { $, $$, esc } from "./util.js";
-
-// ------------------------------------------------------------------ login
-$("#login-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const err = $("#login-error");
-  err.classList.add("hidden");
-  try {
-    const r = await api("/api/login", {
-      method: "POST",
-      body: { user: $("#login-user").value, password: $("#login-pass").value },
-    });
-    state.token = r.token;
-    state.user = r.user;
-    store?.setItem("sb_token", r.token);
-    await boot();
-  } catch (ex) {
-    err.textContent = ex.message;
-    err.classList.remove("hidden");
-  }
-});
-
-function showLoginError(msg) {
-  const err = $("#login-error");
-  err.textContent = msg;
-  err.classList.remove("hidden");
-}
-
-async function initLogin() {
-  try {
-    const m = await api("/api/auth/modes");
-    state.authModes = m;
-    // Có SSO Microsoft → form mật khẩu thu gọn thành đường khẩn cấp
-    $("#local-box").classList.toggle("hidden", !m.local || m.oidc);
-    $("#local-toggle").classList.toggle("hidden", !(m.local && m.oidc));
-    $("#sso-box").classList.toggle("hidden", !m.oidc);
-    if (m.oidc && !m.oidc_ready) {
-      $("#sso-hint").textContent = "Đăng nhập Microsoft chưa cấu hình đủ: " + m.oidc_message;
-      $("#sso-hint").classList.remove("hidden");
-    }
-    $("#sso-btn").href = ssoUrl();
-    return m;
-  } catch {
-    return null;
-  }
-}
-
-// UPN lần đăng nhập Microsoft trước → login_hint để Entra chọn đúng tài khoản, không hiện bảng chọn
-function ssoUrl() {
-  let hint = "";
-  try { hint = localStorage.getItem("sb_last_upn") || ""; } catch {}
-  return `${API}/api/auth/oidc/login` + (hint ? `?hint=${encodeURIComponent(hint)}` : "");
-}
-const sess = (() => { try { return window.sessionStorage; } catch { return null; } })();
-
-$("#local-toggle").addEventListener("click", () => {
-  $("#local-box").classList.remove("hidden");
-  $("#local-toggle").classList.add("hidden");
-  $("#login-user").focus();
-});
-
-function autoSso(modes) {
-  if (!modes?.oidc_auto) return false;
-  if (sess?.getItem("sb_no_auto") === "1") return false; // vừa bấm Thoát → không tự đăng nhập lại
-  const last = Number(sess?.getItem("sb_auto_ts") || 0);
-  if (Date.now() - last < 60_000) return false; // chống vòng lặp chuyển hướng
-  sess?.setItem("sb_auto_ts", String(Date.now()));
-  $("#sso-auto").classList.remove("hidden");
-  $("#sso-box").classList.add("hidden");
-  location.replace(ssoUrl());
-  return true;
-}
-
-async function tryHeaderSso() {
-  try {
-    const r = await api("/api/auth/header", { method: "POST" });
-    state.token = r.token;
-    store?.setItem("sb_token", r.token);
-    await boot();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function logout(manual) {
-  state.token = "";
-  store?.removeItem("sb_token");
-  if (manual === true) {
-    sess?.setItem("sb_no_auto", "1");
-    if (state.authModes?.oidc) {
-      $("#sso-hint").textContent = "Đã thoát khỏi app. Bấm nút trên để vào lại bằng tài khoản Microsoft.";
-      $("#sso-hint").className = "alert alert--info";
-    }
-  }
-  $("#app").classList.add("hidden");
-  $("#login-screen").classList.remove("hidden");
-}
-$("#logout").addEventListener("click", () => logout(true));
-setUnauthorizedHandler(() => logout());
+// Các trang tự gắn sự kiện khi được nạp (kể cả trang không export gì cho main, vd Chặn nhanh)
+import "./pages/block.js";
 
 async function boot() {
   state.config = await api("/api/config");
@@ -139,94 +44,7 @@ async function boot() {
   loadBranding();
   showInitial(); // deep link #tab (tab không được phép → Chặn nhanh)
 }
-
-// ---------------------------------------------------------------- branding
-const brandState = { hasLogo: false, url: "", maxKb: 300, pending: null };
-async function loadBranding() {
-  try {
-    const r = await api("/api/branding");
-    brandState.hasLogo = !!r.has_logo;
-    brandState.url = r.logo_url ? `${API}${r.logo_url}` : "";
-    brandState.maxKb = r.logo_max_kb || 300;
-  } catch {
-    brandState.hasLogo = false;
-  }
-  $$(".js-brand-logo").forEach((img) => {
-    if (brandState.hasLogo) {
-      img.src = brandState.url;
-      img.hidden = false;
-    } else {
-      img.removeAttribute("src");
-      img.hidden = true;
-    }
-  });
-  $$(".js-brand-divider").forEach((el) => (el.hidden = !brandState.hasLogo));
-  $$(".js-default-logo").forEach((el) => el.classList.toggle("hidden", brandState.hasLogo));
-  renderLogoCard();
-}
-
-function renderLogoCard() {
-  const box = $("#logo-preview");
-  if (!box) return;
-  $("#logo-max").textContent = brandState.maxKb;
-  const src = brandState.pending?.dataUrl || (brandState.hasLogo ? brandState.url : "");
-  box.innerHTML = src
-    ? `<img src="${esc(src)}" alt="Xem trước logo" />`
-    : `<span class="muted tiny">Chưa có logo — đang dùng biểu tượng mặc định</span>`;
-  $("#logo-save").disabled = !brandState.pending;
-  $("#logo-save").classList.toggle("btn--primary", !!brandState.pending);
-  $("#logo-remove").disabled = !brandState.hasLogo || !!brandState.pending;
-}
-
-function logoMsg(text, kind) {
-  const el = $("#logo-msg");
-  el.textContent = text;
-  el.className = `alert alert--${kind}`;
-  if (!text) el.className = "alert hidden";
-}
-
-$("#logo-pick").addEventListener("click", () => $("#logo-file").click());
-$("#logo-file").addEventListener("change", (e) => {
-  const f = e.target.files[0];
-  e.target.value = "";
-  if (!f) return;
-  const okType = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"].includes(f.type);
-  if (!okType) return logoMsg("Chỉ nhận PNG, JPG, WebP hoặc SVG.", "error");
-  if (f.size > brandState.maxKb * 1024)
-    return logoMsg(`Tệp ${Math.ceil(f.size / 1024)} KB vượt giới hạn ${brandState.maxKb} KB.`, "error");
-  const reader = new FileReader();
-  reader.onload = () => {
-    brandState.pending = { dataUrl: reader.result, name: f.name };
-    logoMsg(`Xem trước ${f.name} — bấm Lưu logo để áp dụng cho mọi người dùng.`, "info");
-    renderLogoCard();
-  };
-  reader.readAsDataURL(f);
-});
-$("#logo-save").addEventListener("click", async () => {
-  if (!brandState.pending) return;
-  const btn = $("#logo-save");
-  btn.disabled = true;
-  try {
-    await api("/api/branding/logo", { method: "PUT", body: { data_url: brandState.pending.dataUrl } });
-    brandState.pending = null;
-    logoMsg("Đã lưu logo.", "ok");
-    toast("Đã cập nhật logo", "ok");
-    await loadBranding();
-  } catch (ex) {
-    logoMsg(ex.message, "error");
-    renderLogoCard();
-  }
-});
-$("#logo-remove").addEventListener("click", async () => {
-  if (!confirm("Gỡ logo và dùng lại biểu tượng mặc định?")) return;
-  try {
-    await api("/api/branding/logo", { method: "DELETE" });
-    logoMsg("Đã gỡ logo.", "ok");
-    await loadBranding();
-  } catch (ex) {
-    logoMsg(ex.message, "error");
-  }
-});
+setAfterLogin(boot);
 
 // ------------------------------------------------------------------- tabs
 initRouter((tab) => {

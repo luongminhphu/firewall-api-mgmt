@@ -150,6 +150,17 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.waitForFunction(() => /ui\.smoke/.test(document.querySelector("#u-table")?.textContent || ""));
     chk("tạo người dùng → hiện trong bảng", true);
 
+    // Logo (tab Người dùng → Logo hiển thị): tải PNG lên, hiện ở thanh trên, rồi gỡ
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40)]);
+    await page.setInputFiles("#logo-file", { name: "logo.png", mimeType: "image/png", buffer: png });
+    await page.waitForFunction(() => !document.querySelector("#logo-save").disabled);
+    await page.click("#logo-save");
+    await page.waitForFunction(() => [...document.querySelectorAll(".js-brand-logo")].some((i) => !i.hidden && i.src));
+    chk("tải logo → hiện ở giao diện", true);
+    await page.click("#logo-remove");
+    await page.waitForFunction(() => [...document.querySelectorAll(".js-brand-logo")].every((i) => i.hidden));
+    chk("gỡ logo → về biểu tượng mặc định", true);
+
     // Giao diện sáng/tối
     const before = await page.evaluate(() => document.documentElement.dataset.theme || "");
     await page.click("#theme-toggle");

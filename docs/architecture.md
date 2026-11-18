@@ -1,6 +1,6 @@
 # SOC Rapid Block — Kiến trúc: hiện trạng, kiến trúc đích, kế hoạch chuyển đổi
 
-> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. **Phase 1 xong** (commit 1.0–1.9, §10). Tiếp theo: phase 2.
+> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. **Phase 1–2 xong** (§10, §11). Tiếp theo: phase 3 (VPN B1).
 > Áp dụng cho: v1.7.0 (commit `88e54eb` trên `main`).
 > Phạm vi: (A) tái cấu trúc backend + frontend **không đổi hành vi**; (B) module VPN (B1 tài khoản, B2 thời hạn qua firewall rule).
 
@@ -387,3 +387,28 @@ Bước đầu phase 3: công cụ **`tools/sophos_sample.py`** (chỉ đọc) �
 Toàn bộ test chạy được trên SQLite và PostgreSQL 16 (`E2E_DATABASE_URL`). Khác biệt hành vi có chủ đích duy nhất:
 lỗi validate body trả **400** (trước là 422 của FastAPI — frontend chưa từng gửi body sai kiểu), và response có thêm
 header `X-Request-ID`.
+
+---
+
+## 11. Nhật ký thực hiện phase 2 (frontend)
+
+| Bước | Kết quả |
+|---|---|
+| 2.0 | `tests/ui_smoke.cjs` (Playwright, trình duyệt thật) — xanh với `app.js` cũ trước khi tách; phát hiện lỗi thông báo "Đã thêm firewall" bị ẩn → sửa ở commit `fix(ui)` riêng |
+| 2.1 | `app.js` → `js/main.js` (`<script type="module">`) + `util.js`, `store.js`, `api.js`, `components/toast.js`; `tests/frontend_lint_test.py` (ESLint no-undef / no-unused-vars) |
+| 2.2 | `router.js` (deep link `#tab`, Back/Forward, ARIA tablist) + `components/{badge,progress,table}.js` |
+| 2.3–2.9 | `pages/{audit,changes,users,groups,firewalls,block,branding}.js`, `session.js`; trang không import lẫn nhau mà dùng bus `store.on/emit` (`firewalls`, `cache-refresh`); `main.js` chỉ còn ghép nối (~120 dòng) |
+
+Cấu trúc:
+
+```
+frontend/js/
+  main.js        boot sau đăng nhập, router, phân quyền giao diện, sáng/tối, trình tự đăng nhập lúc mở trang
+  session.js     form mật khẩu, SSO Microsoft, header SSO, Thoát
+  api.js  store.js  router.js  util.js
+  components/    badge, progress, table, toast
+  pages/         block, groups, firewalls, changes, audit, users, branding
+```
+
+`components/modal|filterbar|pagination` **chưa tạo** vì giao diện hiện tại chưa cần (tránh mã chết) — sẽ thêm cùng
+dashboard VPN ở phase 4. Smoke UI: 37 kiểm tra (mọi tab, chặn/bỏ chặn, logo, router, viewer, điện thoại 390px).
