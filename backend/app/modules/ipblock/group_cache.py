@@ -13,13 +13,13 @@ import datetime as dt
 import ipaddress
 import json
 import logging
-import threading
 import time
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import changelog
+from ...core import jobs
 from ...core.config import settings
 from ...core.db import SessionLocal
 from ...core.models import Firewall, GroupCache
@@ -28,8 +28,6 @@ from .service import _host_value, client_for, resolve_hosts
 from ...integrations.sophos import SophosAuthError, SophosError
 
 log = logging.getLogger("group_cache")
-_locks: dict[int, threading.Lock] = {}
-_locks_guard = threading.Lock()
 # Khóa mềm quá hạn coi như pod chết giữa chừng; phải dài hơn một lượt quét đầy đủ chậm nhất.
 STALE_LOCK = dt.timedelta(seconds=max(300, settings.GROUP_SCAN_TIMEOUT + settings.API_TIMEOUT + 60))
 _attempts: dict[int, float] = {}  # lần thử quét gần nhất (monotonic) — để giãn cách thử lại firewall lỗi
@@ -44,11 +42,6 @@ def _aware(t: dt.datetime | None) -> dt.datetime | None:
     if t is None:
         return None
     return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)
-
-
-def _lock(fw_id: int) -> threading.Lock:
-    with _locks_guard:
-        return _locks.setdefault(fw_id, threading.Lock())
 
 
 def _member(name: str, d: dict) -> dict:
@@ -162,9 +155,13 @@ def _claim(db: Session, fw_id: int) -> bool:
 
 def refresh_now(fw_id: int, *, force: bool = False, mode: str = "full", hints: dict[str, dict] | None = None) -> None:
     """Quét lại một firewall với session riêng (dùng cho background task / lập lịch / khởi động)."""
-    lk = _lock(fw_id)
-    if not lk.acquire(blocking=force):
-        return  # đang có lượt quét khác trong pod này
+    with jobs.lock(f"gc-scan:{fw_id}", blocking=force) as got:
+        if not got:
+            return  # đang có lượt quét khác
+        _refresh_locked(fw_id, force=force, mode=mode, hints=hints)
+
+
+def _refresh_locked(fw_id: int, *, force: bool, mode: str, hints: dict[str, dict] | None) -> None:
     try:
         with SessionLocal() as db:
             fw = db.get(Firewall, fw_id)
@@ -179,8 +176,6 @@ def refresh_now(fw_id: int, *, force: bool = False, mode: str = "full", hints: d
             scan(db, fw, mode=mode, hints=hints)
     except Exception:  # noqa: BLE001
         log.exception("Quét cache firewall %s lỗi", fw_id)
-    finally:
-        lk.release()
 
 
 def mark_dirty(db: Session, fw_ids: list[int]) -> None:
@@ -318,17 +313,15 @@ def run_due(now: dt.datetime | None = None) -> list[int]:
     return due
 
 
-def scheduler_loop(stop: threading.Event | None = None) -> None:
-    """Luồng nền: khởi động quét các firewall chưa có cache/quá hạn, sau đó kiểm tra mỗi GROUP_CACHE_CHECK_MINUTES."""
-    stop = stop or threading.Event()
-    while not stop.is_set():
-        try:
-            done = run_due()
-            if done:
-                log.info("Đã quét đầy đủ định kỳ %d firewall: %s", len(done), done)
-        except Exception:  # noqa: BLE001
-            log.exception("Vòng lập lịch cache lỗi")
-        stop.wait(max(60, settings.GROUP_CACHE_CHECK_MINUTES * 60))
+def _tick() -> None:
+    done = run_due()
+    if done:
+        log.info("Đã quét đầy đủ định kỳ %d firewall: %s", len(done), done)
+
+
+def start_scheduler() -> None:
+    """Quét các firewall chưa có cache/quá hạn ngay, sau đó kiểm tra mỗi GROUP_CACHE_CHECK_MINUTES (một pod/vòng)."""
+    jobs.every("group-cache", max(60, settings.GROUP_CACHE_CHECK_MINUTES * 60), _tick)
 
 
 def warmup() -> None:

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ... import jobs
+from ...core import jobs
 from ...auth.rbac import current_user, operator, principal, role_at_least
 from ...core.config import settings
 from ...core.db import get_session

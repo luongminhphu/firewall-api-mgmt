@@ -5,7 +5,7 @@ from fastapi import APIRouter, BackgroundTasks, Body, Depends, Request
 from sqlalchemy.orm import Session
 
 from ... import group_cache as gc
-from ... import jobs
+from ...core import jobs
 from ...auth.rbac import admin, current_user, operator
 from ...core.config import settings
 from ...core.db import get_session

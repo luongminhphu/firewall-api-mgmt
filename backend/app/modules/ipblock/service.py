@@ -4,7 +4,6 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
-import threading
 from contextlib import contextmanager
 
 from sqlalchemy import select
@@ -12,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from . import changelog
 from ...core.config import settings
+from ...core import jobs
 from ...core.audit import audit
 from ...core.models import Firewall, GroupCache
 from ..firewalls.service import client_for, mark_status, test_firewall  # noqa: F401
@@ -22,20 +22,14 @@ from ...integrations.sophos import SophosAuthError, SophosClient, SophosError, b
 
 log = logging.getLogger("service")
 
-_fw_locks: dict[int, threading.Lock] = {}
-_fw_locks_guard = threading.Lock()
-
-
 @contextmanager
 def fw_lock(fw_id: int):
-    """Tuần tự hóa thao tác ghi trên CÙNG một firewall trong tiến trình này.
+    """Tuần tự hóa thao tác ghi trên CÙNG một firewall — trong pod và giữa các pod (core.jobs.lock).
 
     Sophos chỉ cho ghi lại toàn bộ HostList của group → hai lệnh chặn song song trên cùng firewall
     (hai người bấm cùng lúc) có thể ghi đè thành viên của nhau. Firewall khác nhau vẫn chạy song song.
     """
-    with _fw_locks_guard:
-        lock = _fw_locks.setdefault(fw_id, threading.Lock())
-    with lock:
+    with jobs.lock(f"fw-write:{fw_id}"):
         yield
 
 
