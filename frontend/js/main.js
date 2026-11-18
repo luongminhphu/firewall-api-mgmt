@@ -1,6 +1,10 @@
 /* SOC Rapid Block — điểm khởi động frontend (ES module, không build step) */
 import { API, api, errorBox, runJob, setUnauthorizedHandler } from "./api.js";
+import { resultChip } from "./components/badge.js";
+import { progressBox, reduceMotion, setBusy } from "./components/progress.js";
+import { tableMessage } from "./components/table.js";
 import { toast } from "./components/toast.js";
+import { initRouter, showInitial } from "./router.js";
 import { ROLE_LABEL, can, state, tokenStore as store } from "./store.js";
 import { $, $$, ICON, esc, fmtTime } from "./util.js";
 
@@ -129,6 +133,7 @@ async function boot() {
   }
   await loadFirewalls();
   loadBranding();
+  showInitial(); // deep link #tab (tab không được phép → Chặn nhanh)
 }
 
 // ---------------------------------------------------------------- branding
@@ -220,15 +225,11 @@ $("#logo-remove").addEventListener("click", async () => {
 });
 
 // ------------------------------------------------------------------- tabs
-$("#tabs").addEventListener("click", (e) => {
-  const btn = e.target.closest(".tab");
-  if (!btn) return;
-  $$(".tab").forEach((t) => t.classList.toggle("is-active", t === btn));
-  $$(".panel").forEach((p) => p.classList.toggle("is-active", p.dataset.panel === btn.dataset.tab));
-  if (btn.dataset.tab === "audit") loadAudit();
-  if (btn.dataset.tab === "changes") loadChanges();
-  if (btn.dataset.tab === "groups") loadGroupsForSelectedFw();
-  if (btn.dataset.tab === "users") loadUsers();
+initRouter((tab) => {
+  if (tab === "audit") loadAudit();
+  if (tab === "changes") loadChanges();
+  if (tab === "groups") loadGroupsForSelectedFw();
+  if (tab === "users") loadUsers();
 });
 
 $("#theme-toggle").addEventListener("click", () => {
@@ -615,45 +616,6 @@ $("#do-block").addEventListener("click", async () => {
   loadFirewalls();
 });
 
-const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-
-function setBusy(btn, busy, label) {
-  btn.disabled = busy;
-  btn.setAttribute("aria-busy", String(busy));
-  btn.innerHTML = busy ? `<span class="spinner spinner--btn" aria-hidden="true"></span>${esc(label)}` : esc(label);
-}
-
-/** Tiến độ khi đang chạy: thanh tiến độ + trạng thái từng firewall (đang chờ / xong / lỗi). */
-function progressBox(job, dry) {
-  const total = job.total || job.firewalls?.length || 0;
-  const done = job.results?.length || 0;
-  const byId = Object.fromEntries((job.results || []).map((r) => [r.firewall_id, r]));
-  const items = (job.firewalls || [])
-    .map((f) => {
-      const r = byId[f.id];
-      const st = !r
-        ? '<span class="chip"><span class="spinner spinner--xs" aria-hidden="true"></span>đang xử lý</span>'
-        : r.ok
-        ? '<span class="chip chip--ok">xong</span>'
-        : '<span class="chip chip--err">có lỗi</span>';
-      return `<li><span>${esc(f.name)}</span>${st}</li>`;
-    })
-    .join("");
-  return `<div class="progress-box" role="status">
-    <div class="progress-box__head">
-      <strong>${dry ? "Đang chạy thử" : "Đang đẩy cấu hình"}</strong>
-      <span class="muted tiny">${done}/${total} firewall xong</span>
-    </div>
-    <progress max="${total}" value="${done}" aria-label="Tiến độ theo firewall"></progress>
-    ${items ? `<ul class="progress-box__list">${items}</ul>` : ""}
-    ${
-      job.job_id
-        ? `<p class="muted tiny">Firewall phản hồi chậm — công việc chạy nền trên máy chủ. Có thể để trang mở, kết quả sẽ tự hiện.</p>`
-        : ""
-    }
-  </div>`;
-}
-
 /** Tóm tắt cuối cùng ở đầu kết quả: tổng thêm / đã có / lỗi trên mọi firewall. */
 function blockSummary(r, dry) {
   const t = { added: 0, existed: 0, error: 0, dry_run: 0 };
@@ -668,19 +630,6 @@ function blockSummary(r, dry) {
     <span>${r.results.length} firewall · ${parts.join(" · ")}</span>
   </div>`;
 }
-
-const resultChip = (res) => {
-  const map = {
-    added: ["chip--ok", "đã thêm"],
-    existed: ["chip--info", "đã có"],
-    removed: ["chip--ok", "đã bỏ"],
-    not_found: ["chip--warn", "không thấy"],
-    error: ["chip--err", "lỗi"],
-    "dry-run": ["chip--warn", "chạy thử"],
-  };
-  const [cls, label] = map[res] || ["", res];
-  return `<span class="chip ${cls}">${label}</span>`;
-};
 
 const ROWS_OPEN_MAX = 5; // nhiều dòng hơn thì thu gọn (tổng kết đã nằm ở đầu), luôn mở sẵn khi có lỗi
 
@@ -877,8 +826,7 @@ async function loadMembers({ refresh = false, quiet = false } = {}) {
   if (!id) return;
   const btn = $("#g-reload");
   if (!quiet)
-    $("#g-table").querySelector("tbody").innerHTML =
-      `<tr><td colspan="5"><div class="skeleton"></div></td></tr>`;
+    tableMessage($("#g-table tbody"), 5, "loading");
   if (refresh) {
     btn.disabled = true;
     $("#g-cache") && ($("#g-cache").innerHTML = `<span class="chip chip--info"><span class="spinner spinner--xs" aria-hidden="true"></span>Đang quét lại từ firewall…</span>`);
@@ -892,7 +840,7 @@ async function loadMembers({ refresh = false, quiet = false } = {}) {
       $("#g-meta").innerHTML = `<span class="cache-meta" id="g-cache"></span>`;
       $("#g-cache").innerHTML = `<span class="chip chip--info"><span class="spinner spinner--xs" aria-hidden="true"></span>Đang quét lần đầu</span>
         <span class="muted">Firewall phản hồi chậm — danh sách sẽ tự hiện khi quét xong.</span>`;
-      $("#g-table").querySelector("tbody").innerHTML = `<tr><td colspan="5"><div class="skeleton"></div></td></tr>`;
+      tableMessage($("#g-table tbody"), 5, "loading");
       watchCache([Number(id)]);
       btn.disabled = false;
       return;
@@ -930,7 +878,7 @@ const filterMembers = () => {
 function renderMembers(members) {
   const tb = $("#g-table").querySelector("tbody");
   if (!members.length) {
-    tb.innerHTML = `<tr><td colspan="5"><p class="empty">Không có object nào khớp.</p></td></tr>`;
+    tableMessage(tb, 5, "empty", "Không có object nào khớp.");
   } else {
     tb.innerHTML = members
       .map(
@@ -1023,7 +971,7 @@ $("#a-search").addEventListener("input", () => {
 
 async function loadAudit() {
   const tb = $("#a-table").querySelector("tbody");
-  tb.innerHTML = `<tr><td colspan="8"><div class="skeleton"></div></td></tr>`;
+  tableMessage(tb, 8, "loading");
   try {
     const params = new URLSearchParams({
       limit: "300",
@@ -1032,7 +980,7 @@ async function loadAudit() {
     });
     const r = await api(`/api/audit?${params}`);
     if (!r.rows.length) {
-      tb.innerHTML = `<tr><td colspan="8"><p class="empty">Chưa có bản ghi nào.</p></td></tr>`;
+      tableMessage(tb, 8, "empty", "Chưa có bản ghi nào.");
       return;
     }
     const actionLabel = {
@@ -1058,7 +1006,7 @@ async function loadAudit() {
       )
       .join("");
   } catch (ex) {
-    tb.innerHTML = `<tr><td colspan="8"><p class="alert alert--error">${esc(ex.message)}</p></td></tr>`;
+    tableMessage(tb, 8, "error", ex.message);
   }
 }
 
@@ -1089,7 +1037,7 @@ function permChip(u) {
 
 async function loadUsers() {
   const tb = $("#u-table tbody");
-  tb.innerHTML = `<tr><td colspan="6"><span class="skeleton"></span></td></tr>`;
+  tableMessage(tb, 6, "loading");
   try {
     const r = await api("/api/users");
     userState.list = r.users;
@@ -1105,7 +1053,7 @@ async function loadUsers() {
     renderUsers();
     updateAuthHint();
   } catch (ex) {
-    tb.innerHTML = `<tr><td colspan="6"><p class="alert alert--error">${esc(ex.message)}</p></td></tr>`;
+    tableMessage(tb, 6, "error", ex.message);
   }
 }
 
@@ -1116,7 +1064,8 @@ function renderUsers() {
       .join(" ").toLowerCase().includes(q));
   const tb = $("#u-table tbody");
   if (!rows.length) {
-    tb.innerHTML = `<tr><td colspan="6"><p class="empty">${userState.list.length ? "Không có kết quả" : "Chưa có người dùng nào — thêm người đầu tiên ở khung bên phải."}</p></td></tr>`;
+    tableMessage(tb, 6, "empty", userState.list.length ? "Không có kết quả"
+    : "Chưa có người dùng nào — thêm người đầu tiên ở khung bên phải.");
     return;
   }
   tb.innerHTML = rows.map((u) => {

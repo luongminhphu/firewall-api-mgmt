@@ -80,13 +80,13 @@
           </svg>
           <span class="brand-name">SOC Rapid Block</span>
         </div>
-        <nav class="tabs" id="tabs">
-          <button class="tab is-active" data-tab="block">Chặn nhanh</button>
-          <button class="tab" data-tab="groups">IP Host Group</button>
-          <button class="tab" data-tab="firewalls">Firewall</button>
-          <button class="tab" data-tab="changes">Lịch sử thay đổi</button>
-          <button class="tab" data-tab="audit">Audit log</button>
-          <button class="tab hidden" data-tab="users" id="tab-users">Người dùng</button>
+        <nav class="tabs" id="tabs" role="tablist" aria-label="Chức năng">
+          <button type="button" role="tab" id="tab-block" aria-controls="panel-block" aria-selected="true" class="tab is-active" data-tab="block">Chặn nhanh</button>
+          <button type="button" role="tab" id="tab-groups" aria-controls="panel-groups" aria-selected="false" class="tab" data-tab="groups">IP Host Group</button>
+          <button type="button" role="tab" id="tab-firewalls" aria-controls="panel-firewalls" aria-selected="false" class="tab" data-tab="firewalls">Firewall</button>
+          <button type="button" role="tab" id="tab-changes" aria-controls="panel-changes" aria-selected="false" class="tab" data-tab="changes">Lịch sử thay đổi</button>
+          <button type="button" role="tab" id="tab-audit" aria-controls="panel-audit" aria-selected="false" class="tab" data-tab="audit">Audit log</button>
+          <button type="button" role="tab" aria-controls="panel-users" aria-selected="false" class="tab hidden" data-tab="users" id="tab-users">Người dùng</button>
         </nav>
         <div class="topbar-right">
           <span class="chip" id="who"></span>
@@ -102,7 +102,7 @@
 
       <main class="main">
         <!-- ---------------------------------------------------- TAB: BLOCK -->
-        <section class="panel is-active" data-panel="block">
+        <section class="panel is-active" data-panel="block" id="panel-block" role="tabpanel" aria-labelledby="tab-block">
           <div class="grid grid--block">
             <div class="card">
               <div class="card-head">
@@ -190,7 +190,7 @@ Ví dụ:
         </section>
 
         <!-- --------------------------------------------------- TAB: GROUPS -->
-        <section class="panel" data-panel="groups">
+        <section class="panel" data-panel="groups" id="panel-groups" role="tabpanel" aria-labelledby="tab-groups">
           <div class="card card--flush">
             <div class="card-head">
               <div>
@@ -241,7 +241,7 @@ Ví dụ:
         </section>
 
         <!-- ------------------------------------------------ TAB: FIREWALLS -->
-        <section class="panel" data-panel="firewalls">
+        <section class="panel" data-panel="firewalls" id="panel-firewalls" role="tabpanel" aria-labelledby="tab-firewalls">
           <div class="grid grid--fw">
             <div class="card">
               <div class="card-head">
@@ -306,7 +306,7 @@ Ví dụ:
         </section>
 
         <!-- -------------------------------------------------- TAB: CHANGES -->
-        <section class="panel" data-panel="changes">
+        <section class="panel" data-panel="changes" id="panel-changes" role="tabpanel" aria-labelledby="tab-changes">
           <div class="card">
             <div class="card-head">
               <div>
@@ -341,7 +341,7 @@ Ví dụ:
         </section>
 
         <!-- ---------------------------------------------------- TAB: AUDIT -->
-        <section class="panel" data-panel="audit">
+        <section class="panel" data-panel="audit" id="panel-audit" role="tabpanel" aria-labelledby="tab-audit">
           <div class="card">
             <div class="card-head">
               <h2>Audit log</h2>
@@ -376,7 +376,7 @@ Ví dụ:
         </section>
 
         <!-- --------------------------------------------------- TAB: USERS -->
-        <section class="panel" data-panel="users">
+        <section class="panel" data-panel="users" id="panel-users" role="tabpanel" aria-labelledby="tab-users">
           <div class="grid grid--fw grid--users">
             <div class="card">
               <div class="card-head">

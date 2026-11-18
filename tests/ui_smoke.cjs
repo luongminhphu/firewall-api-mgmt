@@ -158,6 +158,22 @@ const visible = (page, sel) => page.isVisible(sel);
     chk("không lỗi JS (luồng admin)", errors.length === 0, errors.join(" | "));
     await ctx.close();
 
+    // ------------------------------------------------ router (deep link + Back)
+    {
+      const { ctx: cr, page: pr, errors: er } = await newPage(browser, { tok: admin });
+      await pr.goto(B + "/#audit");
+      await pr.waitForSelector('#panel-audit.is-active');
+      await pr.waitForFunction(() => document.querySelectorAll("#a-table tbody tr td.mono").length > 0);
+      chk("deep link #audit mở đúng tab và tải dữ liệu", true);
+      await tab(pr, "groups");
+      await pr.waitForSelector('#panel-groups.is-active');
+      await pr.goBack();
+      await pr.waitForSelector('#panel-audit.is-active');
+      chk("nút Back quay lại tab trước", (await pr.getAttribute("#tab-audit", "aria-selected")) === "true");
+      chk("không lỗi JS (router)", er.length === 0, er.join(" | "));
+      await cr.close();
+    }
+
     // ------------------------------------------------ viewer
     {
       const viewer = await token("xem@hsc.com.vn");
@@ -165,6 +181,10 @@ const visible = (page, sel) => page.isVisible(sel);
       await p2.goto(B + "/");
       await p2.waitForSelector("#app:not(.hidden)");
       chk("viewer không thấy tab Người dùng", !(await visible(p2, "#tab-users")));
+      await p2.goto(B + "/#users");
+      await p2.waitForSelector("#app:not(.hidden)");
+      await p2.waitForSelector("#panel-block.is-active");
+      chk("viewer mở #users → về tab Chặn nhanh", !(await visible(p2, "#panel-users")));
       await p2.fill("#paste-text", "45.155.204.88");
       await p2.waitForFunction(() => document.querySelectorAll("#candidate-list .cand").length === 1);
       chk("viewer không bấm được Chặn ngay", await p2.isDisabled("#do-block"));
