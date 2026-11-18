@@ -1,6 +1,6 @@
 # SOC Rapid Block — Kiến trúc: hiện trạng, kiến trúc đích, kế hoạch chuyển đổi
 
-> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. **Phase 1–3 xong** (§10–§12). Tiếp theo: phase 4 (VPN B2 — thời hạn qua firewall rule).
+> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. **Phase 1–4 xong** (§10–§13). Tiếp theo: phase 5 (thông báo email + SMTP trên giao diện).
 > Áp dụng cho: v1.7.0 (commit `88e54eb` trên `main`).
 > Phạm vi: (A) tái cấu trúc backend + frontend **không đổi hành vi**; (B) module VPN (B1 tài khoản, B2 thời hạn qua firewall rule).
 
@@ -427,3 +427,22 @@ dashboard VPN ở phase 4. Smoke UI: 37 kiểm tra (mọi tab, chặn/bỏ chặ
 Quy tắc tính quyền (hàm thuần `compute_access`): **SSL VPN** = user có SSL VPN policy riêng, hoặc thuộc nhóm có
 policy, hoặc user/nhóm là thành viên tunnel policy; **IPsec** = user/nhóm trong `AllowedUser` của kết nối
 `RemoteAccess` (SiteToSite không tính). Cần đối chiếu lại khi có mẫu thật từ `tools/sophos_sample.py`.
+
+---
+
+## 13. Nhật ký thực hiện phase 4 (VPN B2 — thời hạn qua firewall rule, chỉ đọc)
+
+| Bước | Kết quả |
+|---|---|
+| 4.0 | `modules/vpn/expiry.py` (hàm thuần): `parse_rule_name`, `determine_expiry` (Schedule OneTime > tên, cờ lệch), `classify(today, threshold)`; `tests/vpn_expiry_test.py` (36 kiểm tra: đủ các mẫu tên thực tế + mẫu lỗi) |
+| 4.1 | Đọc FirewallRuleGroup / FirewallRule / Schedule qua allowlist; bảng `vpn_rules` (khóa firewall + tên rule — API không có ID số), `vpn_rule_changes` (chuỗi băm); API `/api/vpn/rules` (+`as_of`), `/rules/{id}`, `/rules.csv`, `/changes`, `/changes/verify`, `/settings`; `tests/vpn_rules_test.py` (46 kiểm tra) |
+| 4.2 | Dashboard (thẻ trạng thái bấm để lọc, bộ lọc, bảng phân trang, chi tiết rule dạng dialog, lịch sử), tab Cài đặt; `components/modal.js`, `components/pagination.js` |
+
+Quyết định chi tiết:
+- **Khóa rule = tên** (Sophos không trả ID số); đổi tên = "rule bị xóa" + "rule mới" trong lịch sử.
+- **Lần đồng bộ đầu** ghi một sự kiện `baseline` (không ghi hàng trăm sự kiện "rule mới").
+- **Team**: phần trước " - " (bỏ tiền tố "VPN - "); không có " - " thì phần chữ trước "GROUP"/"access".
+- **User không còn / bị khóa**: mọi tài khoản liên kết đã bị xóa khỏi firewall hoặc Deactive, hoặc identity là user
+  không tồn tại — chỉ kết luận khi đã đồng bộ tài khoản của firewall đó.
+- Trạng thái tính khi đọc (không lưu) → không bao giờ "cũ"; `as_of` cho phép xem trước tương lai.
+- CSV mặc định gồm: sắp hết hạn, hết hạn còn bật, user không còn, không đọc được tên, lệch thời hạn.

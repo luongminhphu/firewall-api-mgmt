@@ -9,6 +9,7 @@ import { loadChanges } from "./pages/changes.js";
 import { loadFirewalls } from "./pages/firewalls.js";
 import { loadGroupsForSelectedFw } from "./pages/groups.js";
 import { loadUsers } from "./pages/users.js";
+import { loadSettings } from "./pages/settings.js";
 import { loadVpn } from "./pages/vpn.js";
 import { initRouter, showInitial } from "./router.js";
 import { autoSso, initLogin, logout, sess, setAfterLogin, showLoginError, tryHeaderSso } from "./session.js";
@@ -37,6 +38,7 @@ async function boot() {
   $("#a-export").href = `${API}/api/audit.csv?token=${encodeURIComponent(state.token)}`;
   applyRole();
   $("#tab-users").classList.toggle("hidden", !can("admin"));
+  $("#tab-settings").classList.toggle("hidden", !can("admin"));
   $("#my-pass-btn").classList.toggle("hidden", !state.config.can_change_password);
   if (!state.config.master_key_set) {
     toast("Chưa cấu hình MASTER_KEY — không thể lưu credential firewall", "err");
@@ -54,6 +56,7 @@ initRouter((tab) => {
   if (tab === "groups") loadGroupsForSelectedFw();
   if (tab === "users") loadUsers();
   if (tab === "vpn") loadVpn();
+  if (tab === "settings") loadSettings();
 });
 
 $("#theme-toggle").addEventListener("click", () => {

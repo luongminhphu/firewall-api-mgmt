@@ -312,11 +312,9 @@ def list_rules(db: Session, *, firewall_id: int | None = None, status: str = "",
         summary[x["status"]] += 1
         summary["mismatch"] += 1 if x["expiry_mismatch"] else 0
     rows = all_rows
-    if status == "mismatch":
-        rows = [x for x in rows if x["expiry_mismatch"]]
-    elif status:
+    if status:  # nhiều giá trị, phân cách dấu phẩy; "mismatch" = cờ Lệch thời hạn
         wanted = set(status.split(","))
-        rows = [x for x in rows if x["status"] in wanted]
+        rows = [x for x in rows if x["status"] in wanted or ("mismatch" in wanted and x["expiry_mismatch"])]
     if team:
         rows = [x for x in rows if x["team"].lower() == team.lower()]
     if date_from:

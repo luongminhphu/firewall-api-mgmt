@@ -19,6 +19,9 @@ data:
   # v1.8 — module VPN (chỉ đọc): đồng bộ tài khoản mỗi N phút (0 = tắt), timeout đọc riêng
   VPN_SYNC_MINUTES: "360"
   VPN_SCAN_TIMEOUT: "180"
+  # v1.9 — giá trị mặc định ban đầu; quản trị viên chỉnh trong tab Cài đặt
+  VPN_RULE_GROUPS: "VPN"
+  VPN_EXPIRING_DAYS: "30"
   ALLOW_PRIVATE: "false"
   # Safe-list: dải sẽ KHÔNG BAO GIỜ bị chặn.
   # Bổ sung dải VPN, đối tác, văn phòng của bạn vào đây trước khi go-live.

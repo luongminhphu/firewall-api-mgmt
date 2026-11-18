@@ -150,21 +150,48 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.waitForFunction(() => /ui\.smoke/.test(document.querySelector("#u-table")?.textContent || ""));
     chk("tạo người dùng → hiện trong bảng", true);
 
-    // VPN: đồng bộ tài khoản (chỉ đọc) → bảng, lọc
+    // VPN: đồng bộ (tài khoản + rule, chỉ đọc) → dashboard thời hạn
     await tab(page, "vpn");
     await page.waitForSelector("#panel-vpn.is-active");
     await page.click("#v-sync");
-    await page.waitForFunction(() => /chau\.nb@/.test(document.querySelector("#v-table")?.textContent || ""),
+    await page.waitForFunction(() => document.querySelectorAll("#vr-table tbody tr[data-rule]").length === 8,
       null, { timeout: 30000 });
-    chk("VPN: đồng bộ → bảng tài khoản", (await page.$$("#v-table tbody tr")).length === 5);
-    chk("VPN: trạng thái đồng bộ theo firewall", (await page.textContent("#v-sync-status")).includes("FW-UI"));
+    chk("VPN: đồng bộ → bảng rule thời hạn (8 rule trong group VPN)", true);
+    chk("VPN: thẻ đếm theo trạng thái", (await page.$$("#vr-cards .status-card")).length === 8);
+    await page.click('#vr-cards [data-status="unreadable"]');
+    await page.waitForFunction(() => document.querySelectorAll("#vr-table tbody tr[data-rule]").length === 1);
+    chk("VPN: bấm thẻ → lọc theo trạng thái", (await page.getAttribute('#vr-cards [data-status="unreadable"]', "aria-pressed")) === "true");
+    chk("VPN: link CSV theo bộ lọc", (await page.getAttribute("#vr-export", "href")).includes("status=unreadable"));
+    await page.click('#vr-cards [data-status="unreadable"]');
+    await page.waitForFunction(() => document.querySelectorAll("#vr-table tbody tr[data-rule]").length === 8);
+    chk("VPN: bấm lại thẻ → bỏ lọc", true);
+    await page.click("#vr-table tbody tr[data-rule] .rule-name");
+    await page.waitForSelector("#modal[open] .kv");
+    chk("VPN: chi tiết rule (dialog) có lịch sử", (await page.textContent("#modal")).includes("Lịch sử"));
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.querySelector("#modal").open);
+    chk("VPN: Esc đóng chi tiết", true);
+    await page.click('#v-view [data-view="accounts"]');
+    await page.waitForFunction(() => document.querySelectorAll("#v-table tbody tr td.nowrap").length > 0);
+    chk("VPN: view Tài khoản", (await page.$$("#v-table tbody tr")).length === 5);
     await page.fill("#v-q", "rms");
     await page.waitForFunction(() => document.querySelectorAll("#v-table tbody tr").length === 2);
-    chk("VPN: lọc theo nhóm/từ khóa", true);
+    chk("VPN: lọc tài khoản theo nhóm/từ khóa", true);
     await page.fill("#v-q", "");
-    await page.selectOption("#v-scope", "all");
-    await page.waitForFunction(() => document.querySelectorAll("#v-table tbody tr").length === 6);
-    chk("VPN: phạm vi mọi tài khoản (gồm admin)", true);
+    await page.click('#v-view [data-view="history"]');
+    await page.waitForSelector("#vh-list .hist li");
+    await page.click("#vh-verify");
+    await page.waitForSelector("#vh-verify-msg.text-ok");
+    chk("VPN: lịch sử + kiểm tra chuỗi băm", (await page.textContent("#vh-verify-msg")).includes("Toàn vẹn"));
+    await page.click('#v-view [data-view="rules"]');
+
+    // Cài đặt (admin): ngưỡng sắp hết hạn
+    await tab(page, "settings");
+    await page.waitForFunction(() => document.querySelector("#vs-days").value !== "");
+    await page.fill("#vs-days", "45");
+    await page.click('#vs-form button[type="submit"]');
+    await page.waitForSelector("#vs-msg.alert--ok");
+    chk("Cài đặt: lưu ngưỡng VPN", (await page.textContent("#vs-meta")).includes("phu.luong"));
 
     // Logo (tab Người dùng → Logo hiển thị): tải PNG lên, hiện ở thanh trên, rồi gỡ
     await tab(page, "users");
@@ -220,6 +247,7 @@ const visible = (page, sel) => page.isVisible(sel);
       await tab(p2, "vpn");
       await p2.waitForSelector("#panel-vpn.is-active");
       chk("viewer xem được tab VPN nhưng không có nút Đồng bộ", !(await visible(p2, "#v-sync")));
+      chk("viewer không thấy tab Cài đặt", !(await visible(p2, "#tab-settings")));
       chk("viewer không thấy nút Kiểm tra tất cả / Đồng bộ lịch sử / form firewall",
         !(await visible(p2, "#test-all")) && !(await visible(p2, "#c-sync")) && !(await visible(p2, "#fw-form")));
       chk("không lỗi JS (viewer)", e2.length === 0, e2.join(" | "));
@@ -231,7 +259,7 @@ const visible = (page, sel) => page.isVisible(sel);
       const { ctx: c3, page: p3, errors: e3 } = await newPage(browser, { tok: admin, viewport: { width: 390, height: 844 } });
       await p3.goto(B + "/");
       await p3.waitForSelector("#app:not(.hidden)");
-      for (const t of ["block", "groups", "firewalls", "changes", "audit", "vpn", "users"]) {
+      for (const t of ["block", "groups", "firewalls", "changes", "audit", "vpn", "settings", "users"]) {
         await tab(p3, t);
         await p3.waitForTimeout(250);
         const overflow = await p3.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

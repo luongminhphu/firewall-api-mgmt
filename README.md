@@ -4,6 +4,18 @@ Mini app HTML5 + FastAPI giúp team SOC/NOC dán thẳng đoạn chat Teams (ho�
 bóc IP tự động và đẩy vào **IP Host Group** trên **nhiều Sophos Firewall** cùng lúc qua XML API —
 thao tác được từ điện thoại trong ngày nghỉ lễ Tết.
 
+**Mới ở v1.9.0** — Module VPN giai đoạn 2: **thời hạn truy cập qua firewall rule** (CHỈ ĐỌC):
+- Đọc các rule trong Rule Group **VPN** (tên group gắn whitelist trong mã), lưu nguồn / identity / đích / dịch vụ /
+  schedule / log / mô tả. Hạn lấy từ **ngày kết thúc Schedule** (OneTime) nếu có, nếu không thì **bóc từ tên rule**
+  (`THAM.NQ expire 23/04/2027`, `RMS RESEARCH - NHAN.NDT 30/06/2027`…, ngày luôn dd/mm/yyyy, ngày sai thì không đoán);
+  Schedule và tên lệch nhau → cờ **Lệch thời hạn**. Bóc thêm team và mã user, liên kết rule ↔ tài khoản VPN.
+- Dashboard (tab VPN): thẻ đếm **Sắp hết hạn** (≤ N ngày, cấu hình được) · **Hết hạn nhưng vẫn bật** · **User không
+  còn / bị khóa** · **Không đọc được tên** · **Lệch thời hạn** · **Không có hạn** · **Còn hạn**; lọc firewall / team /
+  khoảng ngày / từ khóa / xem tại ngày; chi tiết rule + lịch sử; **xuất CSV danh sách cần xử lý**.
+- **Lịch sử** giữa các lần đồng bộ (rule mới, bị xóa, đổi hạn, đổi đích, đổi người dùng, bật/tắt) nối chuỗi băm.
+- Tab **Cài đặt** (quản trị viên): ngưỡng "sắp hết hạn", Rule Group được đọc.
+- App **không tắt, sửa hay xóa rule** trên firewall — mọi lệnh ghi FirewallRule/User bị chặn + audit.
+
 **Mới ở v1.8.0** — Module **VPN** (giai đoạn 1, CHỈ ĐỌC):
 - Tab **VPN**: danh sách tài khoản có quyền SSL VPN / IPsec remote access trên từng firewall (nhóm, trạng thái khóa,
   tài khoản đã bị xóa khỏi firewall vẫn được giữ để rà soát), lọc theo firewall / phạm vi / trạng thái / từ khóa.
@@ -180,6 +192,8 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 | `JOB_SYNC_WAIT` | Request chặn/bỏ chặn chờ tối đa N giây (mặc định 20) rồi trả mã công việc và chạy nền — phải nhỏ hơn timeout App Proxy (~85s) / ingress (60s) |
 | `VPN_SYNC_MINUTES` | Chu kỳ đồng bộ tài khoản VPN (chỉ đọc), phút; `0` = tắt (chỉ đồng bộ tay). Mặc định 360 |
 | `VPN_SCAN_TIMEOUT` | Timeout đọc User / Group / chính sách VPN trên firewall, giây (mặc định 180) |
+| `VPN_RULE_GROUPS` | Rule Group chứa rule VPN cần đọc (mặc định `VPN`); chỉ nhận giá trị trong whitelist của mã nguồn. Quản trị viên chỉnh trong tab Cài đặt |
+| `VPN_EXPIRING_DAYS` | Ngưỡng "Sắp hết hạn" (ngày, mặc định 30); chỉnh trong tab Cài đặt |
 | `LOG_FORMAT` | `text` (mặc định, như cũ) hoặc `json` — log JSON một dòng, có `request_id` (nhận `X-Request-ID` từ App Proxy) và dòng truy cập kèm người dùng/mã HTTP/thời gian; không bao giờ ghi mật khẩu/token |
 | `LOG_LEVEL` | Mức log (`INFO`, `DEBUG`…), để trống = mặc định |
 | `GROUP_CACHE_MIN_REFRESH_SECONDS` | Giãn cách tối thiểu giữa hai lần bấm "Quét lại" (mặc định 5) |
