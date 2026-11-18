@@ -38,7 +38,9 @@ spec:
         - { protocol: TCP, port: 25 }
         - { protocol: TCP, port: 587 }
         - { protocol: TCP, port: 465 }
-    # Microsoft Entra ID (OIDC: token + JWKS) — IP của Microsoft thay đổi nên phải mở 443 ra ngoài
+    # Microsoft Entra ID (OIDC: token + JWKS), Microsoft Graph (đọc group chat — tự động chặn),
+    # Teams Workflows (*.logic.azure.com / *.api.powerplatform.com — trả lời vào group chat).
+    # IP của Microsoft thay đổi nên phải mở 443 ra ngoài
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

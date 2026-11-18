@@ -505,3 +505,50 @@ quyết định, người, thời điểm, lý do, mã băm) và **CSV cần thu
 
 Chi tiết: chỉ một đợt mở cùng lúc; tự mở chỉ khi đã có dữ liệu VPN và trong 15 ngày đầu quý (triển khai giữa quý không mở
 bất ngờ); quyết định sửa được tới khi đóng đợt (mỗi lần sửa thêm một dòng nhật ký).
+
+---
+
+## 16. Tự động chặn IP từ group chat Teams (v2.2)
+
+**Vấn đề.** SOC giám sát 24/7, nhưng Infra không trực đêm, nên lệnh chặn từ SOC nằm chờ tới sáng. Đề xuất đầy đủ
+(chấm điểm TI, ba mức xử lý) ở `docs/auto-block-proposal.md`. Anh **chọn phương án đơn giản hơn** (18/11/2026), mô tả dưới đây.
+
+**Luồng xử lý.** Module `modules/autoblock/`:
+
+| Bước | Chi tiết |
+|---|---|
+| Đọc | `graph.py`: token client-credentials, đọc `GET /chats/{chat_id}/messages` (mới → cũ, dừng ở mốc đã đọc). Chu kỳ: quản trị viên chọn trong tab Cài đặt (60–3600 giây, mặc định `AUTOBLOCK_POLL_SECONDS`=300). Bộ lập lịch kiểm tra mỗi 30 giây, mốc `last_poll_at` lưu DB → đúng cả khi nhiều pod |
+| Lọc tin | Chỉ tin tạo **sau** lúc bật / đổi Chat ID (`start_at`). Bỏ qua: tin của người ngoài danh sách tài khoản SOC (Object ID Entra) · tin **đã sửa** (`lastEditedDateTime`) · tin đã xóa · tin hệ thống. `msg_id` UNIQUE → không xử lý lại |
+| Cú pháp | `parser.py`: một dòng đúng `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, **IN HOA**, phân biệt hoa/thường, chỉ IPv4 đơn (/32). Chuẩn hóa NFC + `&nbsp;` |
+| Kiểm tra IP | Safe-list / IP nội bộ → `invalid` (như chặn tay). IP đang có yêu cầu hoạt động → `duplicate` |
+| Quyết định | **Whitelist** (HSC / Akamai / Đối tác / danh sách thêm) → chờ, **chỉ quản trị viên Approve**, không tính ngưỡng · công tắc khẩn cấp TẮT → chờ · ngoài khung giờ (mặc định 18:00–08:00, tắt = 24/7) → chờ · ngưỡng đã ngắt hoặc vượt N IP/giờ (mặc định 20) → **ngắt** + email nhóm Admin, chờ · còn lại → **tự chặn** |
+| Chặn | Gọi `ipblock.service.block_on_firewall` qua `core.jobs` (job nền, song song theo firewall, policy guard, `SCANPORT GROUP`, lịch sử hash chain). Tác nhân `autoblock`, nguồn `teams-auto` |
+| Trả lời | `reply.py`: chặn thành công → `INFRA ĐÃ BLOCK <ip> THEO YÊU CẦU LÚC dd/mm/yyyy HH:MM:SS` (giờ VN, lúc chặn xong) qua **Teams Workflows** webhook. Graph không cho app gửi tin vào chat bằng quyền ứng dụng (chỉ `Teamwork.Migrate.All`). Lỗi → thử lại mỗi chu kỳ, tối đa 5 lần |
+| Thông báo | Email nhóm Admin: vượt ngưỡng (gửi ngay), có lệnh chờ duyệt, báo cáo ca đêm lúc 08:00 |
+
+**Bảng mới:**
+- `autoblock_messages`: tin đã đọc; chỉ lưu nội dung tin của tài khoản SOC.
+- `autoblock_requests`: vòng đời từng lệnh (`mode` auto/pending, `status`, whitelist, kết quả từng firewall, trả lời Teams).
+- `autoblock_events`: nhật ký **chuỗi băm**.
+
+Cấu hình nằm trong `app_settings['autoblock.settings']`; client secret và URL webhook được mã hóa bằng `MASTER_KEY`, không bao giờ trả ra API.
+
+**Quyền:**
+
+| Vai trò | Được phép |
+|---|---|
+| viewer | Xem |
+| operator | Approve (trừ IP whitelist), từ chối, gỡ chặn (từng IP / cả ca đêm), **TẮT** công tắc |
+| admin | Cấu hình, **BẬT** lại công tắc, mở lại ngưỡng, Approve IP whitelist, đọc ngay, gửi thử |
+
+### 16.1 Nhật ký thực hiện
+
+| Bước | Kết quả |
+|---|---|
+| A.1 | `modules/autoblock/` (parser, graph, settings, service, router, reply), 3 bảng, `mock/mock_graph.py` (Graph + Entra token + Workflows giả lập), `tests/autoblock_test.py` |
+| A.2 | Yêu cầu bổ sung trong lúc làm: chu kỳ 5 phút và chỉnh trên giao diện; whitelist + Approve chỉ quản trị viên; trả lời vào group chat |
+| A.3 | Tab **Tự động chặn** (thẻ trạng thái, chờ duyệt, ca đêm + gỡ tất cả, tất cả lệnh, kiểm tra chuỗi băm) + thẻ cấu hình trong Cài đặt; smoke UI admin + viewer + điện thoại |
+
+Lỗi phát hiện khi tự kiểm tra:
+- Lưu lần đầu vừa đổi Chat ID vừa bật → trạng thái ghi hai lần trong một phiên DB, gây INSERT trùng khóa. Sửa: `flush` sau mỗi lần lưu.
+- Danh sách ca đêm so giờ VN với cột UTC → trống trên SQLite. Sửa: đổi mốc sang UTC trước khi truy vấn.

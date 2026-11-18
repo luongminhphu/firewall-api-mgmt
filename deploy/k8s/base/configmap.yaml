@@ -28,6 +28,9 @@ data:
   SMTP_TIMEOUT: "15"
   # v2.1 — địa chỉ app qua App Proxy, dùng cho link trong email (vd https://socblock-hsc.msappproxy.net)
   APP_BASE_URL: ""
+  # v2.2 — tự động chặn từ group chat Teams: chu kỳ đọc MẶC ĐỊNH (giây); quản trị viên chỉnh lại trong tab Cài đặt
+  # (60–3600). "0" = tắt hẳn bộ đọc. Kết nối Graph, tài khoản SOC, whitelist, webhook trả lời: cấu hình trên giao diện.
+  AUTOBLOCK_POLL_SECONDS: "300"
   ALLOW_PRIVATE: "false"
   # Safe-list: dải sẽ KHÔNG BAO GIỜ bị chặn.
   # Bổ sung dải VPN, đối tác, văn phòng của bạn vào đây trước khi go-live.

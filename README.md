@@ -4,10 +4,12 @@ Mini app HTML5 + FastAPI cho team SOC/NOC/Infra:
 
 - **Chặn IP nhanh.** Dán thẳng đoạn chat Teams (hoặc CSV, hoặc nhập tay). App tự bóc IP rồi đẩy vào IP Host Group
   `SCANPORT GROUP` trên **nhiều Sophos Firewall cùng lúc** qua XML API. Dùng được trên điện thoại.
+- **Tự động chặn ban đêm từ Teams.** App đọc group chat với SOC. Khi SOC gửi `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, app tự chặn
+  IP đó, có whitelist, giới hạn số lượng và công tắc khẩn cấp, rồi trả lời `INFRA ĐÃ BLOCK <ip> THEO YÊU CẦU LÚC <thời điểm>`.
 - **Theo dõi quyền VPN (chỉ đọc).** Theo dõi tài khoản VPN và thời hạn truy cập (firewall rule trong Rule Group `VPN`),
   nhắc hạn qua email, và **rà soát quyền định kỳ theo ISO/IEC 27001**. App **không bao giờ sửa** rule hay user trên firewall.
 
-Phiên bản hiện tại: **v2.1.0**. Lịch sử thay đổi ở [mục 9](#9-lịch-sử-phiên-bản); thiết kế chi tiết ở [`docs/architecture.md`](docs/architecture.md).
+Phiên bản hiện tại: **v2.2.0**. Lịch sử thay đổi ở [mục 9](#9-lịch-sử-phiên-bản); thiết kế chi tiết ở [`docs/architecture.md`](docs/architecture.md).
 
 **Mục lục**
 
@@ -29,6 +31,7 @@ Phiên bản hiện tại: **v2.1.0**. Lịch sử thay đổi ở [mục 9](#9-
 | Nhóm | Tính năng |
 |---|---|
 | **Chặn IP** | Bóc IPv4/CIDR từ chat Teams, kể cả dạng làm mờ (`1.2.3[.]4`, `1.2.3(.)4`, `1.2.3[dot]4`), từ CSV/TXT kéo-thả, hoặc nhập tay · Chặn trên nhiều firewall cùng lúc · Chạy thử (dry-run) và xem trước XML · Safe-list và chặn IP private để tránh tự khóa · Tối đa 500 IP/lần |
+| **Tự động chặn từ Teams** | Đọc group chat qua Microsoft Graph theo chu kỳ (mặc định 5 phút, chỉnh trên giao diện) · Chỉ nhận đúng dòng `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>` (IN HOA) của **tài khoản SOC** trong danh sách; **tin đã sửa bị bỏ qua** · **Whitelist** HSC / Akamai / Đối tác → chờ quản trị viên **Approve** · Khung giờ tự chặn (mặc định 18:00–08:00) · Tối đa **20 IP/giờ**, vượt thì ngắt, chuyển chờ duyệt và báo nhóm Admin · **Công tắc tắt khẩn cấp** · Danh sách **ca đêm** + gỡ một chạm · Trả lời kết quả vào group chat |
 | **Không còn lỗi 504** | Mỗi firewall chỉ cần 3 lệnh trên 1 kết nối, nhờ gộp lệnh tạo IP Host · Các firewall chạy song song · Quá `JOB_SYNC_WAIT` giây thì chuyển sang **công việc nền**, giao diện hiện tiến độ từng firewall |
 | **IP Host Group** | Xem thành viên `SCANPORT GROUP` tức thì từ cache trong PostgreSQL · Quét lại nền · Bỏ chặn và xóa IP Host do app tạo |
 | **Lịch sử thay đổi** | Ghi từng IP thêm/bớt (ai, lúc nào, lý do/ticket, số object trước → sau) · **Phát hiện sửa trực tiếp trên WebAdmin** · Chuỗi băm SHA-256 chống sửa log · Xuất CSV |
@@ -80,9 +83,10 @@ backend/app/
     vpn/        accounts, expiry (bóc hạn), rules, sync, settings
     notify/     smtp, planner (lập kế hoạch nhắc), outbox (hàng đợi gửi)
     review/     đợt rà soát, quyết định, CSV bằng chứng
+    autoblock/  đọc group chat Teams (graph), parser cú pháp, quyết định tự chặn / chờ duyệt, reply (Teams Workflows)
 frontend/                 ES module thuần, không build: js/main.js + js/pages/* (từng tab) + js/components/*
 deploy/k8s/               base/ · overlays/prod/ · overlays/rancher/ · kubesphere/
-mock/                     firewall Sophos giả lập (kèm dữ liệu VPN) + SMTP giả lập
+mock/                     firewall Sophos giả lập (kèm dữ liệu VPN) + SMTP giả lập + Microsoft Graph / Workflows giả lập
 tools/sophos_sample.py    lấy mẫu cấu hình VPN thật (chỉ đọc, che dữ liệu)
 ```
 
@@ -121,7 +125,7 @@ Mã trạng thái hay gặp: `200/202` OK · `502` object trùng tên · `503` t
 Image dựng sẵn được GitHub Actions đẩy lên `ghcr.io/luongminhphu/firewall-api-mgmt` (chỉ `linux/amd64`). Các tag:
 
 - `latest` và `main`: mỗi lần push lên main;
-- `2.1.0` và `2.1`: khi gắn tag `v2.1.0`;
+- `2.2.0` và `2.2`: khi gắn tag `v2.2.0`;
 - `sha-xxxxxxx`: theo commit.
 
 Bảng trong app tự tạo khi khởi động, nên **không cần chạy migrate**.
@@ -241,7 +245,7 @@ Trong `deploy/k8s/overlays/rancher/kustomization.yaml`, bỏ comment các khối
 
 - **Gắn Project:** điền `field.cattle.io/projectId: "c-xxxxx:p-yyyyy"` để namespace nằm trong project Rancher, hưởng quyền
   và quota của project. Lấy ID ở Rancher UI ▸ Projects/Namespaces ▸ ⋮ của project ▸ *View in API*.
-- **Ghim tag image:** `ghcr.io/luongminhphu/firewall-api-mgmt:2.1.0`, thay cho `latest`. Khuyến nghị cho môi trường thật.
+- **Ghim tag image:** `ghcr.io/luongminhphu/firewall-api-mgmt:2.2.0`, thay cho `latest`. Khuyến nghị cho môi trường thật.
 - **`networkpolicy-egress.yaml`:** chỉ bật **sau khi** đã sửa CIDR của firewall và SMTP trong file. Có tác dụng với CNI
   Canal/Calico/Cilium (RKE2 mặc định dùng Canal).
 
@@ -353,6 +357,7 @@ chỉ là giá trị ban đầu; quản trị viên chỉnh lại trên giao di�
 | `PASSWORD_MIN_LENGTH` | Độ dài tối thiểu mật khẩu người dùng (mặc định 10, bắt buộc có chữ và số) |
 | `LOGIN_MAX_FAILS` / `LOGIN_LOCK_MINUTES` | Sai mật khẩu N lần thì khóa tạm M phút (mặc định 5 lần / 10 phút) |
 | `LOGO_MAX_KB` | Dung lượng tối đa của logo tải lên (mặc định 300) |
+| `AUTOBLOCK_POLL_SECONDS` | Chu kỳ đọc group chat Teams **mặc định ban đầu** (giây, 300 = 5 phút); quản trị viên chỉnh lại trong tab Cài đặt (1–60 phút). `0` = tắt hẳn bộ đọc. Kết nối Graph, tài khoản SOC, whitelist, webhook trả lời: *tab Cài đặt* |
 | `LOG_FORMAT` / `LOG_LEVEL` | `text` (mặc định) hoặc `json` (một dòng, có `request_id`, không bao giờ ghi mật khẩu/token) / mức log |
 
 ---
@@ -372,7 +377,8 @@ chỉ là giá trị ban đầu; quản trị viên chỉnh lại trên giao di�
    - cấu hình SMTP, rồi bấm **Gửi thử**;
    - nhập địa chỉ **Infra** nhận thông báo;
    - nhập **đại diện từng team** (tên team giống phần đầu tên rule, vd `RMS RESEARCH`).
-5. Tab **VPN**: bấm **Đồng bộ ngay** cho lần đầu. Sau đó app tự đồng bộ theo chu kỳ `VPN_SYNC_MINUTES`.
+5. Tab **Cài đặt › Tự động chặn từ Teams** (nếu dùng): làm theo [mục 5.9](#59-tab-tự-động-chặn-từ-teams).
+6. Tab **VPN**: bấm **Đồng bộ ngay** cho lần đầu. Sau đó app tự đồng bộ theo chu kỳ `VPN_SYNC_MINUTES`.
 
 ### 5.2 Tab Chặn nhanh
 
@@ -497,8 +503,74 @@ Mật khẩu được mã hóa và không bao giờ hiển thị lại.
   - Mỗi mốc nhắc chỉ gửi **một lần**; nếu hạn rule thay đổi thì app nhắc lại.
 - **VPN:** ngưỡng "sắp hết hạn", Rule Group được đọc.
 - **Rà soát:** tự mở hằng quý, số ngày hạn hoàn thành, số ngày nhắc trước hạn.
+- **Tự động chặn từ Teams:** kết nối Graph, tài khoản SOC, whitelist, trả lời vào group chat, khung giờ, ngưỡng, chu kỳ
+  đọc, email nhóm Admin, firewall đích. Xem [mục 5.9](#59-tab-tự-động-chặn-từ-teams).
 
-### 5.9 Tab Audit log
+### 5.9 Tab Tự động chặn (từ Teams)
+
+**Quy ước với SOC.** Muốn app tự chặn, SOC thêm **một dòng riêng, viết IN HOA** vào tin nhắn trong group chat:
+
+```
+ĐỀ XUẤT CỦA SOC: BLOCK IP 195.178.110.102
+```
+
+App nhận lệnh theo các quy tắc sau:
+
+- **Khớp chính xác.** Chữ thường hay viết hoa đầu câu (`Đề xuất của SOC: block ip …`) đều không được nhận, kể cả khi lệnh
+  lẫn trong một câu dài. Một tin có thể chứa nhiều dòng lệnh.
+- **Chỉ IPv4 đơn.** CIDR, dải, IPv6 hay tên miền không được tự chặn; dòng đó bị ghi "Không hợp lệ".
+- **Sửa tin = bỏ qua.** Tin **đã sửa** không được xử lý. Gõ nhầm thì SOC gửi tin mới.
+- **Chỉ tài khoản SOC.** Tin của người ngoài danh sách tài khoản SOC bị bỏ qua và ghi vào nhật ký.
+- **Chặn trên mọi firewall đích.** Sau khi chặn xong, app trả lời vào group chat:
+  `INFRA ĐÃ BLOCK 195.178.110.102 THEO YÊU CẦU LÚC 18/11/2026 23:42:10`.
+
+**Cách app xử lý từng lệnh** (theo thứ tự):
+
+| Điều kiện | Kết quả |
+|---|---|
+| IP nội bộ / thuộc `SAFE_LIST` | Không hợp lệ, không chặn |
+| IP đang có yêu cầu đang chặn / chờ | Trùng, bỏ qua |
+| IP thuộc **whitelist** (HSC / Akamai / Đối tác…) | **Chờ duyệt**, chỉ **quản trị viên** bấm **Approve** được; không tính vào ngưỡng |
+| **Công tắc khẩn cấp** đang TẮT | Chờ duyệt |
+| **Ngoài khung giờ** tự chặn (mặc định 18:00–08:00; ban ngày Infra tự xử lý) | Chờ duyệt |
+| Đã **vượt ngưỡng** N IP/giờ (mặc định 20) | **Ngắt**: lệnh này và mọi lệnh sau chờ duyệt, email cảnh báo nhóm Admin ngay. Quản trị viên bấm **Mở lại** |
+| Còn lại | **Tự chặn** ngay |
+
+**Trên tab:**
+
+- **Thẻ trạng thái:** công tắc, số IP đã tự chặn trong 60 phút / ngưỡng, khung giờ, số lệnh chờ duyệt, lần đọc Teams gần nhất.
+- **Tắt khẩn cấp:** người có quyền Write tắt được ngay; chỉ quản trị viên bật lại.
+- **Chờ duyệt:** **Approve** để chặn ngay (chọn nhiều mục được), hoặc **Từ chối**. Mục thuộc whitelist có nhãn
+  *Whitelist · Akamai: 23.32.0.0/11*.
+- **Ca đêm 18:00 → 08:00:** các IP app đã tự chặn trong đêm. Buổi sáng rà lại, bấm **Gỡ chặn** từng IP hoặc **Gỡ tất cả
+  IP ca đêm**. Lúc 08:00, app gửi email danh sách ca đêm cho nhóm Admin.
+- **Tất cả lệnh:** lọc theo trạng thái, kết quả trên từng firewall, *Đã báo Teams* / *Chưa báo Teams*.
+  Nút **Kiểm tra toàn vẹn nhật ký** xác minh chuỗi băm.
+
+**Cấu hình một lần** (tab Cài đặt › Tự động chặn từ Teams, quản trị viên):
+
+1. **App registration** trên Entra ID (nên tách riêng với app đăng nhập):
+   - Tạo client secret.
+   - Cấp quyền đọc group chat, theo một trong hai cách:
+     - **`ChatMessage.Read.Chat`** (resource-specific consent, chỉ cho đúng group chat đó; khuyến nghị): đóng gói app
+       thành Teams app có khai báo quyền này rồi thêm vào group chat.
+     - **`Chat.Read.All`** (Application, cần admin consent): đọc được mọi chat trong tenant, nên kém an toàn hơn.
+   - Nhập Tenant ID, Client ID, Client secret.
+2. **Chat ID:** mở group chat trên Teams web, sao chép phần `19:…@thread.v2` trên thanh địa chỉ.
+3. Bấm **Kiểm tra kết nối**. App liệt kê người gửi gần đây; bấm **+ tên** để thêm **tài khoản SOC** (định danh bằng Object ID).
+4. **Whitelist:** dán dải IP public của HSC, dải Akamai (Origin IP ACL / SiteShield) và IP đối tác, mỗi dòng một IP/CIDR.
+   Có thể thêm danh sách khác.
+5. **Trả lời vào group chat:**
+   - Microsoft Graph không cho app gửi tin vào chat bằng quyền ứng dụng, nên dùng **Teams Workflows**.
+   - Trong group chat chọn **… › Workflows › "Post to a chat when a webhook request is received"**, rồi sao chép URL webhook.
+   - Dán URL vào app, bấm **Gửi thử**. Tin được đăng dưới tên *Workflows*.
+6. Đặt khung giờ, ngưỡng IP/giờ, chu kỳ đọc (1–60 phút), email nhóm Admin, firewall đích. Tick **Bật** rồi bấm **Lưu**.
+   App chỉ xử lý tin gửi **sau** lúc bật.
+
+> Mạng: pod cần ra được `login.microsoftonline.com`, `graph.microsoft.com` và host của webhook Workflows
+> (`*.logic.azure.com` hoặc `*.api.powerplatform.com`) qua cổng 443.
+
+### 5.10 Tab Audit log
 
 Ghi toàn bộ thao tác: ai, lúc nào, IP nào, firewall nào, kết quả, lý do. Có thể lọc và **Xuất CSV**. Các loại sự kiện đặc biệt:
 
@@ -515,6 +587,9 @@ Ghi toàn bộ thao tác: ai, lúc nào, IP nào, firewall nào, kết quả, l�
 | Rà soát mục của team mình | ✓ | ✓ (nếu là đại diện) | ✓ (nếu là đại diện) | ✓ |
 | Xem group / lịch sử / audit / VPN, xuất CSV | — | ✓ | ✓ | ✓ |
 | Chặn, bỏ chặn, kiểm tra, quét lại, đồng bộ VPN | — | — | ✓ | ✓ |
+| Tự động chặn: xem trạng thái / danh sách | — | ✓ | ✓ | ✓ |
+| Tự động chặn: Approve, từ chối, gỡ chặn, **tắt** khẩn cấp | — | — | ✓ | ✓ |
+| Tự động chặn: **Approve IP thuộc whitelist**, bật lại công tắc, mở lại sau khi vượt ngưỡng, cấu hình | — | — | — | ✓ |
 | Firewall, người dùng, logo, Cài đặt (SMTP, VPN, rà soát), mở/đóng đợt rà soát | — | — | — | ✓ |
 
 **Quyền và đăng nhập:**
@@ -564,6 +639,9 @@ Ghi toàn bộ thao tác: ai, lúc nào, IP nào, firewall nào, kết quả, l�
 | `ErrImagePull` | Package GHCR private mà chưa có secret `ghcr-pull`, hoặc PAT hết hạn |
 | Đăng nhập Microsoft lỗi | `OIDC_REDIRECT_URI` phải trùng **chính xác** Redirect URI trên App registration; pod phải ra được `login.microsoftonline.com` |
 | Không nhận được email | Tab Cài đặt ▸ Hàng đợi email: xem lỗi của từng thư; bấm **Gửi thử**; kiểm tra egress tới SMTP và `APP_BASE_URL` |
+| Tự động chặn: "Đọc Teams lỗi … 403" | App registration chưa được cấp `ChatMessage.Read.Chat` cho group chat (hoặc `Chat.Read.All` chưa admin consent) |
+| Tự động chặn: SOC gửi lệnh nhưng app không chặn | Dòng lệnh phải đúng `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>` IN HOA, đứng riêng một dòng · người gửi có trong danh sách tài khoản SOC · tin không bị sửa · xem lý do trong *Tất cả lệnh* (chờ duyệt, whitelist, ngoài giờ, vượt ngưỡng) |
+| Tự động chặn: "Chưa báo Teams" | URL webhook Workflows sai hoặc workflow bị tắt; pod chưa ra được `*.logic.azure.com`. App tự thử lại tối đa 5 lần |
 | VPN báo "Không đọc được tên" | Tên rule cần có ngày dạng `dd/mm/yyyy`, hoặc rule gắn Schedule OneTime. App không đoán ngày sai định dạng |
 
 ---
@@ -603,6 +681,7 @@ Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che d
 
 | Phiên bản | Nội dung chính |
 |---|---|
+| **2.2.0** | Tự động chặn từ group chat Teams: cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, tài khoản SOC, bỏ qua tin đã sửa, whitelist + Approve, khung giờ, ngưỡng 20 IP/giờ, công tắc khẩn cấp, danh sách ca đêm, trả lời `INFRA ĐÃ BLOCK …` qua Teams Workflows |
 | **2.1.0** | Rà soát quyền VPN định kỳ theo ISO 27001 (tab Rà soát, vai trò Rà soát, CSV bằng chứng / cần thu hồi, chuỗi băm quyết định). Overlay Rancher |
 | **2.0.0** | Thông báo email: cấu hình SMTP trên giao diện, nhắc trước hạn, báo hết hạn hằng tuần, outbox idempotent |
 | **1.9.0** | VPN giai đoạn 2: thời hạn qua firewall rule (Schedule / tên rule), dashboard trạng thái, lịch sử rule, CSV cần xử lý |

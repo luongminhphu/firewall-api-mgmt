@@ -1,6 +1,6 @@
 # Đề xuất: Tự động hóa chặn IP từ cảnh báo SOC
 
-Trạng thái: **ĐỀ XUẤT, chờ duyệt.** Chưa viết code.
+Trạng thái: **đã thay bằng phương án đơn giản** (cú pháp cố định do SOC gửi, whitelist, khung giờ, ngưỡng, công tắc khẩn cấp). Bản đã làm ở v2.2.0, xem `docs/architecture.md` §16. Phần chấm điểm TI ở tài liệu này để tham khảo cho giai đoạn sau.
 Phiên bản đích: v2.2 trở đi.
 
 ## 0. Tóm tắt
