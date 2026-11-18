@@ -15,8 +15,34 @@ const say = (el, text, kind) => {
 };
 
 export async function loadSettings() {
-  await Promise.all([loadVpnSettings(), loadNotify(), loadOutbox()]);
+  await Promise.all([loadVpnSettings(), loadReviewSettings(), loadNotify(), loadOutbox()]);
 }
+
+// ------------------------------------------------------------------ rà soát định kỳ
+async function loadReviewSettings() {
+  try {
+    const s = await api("/api/review/settings");
+    $("#rs-auto").checked = s.auto_quarterly;
+    $("#rs-due").value = s.due_days;
+    $("#rs-remind").value = s.remind_days;
+  } catch (ex) {
+    toast(ex.message, "err");
+  }
+}
+
+$("#rs-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await api("/api/review/settings", {
+      method: "PUT",
+      body: { auto_quarterly: $("#rs-auto").checked, due_days: Number($("#rs-due").value),
+              remind_days: Number($("#rs-remind").value) },
+    });
+    say($("#rs-msg"), "Đã lưu cấu hình rà soát.", "ok");
+  } catch (ex) {
+    say($("#rs-msg"), ex.message, "error");
+  }
+});
 
 // ------------------------------------------------------------------ VPN
 async function loadVpnSettings() {

@@ -217,6 +217,24 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.waitForFunction(() => /nằm chờ|Xếp hàng/.test(document.querySelector("#ob-note").textContent));
     chk("Cài đặt: Chạy ngay → thư nằm chờ khi SMTP tắt", (await page.textContent("#ob-note")).includes("nằm chờ"));
 
+    // Rà soát định kỳ (admin): mở đợt, quyết định (thu hồi cần lý do), tiến độ theo team
+    await tab(page, "review");
+    await page.waitForSelector("#panel-review.is-active");
+    await page.click("#rv-open");
+    await page.waitForFunction(() => /Đang mở/.test(document.querySelector("#rv-camps")?.textContent || ""));
+    chk("Rà soát: admin mở đợt", (await page.$$("#rv-scopes .rv-scope")).length === 2);
+    await page.waitForSelector("#rv-list .rv-item");
+    const first = await page.getAttribute("#rv-list .rv-item [data-dec='revoke']", "data-id");
+    await page.click(`#rv-list [data-dec='revoke'][data-id='${first}']`);
+    await page.waitForSelector("#rv-comment");
+    await page.click(`[data-confirm='${first}']`);
+    await page.waitForTimeout(400);
+    chk("Rà soát: thu hồi không lý do bị từ chối", !!(await page.$(`#rv-item-${first}`)));
+    await page.fill("#rv-comment", "Không còn nhu cầu");
+    await page.click(`[data-confirm='${first}']`);
+    await page.waitForFunction((id) => !document.querySelector(`#rv-item-${id}`), first);
+    chk("Rà soát: thu hồi kèm lý do → rời danh sách chưa quyết định", true);
+
     // Logo (tab Người dùng → Logo hiển thị): tải PNG lên, hiện ở thanh trên, rồi gỡ
     await tab(page, "users");
     await page.waitForSelector("#panel-users.is-active");
@@ -278,12 +296,32 @@ const visible = (page, sel) => page.isVisible(sel);
       await c2.close();
     }
 
+    // ------------------------------------------------ vai trò Rà soát (đại diện team)
+    if (process.env.REVIEWER_TOKEN) {
+      const { ctx: c4, page: p4, errors: e4 } = await newPage(browser, { tok: process.env.REVIEWER_TOKEN });
+      await p4.goto(B + "/");
+      await p4.waitForSelector("#app:not(.hidden)");
+      await p4.waitForSelector("#panel-review.is-active");
+      const tabs = await p4.$$eval(".tab", (ts) => ts.filter((t) => !t.classList.contains("hidden")).map((t) => t.dataset.tab));
+      chk("reviewer chỉ thấy tab Rà soát", JSON.stringify(tabs) === '["review"]', JSON.stringify(tabs));
+      chk("reviewer không thấy phần quản lý đợt", !(await visible(p4, "#rv-admin")));
+      await p4.waitForSelector("#rv-list .rv-item");
+      const n0 = (await p4.$$("#rv-list .rv-item")).length;
+      chk("reviewer thấy mục của team mình (RMS RESEARCH)", n0 === 3, n0);
+      await p4.click("#rv-list .rv-item [data-dec='keep']");
+      await p4.waitForFunction((n) => document.querySelectorAll("#rv-list .rv-item").length === n - 1, n0);
+      await p4.waitForFunction(() => /1\/3/.test(document.querySelector("#rv-progress").textContent));
+      chk("reviewer: Còn cần → tiến độ cập nhật", true);
+      chk("không lỗi JS (reviewer)", e4.length === 0, e4.join(" | "));
+      await c4.close();
+    }
+
     // ------------------------------------------------ điện thoại
     {
       const { ctx: c3, page: p3, errors: e3 } = await newPage(browser, { tok: admin, viewport: { width: 390, height: 844 } });
       await p3.goto(B + "/");
       await p3.waitForSelector("#app:not(.hidden)");
-      for (const t of ["block", "groups", "firewalls", "changes", "audit", "vpn", "settings", "users"]) {
+      for (const t of ["block", "groups", "firewalls", "changes", "audit", "vpn", "review", "settings", "users"]) {
         await tab(p3, t);
         await p3.waitForTimeout(250);
         const overflow = await p3.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

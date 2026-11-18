@@ -87,6 +87,7 @@
           <button type="button" role="tab" id="tab-changes" aria-controls="panel-changes" aria-selected="false" class="tab" data-tab="changes">Lịch sử thay đổi</button>
           <button type="button" role="tab" id="tab-audit" aria-controls="panel-audit" aria-selected="false" class="tab" data-tab="audit">Audit log</button>
           <button type="button" role="tab" id="tab-vpn" aria-controls="panel-vpn" aria-selected="false" class="tab" data-tab="vpn">VPN</button>
+          <button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="false" class="tab" data-tab="review">Rà soát</button>
           <button type="button" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" class="tab hidden" data-tab="settings">Cài đặt</button>
           <button type="button" role="tab" aria-controls="panel-users" aria-selected="false" class="tab hidden" data-tab="users" id="tab-users">Người dùng</button>
         </nav>
@@ -459,6 +460,46 @@ Ví dụ:
           </div>
         </section>
 
+        <section class="panel" data-panel="review" id="panel-review" role="tabpanel" aria-labelledby="tab-review">
+          <div class="card" id="rv-mine">
+            <div class="card-head">
+              <div>
+                <h2 id="rv-title">Rà soát quyền truy cập VPN</h2>
+                <p class="muted tiny" id="rv-sub">Xác nhận từng quyền VPN của team bạn còn cần hay cần thu hồi (ISO 27001 — rà soát quyền truy cập định kỳ).</p>
+              </div>
+              <label class="field rv-filter"><span>Hiển thị</span>
+                <select id="rv-show" class="select">
+                  <option value="pending">Chưa quyết định</option>
+                  <option value="">Tất cả</option>
+                </select>
+              </label>
+            </div>
+            <div id="rv-progress" class="rv-progress" aria-live="polite"></div>
+            <div id="rv-list" class="rv-list"></div>
+          </div>
+
+          <div class="card" id="rv-admin">
+            <div class="card-head">
+              <div>
+                <h2>Các đợt rà soát</h2>
+                <p class="muted tiny">Tự mở đầu mỗi quý (cấu hình ở tab Cài đặt). Đóng đợt: mục chưa quyết định ghi "Không phản hồi". CSV bằng chứng dùng cho audit ISO 27001.</p>
+              </div>
+              <div class="row row--tight">
+                <button class="btn btn--ghost" id="rv-verify" type="button">Kiểm tra toàn vẹn</button>
+                <button class="btn" id="rv-open" type="button">Mở đợt rà soát</button>
+              </div>
+            </div>
+            <p id="rv-verify-msg" class="tiny"></p>
+            <div id="rv-scopes"></div>
+            <div class="table-wrap">
+              <table class="table" id="rv-camps">
+                <thead><tr><th>Đợt</th><th>Trạng thái</th><th>Hạn</th><th>Kết quả</th><th>Bằng chứng</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
         <section class="panel" data-panel="settings" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings">
           <div class="grid grid--settings">
             <form class="card" id="vs-form">
@@ -473,6 +514,18 @@ Ví dụ:
               <p id="vs-msg" class="alert hidden" role="status"></p>
               <p class="muted tiny" id="vs-meta"></p>
               <button class="btn btn--primary" type="submit">Lưu cấu hình</button>
+            </form>
+
+            <form class="card" id="rs-form">
+              <div class="card-head"><h2>Rà soát quyền VPN định kỳ</h2></div>
+              <label class="check"><input type="checkbox" id="rs-auto" /> <span>Tự mở đợt rà soát đầu mỗi quý</span></label>
+              <div class="row row--2">
+                <label class="field"><span>Hạn hoàn thành (ngày)</span><input id="rs-due" type="number" min="1" max="90" /></label>
+                <label class="field"><span>Nhắc khi còn ≤ (ngày)</span><input id="rs-remind" type="number" min="0" max="30" /></label>
+              </div>
+              <p class="muted tiny">Người rà soát là đại diện team (bảng bên dưới); mục không thuộc team nào do Infra (quản trị viên) rà soát. Đại diện team chưa là người dùng app vẫn đăng nhập được bằng Microsoft, chỉ thấy tab Rà soát.</p>
+              <p id="rs-msg" class="alert hidden" role="status"></p>
+              <button class="btn btn--primary" type="submit">Lưu</button>
             </form>
 
             <form class="card" id="smtp-form" autocomplete="off">

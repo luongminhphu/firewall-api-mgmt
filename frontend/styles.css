@@ -639,3 +639,23 @@ fieldset.field legend { font-size: var(--text-xs); color: var(--text-muted); mar
 @media (max-width: 640px) {
   #smtp-form .row--2 { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------ v2.1: Rà soát quyền VPN (ISO 27001 A.5.18) */
+#rv-admin { margin-top: var(--space-4); }
+.rv-filter { min-width: 180px; margin: 0; }
+.rv-progress { display: grid; gap: var(--space-2); margin-bottom: var(--space-4); }
+.rv-progress progress, .rv-scope progress { width: 100%; height: 6px; accent-color: var(--brand); }
+.rv-list { display: grid; gap: var(--space-3); }
+.rv-item { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3) var(--space-4); background: var(--surface); }
+.rv-item__head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
+.kv--compact { margin: var(--space-2) 0; }
+.rv-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.rv-actions .btn { min-height: 36px; }
+.rv-reason { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-2); margin-top: var(--space-3); }
+.rv-reason .field { flex: 1 1 260px; margin: 0; }
+.rv-scopes { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+.rv-scope { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2) var(--space-3); }
+.rv-scope__head { display: flex; justify-content: space-between; margin-bottom: var(--space-1); }
+@media (max-width: 640px) {
+  .rv-actions .btn { flex: 1 1 auto; }
+}

@@ -17,7 +17,8 @@ const available = (name) => {
 
 /** Hiện tab `name` (tab ẩn theo quyền / không tồn tại → tab mặc định) rồi gọi onShow để trang tải dữ liệu. */
 export function show(name) {
-  const btn = available(name) || available(DEFAULT_TAB);
+  // tab ẩn theo quyền → tab mặc định → tab đầu tiên còn hiện (vd vai trò Rà soát chỉ có một tab)
+  const btn = available(name) || available(DEFAULT_TAB) || $$(".tab").find((t) => !t.classList.contains("hidden"));
   const tab = btn.dataset.tab;
   $$(".tab").forEach((t) => {
     t.classList.toggle("is-active", t === btn);
@@ -47,8 +48,7 @@ export function initRouter(showFn) {
   });
 }
 
-/** Sau khi đăng nhập (đã biết quyền): mở đúng tab theo deep link; không có hash thì giữ tab mặc định. */
+/** Sau khi đăng nhập (đã biết quyền): mở đúng tab theo deep link; không có hash → tab mặc định được phép. */
 export function showInitial() {
-  const t = tabFromHash();
-  return t ? show(t) : null;
+  return show(tabFromHash() || DEFAULT_TAB);
 }

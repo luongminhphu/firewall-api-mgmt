@@ -9,6 +9,7 @@ import { loadChanges } from "./pages/changes.js";
 import { loadFirewalls } from "./pages/firewalls.js";
 import { loadGroupsForSelectedFw } from "./pages/groups.js";
 import { loadUsers } from "./pages/users.js";
+import { loadReview } from "./pages/review.js";
 import { loadSettings } from "./pages/settings.js";
 import { loadVpn } from "./pages/vpn.js";
 import { initRouter, showInitial } from "./router.js";
@@ -35,6 +36,14 @@ async function boot() {
     ROLE_LABEL[state.role] || state.role
   )}</span>`;
   $("#who").title = `${state.config.user} · ${state.config.auth_method} · v${state.config.version}`;
+  // Vai trò Rà soát (đại diện team, không là người dùng app): chỉ tab Rà soát, không gọi API nào khác
+  const reviewerOnly = state.role === "reviewer";
+  $$(".tab").forEach((t) => t.classList.toggle("hidden", reviewerOnly && t.dataset.tab !== "review"));
+  if (reviewerOnly) {
+    loadBranding();
+    showInitial();
+    return;
+  }
   $("#a-export").href = `${API}/api/audit.csv?token=${encodeURIComponent(state.token)}`;
   applyRole();
   $("#tab-users").classList.toggle("hidden", !can("admin"));
@@ -57,6 +66,7 @@ initRouter((tab) => {
   if (tab === "users") loadUsers();
   if (tab === "vpn") loadVpn();
   if (tab === "settings") loadSettings();
+  if (tab === "review") loadReview();
 });
 
 $("#theme-toggle").addEventListener("click", () => {

@@ -1,6 +1,6 @@
 # SOC Rapid Block — Kiến trúc: hiện trạng, kiến trúc đích, kế hoạch chuyển đổi
 
-> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. **Phase 1–5 xong** (§10–§14). Việc tiếp theo: rà soát định kỳ ISO 27001 (xây trên B1 + B2), đối chiếu parser với mẫu thật từ `tools/sophos_sample.py`.
+> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. **Phase 1–5 + rà soát định kỳ xong** (§10–§15). Việc tiếp theo: đối chiếu parser với mẫu thật từ `tools/sophos_sample.py`.
 > Áp dụng cho: v1.7.0 (commit `88e54eb` trên `main`).
 > Phạm vi: (A) tái cấu trúc backend + frontend **không đổi hành vi**; (B) module VPN (B1 tài khoản, B2 thời hạn qua firewall rule).
 
@@ -495,3 +495,13 @@ còn ≤ 3 ngày → nhắc mục chưa quyết định; quá hạn → báo Inf
 
 **Đóng đợt** (admin): mục chưa quyết định ghi "Không phản hồi" (để leo thang). Xuất **CSV bằng chứng** (mọi mục,
 quyết định, người, thời điểm, lý do, mã băm) và **CSV cần thu hồi / điều chỉnh** cho Infra.
+
+### 15.1 Nhật ký thực hiện
+
+| Bước | Kết quả |
+|---|---|
+| R.1 | `modules/review/` (service + router), 3 bảng, vai trò `reviewer` (chặn tập trung ở `auth/rbac.principal`, `ROLES` thêm `reviewer` để `issue_token` không đổi thành viewer), `APP_BASE_URL`; `tests/review_test.py` (36 kiểm tra) |
+| R.2 | Tab Rà soát (thẻ từng quyền + quyết định + lý do, tiến độ; quản lý đợt, tiến độ theo team, CSV, kiểm tra chuỗi băm), thẻ cấu hình trong Cài đặt; smoke UI cho admin + reviewer |
+
+Chi tiết: chỉ một đợt mở cùng lúc; tự mở chỉ khi đã có dữ liệu VPN và trong 15 ngày đầu quý (triển khai giữa quý không mở
+bất ngờ); quyết định sửa được tới khi đóng đợt (mỗi lần sửa thêm một dòng nhật ký).

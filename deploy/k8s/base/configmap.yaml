@@ -26,6 +26,8 @@ data:
   # Máy chủ SMTP / người nhận cấu hình trên giao diện (tab Cài đặt).
   NOTIFY_INTERVAL_SECONDS: "300"
   SMTP_TIMEOUT: "15"
+  # v2.1 — địa chỉ app qua App Proxy, dùng cho link trong email (vd https://socblock-hsc.msappproxy.net)
+  APP_BASE_URL: ""
   ALLOW_PRIVATE: "false"
   # Safe-list: dải sẽ KHÔNG BAO GIỜ bị chặn.
   # Bổ sung dải VPN, đối tác, văn phòng của bạn vào đây trước khi go-live.
