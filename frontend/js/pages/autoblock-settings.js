@@ -7,7 +7,7 @@ import { toast } from "../components/toast.js";
 import { state } from "../store.js";
 import { $, esc, fmtTime } from "../util.js";
 
-const cfg = { senders: [], seen: [], wl: [] };
+const cfg = { senders: [], seen: [], wl: [], hol: [] };
 const say = (text, kind) => {
   const el = $("#abs-msg");
   el.textContent = text;
@@ -32,6 +32,9 @@ function fill(s) {
   $("#abs-window").checked = s.window_enabled;
   $("#abs-wstart").value = s.window_start;
   $("#abs-wend").value = s.window_end;
+  $("#abs-weekend").checked = s.weekend_full;
+  cfg.hol = (s.holidays || []).map((h) => ({ ...h }));
+  renderHolidays();
   $("#abs-limit").value = s.hourly_limit;
   $("#abs-poll").value = Math.round(s.poll_seconds / 60);
   $("#abs-admins").value = (s.admin_emails || []).join("\n");
@@ -64,6 +67,33 @@ function renderSenders() {
     `<button class="btn btn--ghost btn--sm" type="button" data-add="${esc(x.id)}" data-name="${esc(x.name || "")}"
        title="${esc(x.id)}">+ ${esc(x.name || x.id)}${x.commands ? ` · ${x.commands} lệnh` : ""}</button>`).join(" ") : "";
 }
+
+// ------------------------------------------------------------------ ngày lễ
+function renderHolidays() {
+  $("#abs-hol tbody").innerHTML = cfg.hol.length
+    ? cfg.hol.map((h, i) => `<tr>
+        <td><input type="date" data-hol="${i}" data-k="from" value="${esc(h.from)}" aria-label="Từ ngày" /></td>
+        <td><input type="date" data-hol="${i}" data-k="to" value="${esc(h.to || h.from)}" aria-label="Đến ngày" /></td>
+        <td><input data-hol="${i}" data-k="name" value="${esc(h.name || "")}" maxlength="80" placeholder="Tết Nguyên đán" aria-label="Tên ngày lễ" /></td>
+        <td><button class="btn btn--ghost btn--sm" type="button" data-hol-del="${i}" aria-label="Xóa ngày lễ">✕</button></td></tr>`).join("")
+    : `<tr><td colspan="4"><p class="empty">Chưa có ngày lễ nào.</p></td></tr>`;
+}
+$("#abs-hol").addEventListener("input", (e) => {
+  const t = e.target;
+  if (t.dataset.hol === undefined) return;
+  cfg.hol[Number(t.dataset.hol)][t.dataset.k] = t.value;
+});
+$("#abs-hol").addEventListener("click", (e) => {
+  const d = e.target.closest("[data-hol-del]");
+  if (!d) return;
+  cfg.hol.splice(Number(d.dataset.holDel), 1);
+  renderHolidays();
+});
+$("#abs-hol-add").addEventListener("click", () => {
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
+  cfg.hol.push({ from: today, to: today, name: "" });
+  renderHolidays();
+});
 
 // ------------------------------------------------------------------ whitelist
 const lineCount = (text) => text.split(/\n/).map((x) => x.split("#")[0].trim()).filter(Boolean).length;
@@ -149,6 +179,8 @@ async function save(withEnabled = true) {
     tenant_id: $("#abs-tenant").value.trim(), client_id: $("#abs-client").value.trim(),
     chat_id: $("#abs-chat").value.trim(), soc_senders: cfg.senders,
     window_enabled: $("#abs-window").checked, window_start: $("#abs-wstart").value, window_end: $("#abs-wend").value,
+    weekend_full: $("#abs-weekend").checked,
+    holidays: cfg.hol.filter((h) => h.from).map((h) => ({ from: h.from, to: h.to || h.from, name: h.name || "" })),
     hourly_limit: Number($("#abs-limit").value), poll_seconds: Number($("#abs-poll").value) * 60,
     admin_emails: $("#abs-admins").value,
     firewall_ids: [...$("#abs-fws").querySelectorAll("input:checked")].map((x) => Number(x.value)),

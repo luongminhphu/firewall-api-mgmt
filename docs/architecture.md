@@ -524,7 +524,8 @@ bất ngờ); quyết định sửa được tới khi đóng đợt (mỗi lầ
 | Quyết định | **Whitelist** (HSC / Akamai / Đối tác / danh sách thêm) → chờ, **chỉ quản trị viên Approve**, không tính ngưỡng · công tắc khẩn cấp TẮT → chờ · ngoài khung giờ (mặc định 18:00–08:00, tắt = 24/7) → chờ · ngưỡng đã ngắt hoặc vượt N IP/giờ (mặc định 20) → **ngắt** + email nhóm Admin, chờ · còn lại → **tự chặn** |
 | Chặn | Gọi `ipblock.service.block_on_firewall` qua `core.jobs` (job nền, song song theo firewall, policy guard, `SCANPORT GROUP`, lịch sử hash chain). Tác nhân `autoblock`, nguồn `teams-auto` |
 | Trả lời | `reply.py`: chặn thành công → `INFRA ĐÃ BLOCK <ip> THEO YÊU CẦU LÚC dd/mm/yyyy HH:MM:SS` (giờ VN, lúc chặn xong) qua **Teams Workflows** webhook. Graph không cho app gửi tin vào chat bằng quyền ứng dụng (chỉ `Teamwork.Migrate.All`). Lỗi → thử lại mỗi chu kỳ, tối đa 5 lần |
-| Thông báo | Email nhóm Admin: vượt ngưỡng (gửi ngay), có lệnh chờ duyệt, báo cáo ca đêm lúc 08:00 |
+| Lịch | `window_reason`: tắt = 24/7 · ngày lễ (danh sách khoảng ngày, cả ngày) · T7/CN cả ngày (tùy chọn) · ngoài giờ ngày thường (`window_start`–`window_end`, qua đêm). `off_hours_span` gộp các khoảng liền nhau thành **ca ngoài giờ** (vd 18:00 T6 → 08:00 T2) cho danh sách ca và email báo cáo |
+| Thông báo | Email nhóm Admin: vượt ngưỡng (gửi ngay), có lệnh chờ duyệt, báo cáo **khi kết thúc mỗi ca ngoài giờ** |
 
 **Bảng mới:**
 - `autoblock_messages`: tin đã đọc; chỉ lưu nội dung tin của tài khoản SOC.
@@ -547,6 +548,7 @@ Cấu hình nằm trong `app_settings['autoblock.settings']`; client secret và 
 |---|---|
 | A.1 | `modules/autoblock/` (parser, graph, settings, service, router, reply), 3 bảng, `mock/mock_graph.py` (Graph + Entra token + Workflows giả lập), `tests/autoblock_test.py` |
 | A.2 | Yêu cầu bổ sung trong lúc làm: chu kỳ 5 phút và chỉnh trên giao diện; whitelist + Approve chỉ quản trị viên; trả lời vào group chat |
+| A.2b | Lịch tự chặn chỉnh trên giao diện: ngoài giờ ngày thường, cả ngày cuối tuần, ngày lễ (khoảng ngày), nút "Tự chặn cả ngày hôm nay" |
 | A.3 | Tab **Tự động chặn** (thẻ trạng thái, chờ duyệt, ca đêm + gỡ tất cả, tất cả lệnh, kiểm tra chuỗi băm) + thẻ cấu hình trong Cài đặt; smoke UI admin + viewer + điện thoại |
 
 Lỗi phát hiện khi tự kiểm tra:

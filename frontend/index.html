@@ -513,6 +513,7 @@ Ví dụ:
               <div class="row row--tight">
                 <button class="btn btn--danger" id="ab-off" type="button" hidden>Tắt khẩn cấp</button>
                 <button class="btn btn--primary" id="ab-on" type="button" hidden>Bật lại tự động chặn</button>
+                <button class="btn" id="ab-today" type="button" hidden>Tự chặn cả ngày hôm nay</button>
                 <button class="btn" id="ab-poll" type="button" hidden>Đọc Teams ngay</button>
               </div>
             </div>
@@ -537,10 +538,10 @@ Ví dụ:
 
             <div class="ab-section">
               <div class="card-head">
-                <div><h3 id="ab-night-title">Ca đêm</h3>
-                  <p class="muted tiny">IP app đã tự chặn từ 18:00 hôm trước đến 08:00 sáng hôm sau — rà soát buổi sáng, gỡ ngay nếu chặn nhầm.</p></div>
+                <div><h3 id="ab-night-title">Ca ngoài giờ</h3>
+                  <p class="muted tiny">IP app đã tự chặn trong ca ngoài giờ gần nhất (đêm, cuối tuần, ngày lễ) — rà soát khi vào ca, gỡ ngay nếu chặn nhầm.</p></div>
                 <div class="row row--tight ab-op" hidden>
-                  <button class="btn btn--danger-ghost btn--sm" id="ab-night-undo" type="button">Gỡ tất cả IP ca đêm</button>
+                  <button class="btn btn--danger-ghost btn--sm" id="ab-night-undo" type="button">Gỡ tất cả IP của ca</button>
                 </div>
               </div>
               <div class="table-wrap">
@@ -624,13 +625,26 @@ Ví dụ:
                 <button class="btn btn--ghost btn--sm" id="abs-wl-add" type="button">+ Thêm danh sách</button>
               </fieldset>
 
-              <div class="row row--2">
-                <label class="check check--field"><input type="checkbox" id="abs-window" /> <span>Chỉ tự chặn trong khung giờ (ngoài khung → chờ duyệt)</span></label>
-                <div class="row row--2 row--flush">
-                  <label class="field"><span>Từ</span><input id="abs-wstart" type="time" /></label>
-                  <label class="field"><span>Đến</span><input id="abs-wend" type="time" /></label>
+              <fieldset class="field">
+                <legend>Lịch tự chặn (ngoài giờ / ca đêm)</legend>
+                <p class="muted tiny">Trong lịch: app tự chặn. Ngoài lịch (giờ hành chính, Infra có mặt): lệnh của SOC chuyển sang chờ duyệt. Bỏ tick = tự chặn 24/7.</p>
+                <label class="check"><input type="checkbox" id="abs-window" /> <span>Chỉ tự chặn theo lịch dưới đây</span></label>
+                <div class="row row--2">
+                  <label class="field"><span>Ngày thường — ngoài giờ từ</span><input id="abs-wstart" type="time" /></label>
+                  <label class="field"><span>đến (sáng hôm sau)</span><input id="abs-wend" type="time" /></label>
                 </div>
-              </div>
+                <label class="check"><input type="checkbox" id="abs-weekend" /> <span>Thứ 7 và Chủ nhật: tự chặn cả ngày</span></label>
+                <div class="ab-hol">
+                  <div class="ab-hol__head"><strong>Ngày lễ rơi vào ngày thường — tự chặn cả ngày</strong>
+                    <button class="btn btn--ghost btn--sm" id="abs-hol-add" type="button">+ Thêm ngày lễ</button></div>
+                  <div class="table-wrap">
+                    <table class="table" id="abs-hol">
+                      <thead><tr><th>Từ ngày</th><th>Đến ngày</th><th>Tên</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                </div>
+              </fieldset>
               <div class="row row--2">
                 <label class="field"><span>Tối đa IP tự chặn mỗi giờ (vượt → ngắt, chờ duyệt, báo Admin)</span>
                   <input id="abs-limit" type="number" min="1" max="200" /></label>
@@ -649,7 +663,7 @@ Ví dụ:
                   <button class="btn" id="abs-reply-test" type="button">Gửi thử</button>
                 </div>
               </fieldset>
-              <label class="field"><span>Email nhóm Admin (cảnh báo vượt ngưỡng, chờ duyệt, báo cáo ca đêm 08:00) — để trống = mọi quản trị viên có email</span>
+              <label class="field"><span>Email nhóm Admin (cảnh báo vượt ngưỡng, chờ duyệt, báo cáo khi hết ca ngoài giờ) — để trống = mọi quản trị viên có email</span>
                 <textarea id="abs-admins" rows="2" placeholder="infra-admin@hsc.com.vn"></textarea></label>
               <fieldset class="field">
                 <legend>Firewall đích (không chọn = mọi firewall đang bật)</legend>

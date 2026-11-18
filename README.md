@@ -532,9 +532,21 @@ App nhận lệnh theo các quy tắc sau:
 | IP đang có yêu cầu đang chặn / chờ | Trùng, bỏ qua |
 | IP thuộc **whitelist** (HSC / Akamai / Đối tác…) | **Chờ duyệt**, chỉ **quản trị viên** bấm **Approve** được; không tính vào ngưỡng |
 | **Công tắc khẩn cấp** đang TẮT | Chờ duyệt |
-| **Ngoài khung giờ** tự chặn (mặc định 18:00–08:00; ban ngày Infra tự xử lý) | Chờ duyệt |
+| **Ngoài lịch tự chặn**, tức giờ hành chính khi Infra có mặt | Chờ duyệt |
 | Đã **vượt ngưỡng** N IP/giờ (mặc định 20) | **Ngắt**: lệnh này và mọi lệnh sau chờ duyệt, email cảnh báo nhóm Admin ngay. Quản trị viên bấm **Mở lại** |
 | Còn lại | **Tự chặn** ngay |
+
+**Lịch tự chặn** (tab Cài đặt, quản trị viên chỉnh):
+
+| Loại ngày | Tự chặn |
+|---|---|
+| Ngày thường | Ngoài giờ, mặc định **18:00 → 08:00** sáng hôm sau (giờ bắt đầu/kết thúc chỉnh được) |
+| Thứ 7, Chủ nhật | **Cả ngày** (tùy chọn, mặc định bật) |
+| Ngày lễ rơi vào ngày thường | **Cả ngày**, theo danh sách ngày lễ (một ngày hoặc cả đợt, vd Tết) |
+| Nghỉ đột xuất | Nút **Tự chặn cả ngày hôm nay** trên tab Tự động chặn |
+| Bỏ tick "Chỉ tự chặn theo lịch" | 24/7 |
+
+Các khoảng liền nhau được gộp thành **một ca ngoài giờ**. Ví dụ: 18:00 thứ 6 → 08:00 thứ 2, hoặc cả kỳ nghỉ lễ nối cuối tuần.
 
 **Trên tab:**
 
@@ -542,8 +554,8 @@ App nhận lệnh theo các quy tắc sau:
 - **Tắt khẩn cấp:** người có quyền Write tắt được ngay; chỉ quản trị viên bật lại.
 - **Chờ duyệt:** **Approve** để chặn ngay (chọn nhiều mục được), hoặc **Từ chối**. Mục thuộc whitelist có nhãn
   *Whitelist · Akamai: 23.32.0.0/11*.
-- **Ca đêm 18:00 → 08:00:** các IP app đã tự chặn trong đêm. Buổi sáng rà lại, bấm **Gỡ chặn** từng IP hoặc **Gỡ tất cả
-  IP ca đêm**. Lúc 08:00, app gửi email danh sách ca đêm cho nhóm Admin.
+- **Ca ngoài giờ:** các IP app đã tự chặn trong ca gần nhất (đêm / cuối tuần / ngày lễ). Khi vào ca, rà lại và bấm **Gỡ chặn**
+  từng IP hoặc **Gỡ tất cả IP của ca**. Khi ca kết thúc (vd 08:00, hoặc 08:00 thứ 2), app email danh sách cho nhóm Admin.
 - **Tất cả lệnh:** lọc theo trạng thái, kết quả trên từng firewall, *Đã báo Teams* / *Chưa báo Teams*.
   Nút **Kiểm tra toàn vẹn nhật ký** xác minh chuỗi băm.
 
@@ -564,7 +576,7 @@ App nhận lệnh theo các quy tắc sau:
    - Microsoft Graph không cho app gửi tin vào chat bằng quyền ứng dụng, nên dùng **Teams Workflows**.
    - Trong group chat chọn **… › Workflows › "Post to a chat when a webhook request is received"**, rồi sao chép URL webhook.
    - Dán URL vào app, bấm **Gửi thử**. Tin được đăng dưới tên *Workflows*.
-6. Đặt khung giờ, ngưỡng IP/giờ, chu kỳ đọc (1–60 phút), email nhóm Admin, firewall đích. Tick **Bật** rồi bấm **Lưu**.
+6. Đặt lịch tự chặn (ngoài giờ ngày thường, cuối tuần, ngày lễ), ngưỡng IP/giờ, chu kỳ đọc (1–60 phút), email nhóm Admin, firewall đích. Tick **Bật** rồi bấm **Lưu**.
    App chỉ xử lý tin gửi **sau** lúc bật.
 
 > Mạng: pod cần ra được `login.microsoftonline.com`, `graph.microsoft.com` và host của webhook Workflows
@@ -681,7 +693,7 @@ Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che d
 
 | Phiên bản | Nội dung chính |
 |---|---|
-| **2.2.0** | Tự động chặn từ group chat Teams: cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, tài khoản SOC, bỏ qua tin đã sửa, whitelist + Approve, khung giờ, ngưỡng 20 IP/giờ, công tắc khẩn cấp, danh sách ca đêm, trả lời `INFRA ĐÃ BLOCK …` qua Teams Workflows |
+| **2.2.0** | Tự động chặn từ group chat Teams: cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, tài khoản SOC, bỏ qua tin đã sửa, whitelist + Approve, lịch tự chặn (ngoài giờ ngày thường, cả ngày cuối tuần, ngày lễ, "cả ngày hôm nay"), ngưỡng 20 IP/giờ, công tắc khẩn cấp, danh sách ca đêm, trả lời `INFRA ĐÃ BLOCK …` qua Teams Workflows |
 | **2.1.0** | Rà soát quyền VPN định kỳ theo ISO 27001 (tab Rà soát, vai trò Rà soát, CSV bằng chứng / cần thu hồi, chuỗi băm quyết định). Overlay Rancher |
 | **2.0.0** | Thông báo email: cấu hình SMTP trên giao diện, nhắc trước hạn, báo hết hạn hằng tuần, outbox idempotent |
 | **1.9.0** | VPN giai đoạn 2: thời hạn qua firewall rule (Schedule / tên rule), dashboard trạng thái, lịch sử rule, CSV cần xử lý |

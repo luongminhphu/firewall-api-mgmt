@@ -31,8 +31,10 @@ DEFAULTS = {
     "auto_enabled": True,      # công tắc khẩn cấp: False = mọi lệnh chuyển sang chờ duyệt
     "tenant_id": "", "client_id": "", "secret_enc": "", "chat_id": "",
     "soc_senders": [],         # [{"id": "<object id>", "name": "..."}]
-    "window_enabled": True,    # chỉ tự chặn trong khung giờ; ngoài khung → chờ duyệt
-    "window_start": "18:00", "window_end": "08:00",
+    "window_enabled": True,    # chỉ tự chặn trong lịch ngoài giờ; trong giờ hành chính → chờ duyệt
+    "window_start": "18:00", "window_end": "08:00",   # ngoài giờ ngày thường (qua đêm)
+    "weekend_full": True,      # thứ 7 + Chủ nhật: tự chặn cả ngày
+    "holidays": [],            # [{"from": "2027-02-05", "to": "2027-02-11", "name": "Tết"}] — tự chặn cả ngày
     "hourly_limit": 20,
     "admin_emails": [],
     "firewall_ids": [],        # rỗng = mọi firewall đang bật
@@ -131,6 +133,10 @@ def update(db: Session, data: dict, *, actor: str, client_ip: str) -> dict:
             if not HHMM.match(str(data[k])):
                 raise AppError(400, "Giờ phải có dạng HH:MM (vd 18:00)")
             cfg[k] = str(data[k])
+    if data.get("weekend_full") is not None:
+        cfg["weekend_full"] = bool(data["weekend_full"])
+    if data.get("holidays") is not None:
+        cfg["holidays"] = parse_holidays(data["holidays"])
     if data.get("window_enabled") is not None:
         cfg["window_enabled"] = bool(data["window_enabled"])
     if data.get("hourly_limit") is not None:
@@ -177,7 +183,7 @@ def update(db: Session, data: dict, *, actor: str, client_ip: str) -> dict:
     _save(db, KEY, cfg, actor)
     audit(db, action="settings_cud", fw=None, target="autoblock", result="ok", actor=actor, client_ip=client_ip,
           message=(f"Tự động chặn: bộ đọc {'bật' if cfg['enabled'] else 'tắt'} · {len(cfg['soc_senders'])} tài khoản SOC"
-                   f" · khung giờ {'%s–%s' % (cfg['window_start'], cfg['window_end']) if cfg['window_enabled'] else '24/7'}"
+                   f" · lịch {schedule_text(cfg)}"
                    f" · tối đa {cfg['hourly_limit']} IP/giờ · đọc mỗi {cfg['poll_seconds']} giây"
                    f" · whitelist {', '.join('%s (%d)' % (w['name'], len(w['entries'])) for w in cfg['whitelists'])}"))
     db.commit()
@@ -279,23 +285,105 @@ def _minutes(hhmm: str) -> int:
     return int(h) * 60 + int(m)
 
 
-def in_window(cfg: dict, now: dt.datetime | None = None) -> bool:
-    """Trong khung giờ tự chặn (giờ VN)? start > end = qua đêm (18:00–08:00); start == end = cả ngày."""
+HOLIDAYS_MAX = 100
+
+
+def parse_holidays(items) -> list[dict]:
+    """[{from, to?, name?}] (YYYY-MM-DD) → chuẩn hóa, sắp xếp; khoảng tối đa 31 ngày; bỏ ngày đã qua hơn 1 năm."""
+    if not isinstance(items, list) or len(items) > HOLIDAYS_MAX:
+        raise AppError(400, f"Tối đa {HOLIDAYS_MAX} ngày lễ")
+    out = []
+    for it in items:
+        try:
+            d1 = dt.date.fromisoformat(str((it or {}).get("from") or "")[:10])
+            d2 = dt.date.fromisoformat(str(it.get("to") or it.get("from"))[:10])
+        except ValueError as exc:
+            raise AppError(400, "Ngày lễ phải có dạng YYYY-MM-DD") from exc
+        if d2 < d1:
+            raise AppError(400, f"Ngày lễ {d1:%d/%m/%Y}: ngày kết thúc trước ngày bắt đầu")
+        if (d2 - d1).days > 31:
+            raise AppError(400, "Mỗi đợt nghỉ lễ tối đa 31 ngày")
+        if d2 < dt.date.today() - dt.timedelta(days=366):
+            continue
+        out.append({"from": d1.isoformat(), "to": d2.isoformat(), "name": str(it.get("name") or "").strip()[:80]})
+    return sorted(out, key=lambda h: h["from"])
+
+
+def _holiday(cfg: dict, day: dt.date) -> dict | None:
+    for h in cfg.get("holidays") or []:
+        if h["from"] <= day.isoformat() <= h["to"]:
+            return h
+    return None
+
+
+def window_reason(cfg: dict, now: dt.datetime | None = None) -> str:
+    """Lý do đang được TỰ CHẶN theo lịch (giờ VN): "" = trong giờ hành chính (lệnh chờ duyệt).
+
+    Thứ tự: lịch tắt (24/7) · ngày lễ (cả ngày) · thứ 7 / Chủ nhật (cả ngày, nếu bật) · ngoài giờ ngày thường
+    (start > end = qua đêm, vd 18:00–08:00; start == end = cả ngày). Đêm trước / sau ngày nghỉ vẫn theo khung ngoài giờ.
+    """
     if not cfg.get("window_enabled"):
-        return True
+        return "24/7"
     t = (now or dt.datetime.now(dt.timezone.utc)).astimezone(VN_TZ)
+    h = _holiday(cfg, t.date())
+    if h:
+        return f"Ngày lễ{': ' + h['name'] if h['name'] else ''}"
+    if cfg.get("weekend_full", True) and t.weekday() >= 5:
+        return "Cuối tuần"
     cur, s, e = t.hour * 60 + t.minute, _minutes(cfg["window_start"]), _minutes(cfg["window_end"])
-    if s == e:
-        return True
-    return s <= cur < e if s < e else (cur >= s or cur < e)
+    if s == e or (s <= cur < e if s < e else (cur >= s or cur < e)):
+        return f"Ngoài giờ {cfg['window_start']}–{cfg['window_end']}"
+    return ""
 
 
-def night_shift(now: dt.datetime | None = None) -> tuple[dt.datetime, dt.datetime]:
-    """Ca đêm gần nhất: 18:00 hôm trước → 08:00 sáng hôm sau (giờ VN). Đang trong ca → tới hiện tại."""
-    t = (now or dt.datetime.now(dt.timezone.utc)).astimezone(VN_TZ)
-    start_day = t.date() if t.hour >= 18 else t.date() - dt.timedelta(days=1)
-    start = dt.datetime.combine(start_day, dt.time(18, 0), VN_TZ)
-    return start, start + dt.timedelta(hours=14)
+def in_window(cfg: dict, now: dt.datetime | None = None) -> bool:
+    return bool(window_reason(cfg, now))
+
+
+def schedule_text(cfg: dict) -> str:
+    if not cfg.get("window_enabled"):
+        return "24/7"
+    parts = [f"ngày thường {cfg['window_start']}–{cfg['window_end']}"]
+    if cfg.get("weekend_full", True):
+        parts.append("cả ngày T7 & CN")
+    if cfg.get("holidays"):
+        parts.append(f"{len(cfg['holidays'])} đợt nghỉ lễ")
+    return ", ".join(parts)
+
+
+def off_hours_span(cfg: dict, now: dt.datetime | None = None) -> tuple[dt.datetime, dt.datetime]:
+    """Ca ngoài giờ gần nhất (đang diễn ra hoặc vừa kết thúc), giờ VN — vd 18:00 thứ 6 → 08:00 thứ 2 khi bật cuối tuần.
+
+    Lịch 24/7 → 24 giờ qua. Quét theo phút, tối đa 40 ngày (đủ cho đợt nghỉ lễ dài nhất 31 ngày + cuối tuần).
+    """
+    t = (now or dt.datetime.now(dt.timezone.utc)).astimezone(VN_TZ).replace(second=0, microsecond=0)
+    if not cfg.get("window_enabled"):
+        return t - dt.timedelta(hours=24), t + dt.timedelta(minutes=1)
+    step, limit = dt.timedelta(minutes=1), 40 * 24 * 60
+    cur = t
+    if not in_window(cfg, cur):  # đang giờ hành chính → lùi về phút cuối của ca trước
+        for _ in range(limit):
+            cur -= step
+            if in_window(cfg, cur):
+                break
+        else:
+            return t - dt.timedelta(hours=24), t
+    start = cur
+    for _ in range(limit):
+        if not in_window(cfg, start - step):
+            break
+        start -= step
+    end = cur
+    for _ in range(limit):
+        end += step
+        if not in_window(cfg, end):
+            break
+    return start, end
+
+
+def night_shift(now: dt.datetime | None = None, cfg: dict | None = None) -> tuple[dt.datetime, dt.datetime]:
+    """Tương thích: ca ngoài giờ theo lịch mặc định (18:00–08:00, cuối tuần cả ngày)."""
+    return off_hours_span(cfg or DEFAULTS, now)
 
 
 # ------------------------------------------------------------------ trạng thái

@@ -83,17 +83,39 @@ chk("cú pháp: CIDR / IP sai / IPv6 → lệnh lỗi (không chặn)", len(cm) 
 chk("cú pháp: nhiều dòng lệnh trong một tin", len(parser.find_commands(
     parser.html_to_text(f"<div>{CMD} 5.5.5.5</div><div>{CMD} 6.6.6.6</div>"))) == 2)
 VN = dt.timezone(dt.timedelta(hours=7))
-W = {"window_enabled": True, "window_start": "18:00", "window_end": "08:00"}
+W = {"window_enabled": True, "window_start": "18:00", "window_end": "08:00", "weekend_full": True, "holidays": []}
 chk("khung giờ 18:00–08:00: 23:00 và 07:59 trong, 08:00 và 12:00 ngoài",
     abs_.in_window(W, dt.datetime(2026, 11, 18, 23, 0, tzinfo=VN)) and abs_.in_window(W, dt.datetime(2026, 11, 19, 7, 59, tzinfo=VN))
     and not abs_.in_window(W, dt.datetime(2026, 11, 19, 8, 0, tzinfo=VN))
     and not abs_.in_window(W, dt.datetime(2026, 11, 19, 12, 0, tzinfo=VN)))
 chk("khung giờ tắt = 24/7", abs_.in_window({**W, "window_enabled": False}, dt.datetime(2026, 11, 19, 12, 0, tzinfo=VN)))
-s, e = abs_.night_shift(dt.datetime(2026, 11, 19, 10, 0, tzinfo=VN))
-chk("ca đêm lúc 10:00 = 18:00 hôm trước → 08:00 hôm nay",
-    (s.day, s.hour, e.day, e.hour) == (18, 18, 19, 8))
-s, e = abs_.night_shift(dt.datetime(2026, 11, 19, 2, 0, tzinfo=VN))
-chk("ca đêm lúc 02:00 = 18:00 hôm qua → 08:00 sáng nay", (s.day, s.hour, e.day) == (18, 18, 19))
+s, e = abs_.off_hours_span(W, dt.datetime(2026, 11, 19, 10, 0, tzinfo=VN))  # thứ 5
+chk("ca ngoài giờ lúc 10:00 thứ 5 = 18:00 thứ 4 → 08:00 thứ 5",
+    (s.day, s.hour, e.day, e.hour) == (18, 18, 19, 8), (s, e))
+s, e = abs_.off_hours_span(W, dt.datetime(2026, 11, 19, 2, 0, tzinfo=VN))
+chk("ca ngoài giờ lúc 02:00 = 18:00 hôm qua → 08:00 sáng nay", (s.day, s.hour, e.day, e.hour) == (18, 18, 19, 8))
+chk("thứ 7 / Chủ nhật 12:00 → tự chặn cả ngày (Cuối tuần)",
+    abs_.window_reason(W, dt.datetime(2026, 11, 21, 12, 0, tzinfo=VN)) == "Cuối tuần"
+    and abs_.in_window(W, dt.datetime(2026, 11, 22, 15, 0, tzinfo=VN)))
+chk("tắt tùy chọn cuối tuần → thứ 7 12:00 là giờ hành chính",
+    not abs_.in_window({**W, "weekend_full": False}, dt.datetime(2026, 11, 21, 12, 0, tzinfo=VN)))
+s, e = abs_.off_hours_span(W, dt.datetime(2026, 11, 21, 12, 0, tzinfo=VN))
+chk("ca cuối tuần = 18:00 thứ 6 → 08:00 thứ 2", (s.strftime("%a %H:%M"), e.strftime("%a %H:%M")) == ("Fri 18:00", "Mon 08:00"),
+    (s, e))
+HW = {**W, "holidays": [{"from": "2026-12-31", "to": "2027-01-01", "name": "Tết Dương lịch"}]}
+chk("ngày lễ rơi vào ngày thường (thứ 5, 10:00) → tự chặn cả ngày, nêu tên",
+    abs_.window_reason(HW, dt.datetime(2026, 12, 31, 10, 0, tzinfo=VN)) == "Ngày lễ: Tết Dương lịch"
+    and not abs_.in_window(W, dt.datetime(2026, 12, 31, 10, 0, tzinfo=VN)))
+s, e = abs_.off_hours_span(HW, dt.datetime(2026, 12, 31, 10, 0, tzinfo=VN))
+chk("ngày lễ liền cuối tuần gộp một ca: 18:00 thứ 4 30/12 → 08:00 thứ 2 04/01",
+    (s.strftime("%d/%m %H:%M"), e.strftime("%d/%m %H:%M")) == ("30/12 18:00", "04/01 08:00"), (s, e))
+chk("lịch tắt (24/7) → ca = 24 giờ qua", abs_.window_reason({**W, "window_enabled": False}) == "24/7")
+for bad in ([{"from": "31/12/2026"}], [{"from": "2026-12-31", "to": "2026-12-30"}], [{"from": "2027-01-01", "to": "2027-03-01"}]):
+    try:
+        abs_.parse_holidays(bad)
+        chk(f"ngày lễ sai {bad} → lỗi", False)
+    except Exception:  # noqa: BLE001
+        chk(f"ngày lễ sai {bad} → lỗi", True)
 
 # ------------------------------------------------------------ chuẩn bị
 H = {"X-Auth-Token": c.post("/api/auth/header", headers={"X-SRB-UPN": "phu.luong@hsc.com.vn"}).json()["token"]}
@@ -284,11 +306,23 @@ chk("operator vẫn từ chối được mục whitelist",
 now = dt.datetime.now(VN)
 ws, we = (now + dt.timedelta(hours=2)).strftime("%H:%M"), (now + dt.timedelta(hours=3)).strftime("%H:%M")
 c.put("/api/autoblock/settings", headers=H, json={"window_enabled": True, "window_start": ws, "window_end": we,
-                                                   "hourly_limit": 50})
+                                                   "hourly_limit": 50, "weekend_full": False, "holidays": []})
 post(f"<p>{CMD} 64.62.197.1</p>")
 poll()
 r = by_ip("64.62.197.1")
-chk("ngoài khung giờ tự động → chờ duyệt, nêu lý do", r["status"] == "pending" and "Ngoài khung giờ" in r["pending_reason"], r)
+chk("trong giờ hành chính → chờ duyệt, nêu lý do", r["status"] == "pending" and "Ngoài khung giờ" in r["pending_reason"], r)
+chk("operator không bật ngày lễ hôm nay", c.post("/api/autoblock/holiday-today", headers=O, json={"on": True}).status_code == 403)
+st = c.post("/api/autoblock/holiday-today", headers=H, json={"on": True, "name": "Nghỉ bù"}).json()
+chk("quản trị viên bật 'tự chặn cả ngày hôm nay' → đang trong khung (Ngày lễ)", st["in_window"] and st["holiday_today"]
+    and st["window_reason"] == "Ngày lễ: Nghỉ bù", st)
+post(f"<p>{CMD} 64.62.197.9</p>")
+poll()
+chk("ngày lễ kích hoạt → tự chặn ban ngày", (wait_status("64.62.197.9", "blocked") or {}).get("mode") == "auto")
+st = c.post("/api/autoblock/holiday-today", headers=H, json={"on": False}).json()
+chk("tắt lại ngày lễ hôm nay", not st["holiday_today"] and not st["in_window"], st)
+r = c.put("/api/autoblock/settings", headers=H, json={"holidays": [{"from": "2027-02-05", "to": "2027-02-11", "name": "Tết Nguyên đán"}]})
+chk("lưu đợt nghỉ lễ nhiều ngày", r.status_code == 200 and r.json()["holidays"][0]["to"] == "2027-02-11", r.text[:200])
+chk("ngày lễ sai định dạng → 400", c.put("/api/autoblock/settings", headers=H, json={"holidays": [{"from": "05/02/2027"}]}).status_code == 400)
 c.put("/api/autoblock/settings", headers=H, json={"window_enabled": False})
 r = c.post("/api/autoblock/switch", headers=O, json={"on": False})
 chk("operator TẮT KHẨN CẤP được", r.status_code == 200 and not r.json()["auto_enabled"], r.text)
@@ -316,12 +350,11 @@ chk("chu kỳ đọc sau: tự gửi lại trả lời", r["reply_status"] == "s
 
 # ------------------------------------------------------------ danh sách ca đêm + gỡ chặn
 nv = c.get("/api/autoblock/requests?view=night", headers=V).json()
-chk("danh sách ca đêm có mốc 18:00 → 08:00", nv["night"]["start"].endswith("18:00:00+07:00")
-    and nv["night"]["end"].endswith("08:00:00+07:00"), nv.get("night"))
-_h = dt.datetime.now(VN).hour
+chk("danh sách ca trả mốc bắt đầu / kết thúc (giờ VN)", nv["night"]["start"].endswith("+07:00")
+    and nv["night"]["end"].endswith("+07:00"), nv.get("night"))
 _auto = {x["ip"] for x in reqs() if x["mode"] == "auto"}
-chk("danh sách ca đêm = IP tự chặn trong ca (đang ca đêm → có; ban ngày → ca trước, trống)",
-    {x["ip"] for x in nv["items"]} == (_auto if (_h >= 18 or _h < 8) else set()), ({x["ip"] for x in nv["items"]}, _h))
+chk("lịch 24/7: danh sách ca = IP tự chặn trong 24 giờ qua",
+    {x["ip"] for x in nv["items"]} == _auto, ({x["ip"] for x in nv["items"]}, _auto))
 chk("danh sách chờ duyệt", {x["ip"] for x in reqs("pending")} == {"31.13.9.9", "64.62.197.1", "64.62.197.2"},
     {x["ip"] for x in reqs("pending")})
 chk("viewer không gỡ chặn được", c.post("/api/autoblock/unblock", headers=V, json={"ids": [1]}).status_code == 403)

@@ -249,6 +249,10 @@ const visible = (page, sel) => page.isVisible(sel);
       (await page.textContent("#abs-msg")).includes("INFRA ĐÃ BLOCK 192.0.2.1 THEO YÊU CẦU LÚC"));
     chk("Tự động chặn: URL webhook không hiện lại, chỉ tên máy",
       (await page.inputValue("#abs-reply-url")) === "" && (await page.getAttribute("#abs-reply-url", "placeholder")).includes("127.0.0.1"));
+    chk("Tự động chặn: lịch mặc định 18:00–08:00 + cả ngày cuối tuần",
+      (await page.inputValue("#abs-wstart")) === "18:00" && (await page.isChecked("#abs-weekend")));
+    await page.click("#abs-hol-add");
+    await page.fill('#abs-hol [data-k="name"]', "Nghỉ lễ thử");
     await page.uncheck("#abs-window");
     await page.fill("#abs-poll", "5");
     await page.check("#abs-enabled");
@@ -257,6 +261,7 @@ const visible = (page, sel) => page.isVisible(sel);
     chk("Tự động chặn: lưu + bật, chu kỳ 5 phút", (await page.textContent("#abs-msg")).includes("5 phút")
       && (await page.textContent("#ab-cfg-state")) === "Đang bật");
     chk("Tự động chặn: secret không hiện lại", (await page.inputValue("#abs-secret")) === "");
+    chk("Tự động chặn: lưu ngày lễ", (await page.inputValue('#abs-hol [data-k="name"]')) === "Nghỉ lễ thử");
     await say("<p>ĐỀ XUẤT CỦA SOC: BLOCK IP 185.220.101.7</p><p>ĐỀ XUẤT CỦA SOC: BLOCK IP 23.33.1.1</p>");
     await tab(page, "autoblock");
     await page.waitForSelector("#panel-autoblock.is-active");

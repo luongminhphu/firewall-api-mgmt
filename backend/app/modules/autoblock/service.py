@@ -245,7 +245,7 @@ def _handle_command(db: Session, cfg: dict, st: dict, msg: AutoBlockMessage, c: 
     elif not cfg["auto_enabled"]:
         reason = "Công tắc tự động chặn đang TẮT"
     elif not cfgmod.in_window(cfg, now):
-        reason = f"Ngoài khung giờ tự động ({cfg['window_start']}–{cfg['window_end']})"
+        reason = f"Ngoài khung giờ tự động — trong giờ hành chính ({cfgmod.schedule_text(cfg)})"
     elif st.get("breaker_tripped_at"):
         reason = f"Đã vượt ngưỡng {cfg['hourly_limit']} IP/giờ — chờ quản trị viên mở lại"
     else:
@@ -471,7 +471,7 @@ def list_requests(db: Session, *, view: str = "all", status_: str = "", limit: i
     stmt = select(AutoBlockRequest)
     start = end = None
     if view == "night":
-        start, end = cfgmod.night_shift()
+        start, end = cfgmod.off_hours_span(cfgmod.raw(db))
         start, end = start.astimezone(dt.timezone.utc), end.astimezone(dt.timezone.utc)  # cột lưu UTC
         stmt = stmt.where(AutoBlockRequest.created_at >= start, AutoBlockRequest.created_at < end,
                           AutoBlockRequest.mode == "auto")
@@ -489,13 +489,16 @@ def list_requests(db: Session, *, view: str = "all", status_: str = "", limit: i
 def status(db: Session) -> dict:
     cfg = cfgmod.raw(db)
     st = cfgmod.state(db)
-    start, end = cfgmod.night_shift()
+    start, end = cfgmod.off_hours_span(cfg)
     pending = db.scalar(select(func.count()).select_from(AutoBlockRequest)
                         .where(AutoBlockRequest.status == "pending")) or 0
     return {
         "enabled": cfg["enabled"], "configured": cfgmod.configured(cfg), "auto_enabled": cfg["auto_enabled"],
         "window_enabled": cfg["window_enabled"], "window_start": cfg["window_start"], "window_end": cfg["window_end"],
-        "in_window": cfgmod.in_window(cfg), "hourly_limit": cfg["hourly_limit"],
+        "in_window": cfgmod.in_window(cfg), "window_reason": cfgmod.window_reason(cfg),
+        "weekend_full": cfg["weekend_full"], "holidays": cfg["holidays"], "schedule": cfgmod.schedule_text(cfg),
+        "holiday_today": bool(cfgmod._holiday(cfg, _now().astimezone(cfgmod.VN_TZ).date())),
+        "hourly_limit": cfg["hourly_limit"],
         "auto_last_hour": auto_count_last_hour(db), "poll_seconds": cfg["poll_seconds"],
         "scheduler": settings.AUTOBLOCK_POLL_SECONDS > 0,
         "breaker_tripped_at": st.get("breaker_tripped_at") or None, "breaker_reason": st.get("breaker_reason", ""),
@@ -537,14 +540,15 @@ def test_connection(db: Session) -> dict:
 
 
 def _maybe_digest(db: Session, cfg: dict, st: dict) -> None:
-    """08:00 giờ VN: email nhóm Admin danh sách IP đã tự chặn trong ca đêm (18:00 hôm trước – 08:00)."""
-    t = _now().astimezone(cfgmod.VN_TZ)
-    if t.hour < 8 or t.hour >= 18:
+    """Khi một ca ngoài giờ kết thúc (vd 08:00 sáng, 08:00 thứ 2 sau cuối tuần / sau kỳ nghỉ lễ): email nhóm Admin
+    danh sách lệnh trong ca. Mỗi ca một lần (khóa = thời điểm kết thúc ca); ca đã hết hơn 12 giờ thì bỏ qua."""
+    now = _now()
+    if not cfg.get("window_enabled") or cfgmod.in_window(cfg, now):
         return
-    today = t.date().isoformat()
-    if st.get("digest_date") == today:
+    start, end = cfgmod.off_hours_span(cfg, now)
+    today = end.isoformat()
+    if st.get("digest_date") == today or now - end > dt.timedelta(hours=12):
         return
-    start, end = cfgmod.night_shift()  # 8h–18h: ca vừa kết thúc lúc 08:00 sáng nay
     start, end = start.astimezone(dt.timezone.utc), end.astimezone(dt.timezone.utc)
     rows = list(db.scalars(select(AutoBlockRequest).where(
         AutoBlockRequest.created_at >= start, AutoBlockRequest.created_at < end).order_by(AutoBlockRequest.id)))
@@ -556,8 +560,8 @@ def _maybe_digest(db: Session, cfg: dict, st: dict) -> None:
     lines = [f"- {_vn(r.created_at)} · {r.ip} · {r.status} · {r.sender_name}"
              + (f" · {r.pending_reason}" if r.pending_reason else "") for r in rows]
     auto = sum(1 for r in rows if r.mode == "auto")
-    _mail(db, cfg, f"autoblock_digest:{today}", "autoblock_digest",
-          f"[SOC Rapid Block] Ca đêm {_vn(start)} – {_vn(end)}: {auto} IP tự chặn, "
+    _mail(db, cfg, f"autoblock_digest:{today[:16]}", "autoblock_digest",
+          f"[SOC Rapid Block] Ca ngoài giờ {_vn(start)} – {_vn(end)}: {auto} IP tự chặn, "
           f"{sum(1 for r in rows if r.status == 'pending')} chờ duyệt",
-          "Danh sách lệnh chặn SOC gửi trong ca đêm:\n\n" + "\n".join(lines)
+          "Danh sách lệnh chặn SOC gửi trong ca ngoài giờ:\n\n" + "\n".join(lines)
           + f"\n\nRà soát, gỡ chặn nếu nhầm, duyệt mục còn chờ tại {_link()}.")

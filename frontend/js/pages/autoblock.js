@@ -1,7 +1,7 @@
 /* Tab Tự động chặn — lệnh "ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>" đọc từ group chat Teams.
    - Mọi vai trò (viewer trở lên): trạng thái (công tắc, ngưỡng, khung giờ, lần đọc Teams), danh sách chờ duyệt,
-     ca đêm 18:00–08:00, tất cả lệnh, kiểm tra chuỗi băm.
-   - Write: duyệt / từ chối, gỡ chặn (từng IP hoặc cả ca đêm), TẮT KHẨN CẤP.
+     ca ngoài giờ gần nhất (đêm / cuối tuần / ngày lễ), tất cả lệnh, kiểm tra chuỗi băm.
+   - Write: duyệt / từ chối, gỡ chặn (từng IP hoặc cả ca), TẮT KHẨN CẤP.
    - Quản trị viên: bật lại công tắc, mở lại sau khi vượt ngưỡng, đọc Teams ngay. */
 import { api, errorBox, runJob } from "../api.js";
 import { pageSlice, renderPager } from "../components/pagination.js";
@@ -56,12 +56,15 @@ function renderStatus(s) {
     banner = `<p class="alert alert--error" role="alert">Đọc Teams lỗi: ${esc(s.last_error)}</p>`;
   }
   $("#ab-banner").innerHTML = banner;
-  const win = s.window_enabled ? `${s.window_start}–${s.window_end}` : "24/7";
+  $("#ab-today").hidden = !(can("admin") && s.window_enabled && (s.holiday_today || !s.in_window));
+  $("#ab-today").textContent = s.holiday_today ? "Tắt tự chặn cả ngày hôm nay" : "Tự chặn cả ngày hôm nay";
+  $("#ab-today").dataset.on = s.holiday_today ? "0" : "1";
+  const win = s.window_enabled ? (s.in_window ? "ĐANG TỰ CHẶN" : "GIỜ HÀNH CHÍNH") : "24/7";
   const cards = [
     [s.auto_enabled ? "BẬT" : "TẮT", "Công tắc tự động chặn", s.auto_enabled ? "ok" : "err"],
     [`${s.auto_last_hour}/${s.hourly_limit}`, "IP tự chặn trong 60 phút",
      s.breaker_tripped_at ? "err" : s.auto_last_hour >= s.hourly_limit * 0.8 ? "warn" : ""],
-    [win, s.window_enabled ? (s.in_window ? "Đang trong khung giờ tự chặn" : "Ngoài khung → chờ duyệt") : "Khung giờ tự chặn",
+    [win, s.window_enabled ? `${s.in_window ? s.window_reason : "Lệnh chờ duyệt"} · lịch: ${s.schedule}` : "Tự chặn mọi lúc",
      s.in_window ? "ok" : "warn"],
     [String(s.pending), "Lệnh chờ duyệt", s.pending ? "warn" : ""],
     [s.last_poll_at ? fmtTime(s.last_poll_at).split(" ")[0] : "—",
@@ -70,9 +73,9 @@ function renderStatus(s) {
   ];
   $("#ab-cards").innerHTML = cards.map(([v, label, tone]) =>
     `<div class="status-card ab-card${tone ? " status-card--" + tone : ""}"><b>${esc(v)}</b><span>${esc(label)}</span></div>`).join("");
-  const n = new Date(s.night.start), e = new Date(s.night.end);
-  const d = (x) => x.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", timeZone: "Asia/Ho_Chi_Minh" });
-  $("#ab-night-title").textContent = `Ca đêm 18:00 ${d(n)} → 08:00 ${d(e)}`;
+  const d = (iso) => new Date(iso).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit",
+    month: "2-digit", weekday: "short", hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
+  $("#ab-night-title").textContent = `Ca ngoài giờ: ${d(s.night.start)} → ${d(s.night.end)}`;
   $("#ab-pending-count").textContent = s.pending;
 }
 
@@ -97,6 +100,17 @@ async function setSwitch(on) {
 }
 $("#ab-off").addEventListener("click", () => setSwitch(false));
 $("#ab-on").addEventListener("click", () => setSwitch(true));
+
+$("#ab-today").addEventListener("click", async () => {
+  const on = $("#ab-today").dataset.on === "1";
+  if (on && !confirm("Tự chặn cả ngày hôm nay (ngày lễ / nghỉ đột xuất)?\n\nLệnh SOC gửi trong hôm nay sẽ được chặn ngay, không chờ duyệt.")) return;
+  try {
+    renderStatus((ab.status = await api("/api/autoblock/holiday-today", { method: "POST", body: { on } })));
+    toast(on ? "Đã bật tự chặn cả ngày hôm nay" : "Đã tắt tự chặn cả ngày hôm nay", "ok");
+  } catch (ex) {
+    toast(ex.message, "err");
+  }
+});
 
 $("#ab-poll").addEventListener("click", async () => {
   const b = $("#ab-poll");
@@ -179,7 +193,7 @@ $("#ab-pending").addEventListener("click", async (e) => {
   loadAutoblock();
 });
 
-// ------------------------------------------------------------------ ca đêm
+// ------------------------------------------------------------------ ca ngoài giờ
 const fwResults = (r) => (r.results || []).map((x) =>
   `<span class="nowrap">${esc(x.firewall)} ${resultChip(x.result)}</span>`).join(" ") || "—";
 
@@ -189,7 +203,7 @@ async function loadNight() {
   try {
     const { items } = await api("/api/autoblock/requests?view=night");
     $("#ab-night-undo").disabled = !items.some((r) => r.status === "blocked");
-    if (!items.length) return tableMessage(tb, cols, "empty", "Ca đêm này app chưa tự chặn IP nào.");
+    if (!items.length) return tableMessage(tb, cols, "empty", "Ca này app chưa tự chặn IP nào.");
     tb.innerHTML = items.map((r) => `<tr>
       <td class="mono" data-label="Thời gian">${esc(hhmm(r.created_at))}</td><td class="mono" data-label="IP"><strong>${esc(r.ip)}</strong></td>
       <td data-label="SOC gửi">${esc(r.sender)}</td><td data-label="Trạng thái">${chip(r.status)}</td>
@@ -213,7 +227,7 @@ async function unblock(body, label) {
   }
   loadAutoblock();
 }
-$("#ab-night-undo").addEventListener("click", () => unblock({ night: true }, "TẤT CẢ IP tự chặn trong ca đêm"));
+$("#ab-night-undo").addEventListener("click", () => unblock({ night: true }, "TẤT CẢ IP tự chặn trong ca ngoài giờ"));
 $("#panel-autoblock").addEventListener("click", (e) => {
   const b = e.target.closest("[data-unblock]");
   if (b) unblock({ ids: [Number(b.dataset.unblock)] }, b.dataset.ip);

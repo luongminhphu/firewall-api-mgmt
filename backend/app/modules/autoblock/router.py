@@ -49,6 +49,8 @@ class SettingsIn(_In):
     window_enabled: bool | None = None
     window_start: str | None = None
     window_end: str | None = None
+    weekend_full: bool | None = None
+    holidays: list[dict] | None = None   # [{"from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "name": "..."}]
     hourly_limit: int | None = None
     poll_seconds: int | None = None
     admin_emails: Any = None
@@ -115,6 +117,26 @@ def ab_switch(request: Request, payload: SwitchIn = Body(...), db: Session = Dep
     if payload.on and not role_at_least(p["role"], "admin"):
         raise AppError(403, "Chỉ quản trị viên được bật lại tự động chặn")
     return service.set_switch(db, payload.on, actor=p["user"], client_ip=client_ip_of(request))
+
+
+class TodayIn(_In):
+    on: bool = True
+    name: str | None = None
+
+
+@router.post("/api/autoblock/holiday-today")
+def ab_holiday_today(request: Request, payload: TodayIn = Body(default=TodayIn()), db: Session = Depends(get_session),
+                     p: dict = Depends(admin)):
+    """Bật / tắt tự chặn cả ngày HÔM NAY (giờ VN) — ngày lễ / nghỉ đột xuất rơi vào ngày thường."""
+    import datetime as dt
+
+    today = dt.datetime.now(dt.timezone.utc).astimezone(cfgmod.VN_TZ).date().isoformat()
+    cfg = cfgmod.raw(db)
+    hol = [h for h in cfg["holidays"] if not (h["from"] == today and h["to"] == today)]
+    if payload.on:
+        hol.append({"from": today, "to": today, "name": (payload.name or "Kích hoạt cả ngày hôm nay")[:80]})
+    cfgmod.update(db, {"holidays": hol}, actor=p["user"], client_ip=client_ip_of(request))
+    return service.status(db)
 
 
 @router.post("/api/autoblock/breaker/reset")
