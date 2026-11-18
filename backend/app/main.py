@@ -89,7 +89,7 @@ _NO_CACHE = "no-cache, must-revalidate"
 @app.middleware("http")
 async def _static_no_cache(request: Request, call_next):
     """Bắt trình duyệt / reverse proxy luôn kiểm tra lại file tĩnh (ETag → 304),
-    tránh tình trạng index.html mới chạy với app.js cũ sau khi nâng cấp."""
+    tránh tình trạng index.html mới chạy với module JS cũ sau khi nâng cấp."""
     response = await call_next(request)
     if not request.url.path.startswith("/api/") and "cache-control" not in response.headers:
         response.headers["Cache-Control"] = _NO_CACHE
@@ -100,7 +100,7 @@ def _render_index() -> HTMLResponse:
     with open(os.path.join(_FRONTEND, "index.html"), encoding="utf-8") as f:
         html = f.read()
     v = settings.APP_VERSION
-    html = html.replace('src="app.js"', f'src="app.js?v={v}"').replace(
+    html = html.replace('src="js/main.js"', f'src="js/main.js?v={v}"').replace(
         'href="styles.css"', f'href="styles.css?v={v}"'
     ).replace('href="hsc-tokens.css"', f'href="hsc-tokens.css?v={v}"').replace(
         'href="fonts.css"', f'href="fonts.css?v={v}"'
