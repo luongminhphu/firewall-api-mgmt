@@ -74,6 +74,12 @@ print("   ", lines[1][:160])
 # verify chain ok
 v=c.get("/api/changes/verify", headers=H).json(); chk("chain ok", v["ok"], v["message"])
 # tamper: edit one row
-db=sqlite3.connect("/tmp/sb_t.db"); db.execute("update group_changes set value='1.1.1.1' where id=3"); db.commit()
+import os, sqlalchemy as _sa  # chạy được cả SQLite lẫn PostgreSQL (E2E_DATABASE_URL)
+_eng=_sa.create_engine(os.environ["DATABASE_URL"])
+class _DB:
+    def __init__(self): self.c=_eng.connect()
+    def execute(self, q): self.c.execute(_sa.text(q))
+    def commit(self): self.c.commit()
+db=_DB(); db.execute("update group_changes set value='1.1.1.1' where id=3"); db.commit()
 v=c.get("/api/changes/verify", headers=H).json(); chk("tamper edit detected", not v["ok"] and v["broken_at"]==3, v["message"])
 db.execute("update group_changes set value=(select value from group_changes where id=3) where id=3")
