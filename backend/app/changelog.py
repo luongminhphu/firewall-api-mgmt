@@ -10,17 +10,14 @@
 from __future__ import annotations
 
 import datetime as dt
-import hashlib
 import json
-import threading
 import uuid
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from .core import hashchain
 from .core.models import Firewall, GroupChange, GroupSnapshot
-
-_chain_lock = threading.Lock()
 
 EXTERNAL_ACTOR = "ngoai-app"
 EXTERNAL_NAME = "Thay đổi ngoài app (trực tiếp trên firewall)"
@@ -50,11 +47,6 @@ def new_batch() -> str:
     return uuid.uuid4().hex[:16]
 
 
-def _last_hash(db: Session) -> str:
-    row = db.scalars(select(GroupChange).order_by(desc(GroupChange.id)).limit(1)).first()
-    return row.row_hash if row else ""
-
-
 def record(
     db: Session,
     *,
@@ -76,26 +68,19 @@ def record(
     if not items and change_type not in ("baseline", "create_group"):
         return batch_id
     rows = items or [("", "")]
-    with _chain_lock:
-        prev = _last_hash(db)
-        ts = _now()
-        for obj, value in rows:
-            ch = GroupChange(
-                ts=ts, batch_id=batch_id,
-                actor=who.get("user", ""), actor_name=who.get("name", ""),
-                auth_method=who.get("method", ""),
-                firewall_id=fw.id, firewall_name=fw.name, group_name=group,
-                change_type=change_type, object_name=obj or "", value=value or "",
-                count_before=count_before, count_after=count_after,
-                reason=(reason or "")[:2000], source=source or "", client_ip=client_ip or "",
-                prev_hash=prev,
-            )
-            ch.row_hash = hashlib.sha256(ch.hash_payload().encode()).hexdigest()
-            prev = ch.row_hash
-            db.add(ch)
-        # Commit ngay trong khóa: từ v1.6 có luồng quét cache chạy nền song song với thao tác
-        # người dùng; nếu nhả khóa trước khi commit, hai phiên có thể đọc cùng prev_hash → đứt chuỗi.
-        db.commit()
+    ts = _now()
+    hashchain.append(db, GroupChange, [
+        GroupChange(
+            ts=ts, batch_id=batch_id,
+            actor=who.get("user", ""), actor_name=who.get("name", ""),
+            auth_method=who.get("method", ""),
+            firewall_id=fw.id, firewall_name=fw.name, group_name=group,
+            change_type=change_type, object_name=obj or "", value=value or "",
+            count_before=count_before, count_after=count_after,
+            reason=(reason or "")[:2000], source=source or "", client_ip=client_ip or "",
+        )
+        for obj, value in rows
+    ])
     return batch_id
 
 
@@ -172,20 +157,7 @@ def detect_drift(
 
 # ------------------------------------------------------------------ query
 def verify_chain(db: Session) -> dict:
-    prev = ""
-    count = 0
-    for ch in db.scalars(select(GroupChange).order_by(GroupChange.id)).yield_per(500):
-        count += 1
-        if ch.prev_hash != prev:
-            return {"ok": False, "checked": count, "broken_at": ch.id,
-                    "message": f"Chuỗi băm đứt tại bản ghi #{ch.id}: có bản ghi trước đó bị xóa hoặc chèn"}
-        expect = hashlib.sha256(ch.hash_payload().encode()).hexdigest()
-        if expect != ch.row_hash:
-            return {"ok": False, "checked": count, "broken_at": ch.id,
-                    "message": f"Bản ghi #{ch.id} đã bị sửa sau khi ghi"}
-        prev = ch.row_hash
-    return {"ok": True, "checked": count, "broken_at": None,
-            "message": f"Toàn vẹn: {count} bản ghi, chuỗi băm khớp"}
+    return hashchain.verify(db, GroupChange)
 
 
 def query_batches(
