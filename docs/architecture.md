@@ -464,3 +464,34 @@ Quy tắc gửi:
 - Thư có header `Auto-Submitted: auto-generated`; nội dung không có dữ liệu bí mật; app vẫn **không** sửa rule.
 - Thử lại: 5 phút × 2^(n−1), tối đa 6 giờ, 8 lần → `failed`. Lập kế hoạch + gửi chạy định kỳ (`NOTIFY_INTERVAL_SECONDS`,
   mỗi vòng một pod qua `pg_try_advisory_lock`).
+
+---
+
+## 15. Rà soát quyền truy cập VPN định kỳ (ISO/IEC 27001:2022 — A.5.18 Access rights, A.8.2, A.5.15)
+
+Quyết định (18/11/2026): **đại diện team** rà soát (đăng nhập Microsoft), **hằng quý**, phạm vi **rule VPN + tài khoản
+mồ côi**. App vẫn **chỉ đọc** firewall: "Thu hồi" tạo danh sách cho Infra xử lý, không tự tắt rule.
+
+**Đợt rà soát (campaign)** — bảng `review_campaigns`: tên ("Rà soát VPN Q4/2026"), khóa kỳ `2026-Q4` (UNIQUE → tự mở
+không trùng), hạn hoàn thành (mặc định 14 ngày), mở/đóng, người mở/đóng.
+- Tự mở ngày đầu quý (giờ VN, `core.jobs.every`, một pod/vòng) nếu bật; admin cũng mở tay được.
+- Khi mở: **chụp ảnh** dữ liệu tại thời điểm đó vào `review_items` (không đổi theo đồng bộ sau này — bằng chứng audit):
+  - mỗi rule trong Rule Group VPN (đích, dịch vụ, identity, tài khoản liên kết, hạn, trạng thái hạn);
+  - mỗi **tài khoản mồ côi**: có quyền SSL VPN/IPsec, còn trên firewall, nhưng không gắn rule VPN nào → Infra.
+- Phạm vi người rà soát: rule có team và team có đại diện (`vpn_team_contacts`) → đại diện team đó; còn lại
+  (không team, team chưa có đại diện, tài khoản mồ côi) → **Infra** (quản trị viên).
+
+**Quyết định từng mục**: `keep` (còn cần) · `revoke` (thu hồi) · `change` (cần điều chỉnh) — `revoke`/`change` bắt
+buộc ghi lý do. Mỗi quyết định ghi vào `review_decisions` nối **chuỗi băm** (`core/hashchain`) — sửa/xóa sẽ lộ.
+Quản trị viên quyết định thay được (ghi rõ "Infra quyết định thay").
+
+**Vai trò `reviewer`** (mới, thấp nhất): người đăng nhập Microsoft mà email nằm trong danh sách đại diện team và chưa
+là người dùng app → được vào app với vai trò `reviewer`, **chỉ** gọi được `/api/review/my*` + `/api/config`
+(chặn tập trung ở `auth/rbac.principal`, mọi API khác 403). Người dùng app sẵn có (viewer/operator/admin) là đại
+diện team thì rà soát được team mình trong tab Rà soát.
+
+**Thông báo** (dùng outbox phase 5, idempotent): mở đợt → email mỗi đại diện (số mục cần rà soát + link);
+còn ≤ 3 ngày → nhắc mục chưa quyết định; quá hạn → báo Infra danh sách team chưa xong.
+
+**Đóng đợt** (admin): mục chưa quyết định ghi "Không phản hồi" (để leo thang). Xuất **CSV bằng chứng** (mọi mục,
+quyết định, người, thời điểm, lý do, mã băm) và **CSV cần thu hồi / điều chỉnh** cho Infra.
