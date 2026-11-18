@@ -1,0 +1,33 @@
+# Ingress cho ingress-nginx (mặc định trên RKE2, ingressClassName "nginx").
+# Sửa host + TLS cho đúng. Nếu chỉ dùng NodePort 30988 (vd sau Entra App Proxy connector) có thể bỏ file này khỏi kustomization.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: soc-rapid-block
+  namespace: sophos-blocker
+  labels:
+    app.kubernetes.io/part-of: soc-rapid-block
+  annotations:
+    # Request chặn/bỏ chặn chờ tối đa JOB_SYNC_WAIT (mặc định 20s) rồi chuyển sang chạy nền;
+    # quét lại group chờ GROUP_CACHE_REFRESH_WAIT. Timeout ingress phải LỚN HƠN các giá trị này.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    # Tải logo (≤ LOGO_MAX_KB) / file CSV IP
+    nginx.ingress.kubernetes.io/proxy-body-size: "5m"
+    # Bật khi có TLS: chuyển http → https
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  # tls:
+  #   - hosts: [socblock.example.internal]
+  #     secretName: soc-rapid-block-tls     # cert-manager hoặc: kubectl -n sophos-blocker create secret tls ...
+  rules:
+    - host: socblock.example.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: soc-rapid-block
+                port: { number: 8080 }

@@ -1,0 +1,27 @@
+# Overlay cho cụm Rancher (RKE2 / K3s) — dựng trên overlay prod (cấu hình site trong prod/local-config.yaml).
+# Triển khai / nâng cấp:   kubectl apply -k deploy/k8s/overlays/rancher/
+# Hướng dẫn đầy đủ: README.md mục "4.2 Rancher (RKE2 / K3s)".
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../prod
+  - ingress.yaml
+  # Bỏ comment để giới hạn egress của app (chỉ DNS, DB, firewall, SMTP, Entra). Sửa CIDR trong file trước.
+  # - networkpolicy-egress.yaml
+
+patches:
+  # Đưa namespace vào một Project của Rancher (quyền, quota, NetworkPolicy của project).
+  # Lấy ID ở Rancher UI: Cluster ▸ Projects/Namespaces ▸ ⋮ của project ▸ View in API → "id" dạng c-xxxxx:p-yyyyy
+  # - target: { kind: Namespace, name: sophos-blocker }
+  #   patch: |-
+  #     - op: add
+  #       path: /metadata/annotations
+  #       value: { field.cattle.io/projectId: "c-xxxxx:p-yyyyy" }
+
+  # Ghim phiên bản image thay vì latest (khuyến nghị cho môi trường thật):
+  # - target: { kind: Deployment, name: soc-rapid-block-app }
+  #   patch: |-
+  #     - op: replace
+  #       path: /spec/template/spec/containers/0/image
+  #       value: ghcr.io/luongminhphu/firewall-api-mgmt:2.1.0

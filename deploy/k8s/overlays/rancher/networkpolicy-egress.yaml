@@ -1,0 +1,47 @@
+# (Tùy chọn) Giới hạn kết nối RA NGOÀI của pod app. Mặc định base chỉ giới hạn ingress → egress mở hoàn toàn.
+# Cần CNI hỗ trợ NetworkPolicy: Canal / Calico / Cilium (RKE2 mặc định Canal — có hỗ trợ).
+# SỬA các CIDR bên dưới cho đúng trước khi bật, nếu không app sẽ không gọi được firewall / SMTP.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-restrict-egress
+  namespace: sophos-blocker
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: soc-rapid-block-app
+  policyTypes: [Egress]
+  egress:
+    # DNS của cụm (CoreDNS / rke2-coredns trong kube-system)
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # PostgreSQL trong cùng namespace
+    - to:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: soc-rapid-block-db }
+      ports:
+        - { protocol: TCP, port: 5432 }
+    # Sophos Firewall XML API (cổng Admin Console, mặc định 4444) — liệt kê IP quản trị của từng firewall
+    - to:
+        - ipBlock: { cidr: 10.0.0.1/32 }       # <-- firewall 1
+        - ipBlock: { cidr: 10.0.0.2/32 }       # <-- firewall 2
+      ports:
+        - { protocol: TCP, port: 4444 }
+    # Máy chủ SMTP (relay nội bộ / Exchange Online) — cổng theo cấu hình trong tab Cài đặt
+    - to:
+        - ipBlock: { cidr: 10.0.0.25/32 }      # <-- SMTP relay
+      ports:
+        - { protocol: TCP, port: 25 }
+        - { protocol: TCP, port: 587 }
+        - { protocol: TCP, port: 465 }
+    # Microsoft Entra ID (OIDC: token + JWKS) — IP của Microsoft thay đổi nên phải mở 443 ra ngoài
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports:
+        - { protocol: TCP, port: 443 }
