@@ -150,17 +150,6 @@ def sync_firewall(db: Session, fw: Firewall, *, actor: str = "he-thong", client_
         return {**base, "ok": True, "summary": summary, "ms": ms}
 
 
-def sync_all() -> list[dict]:
-    """Lượt định kỳ (core.jobs.every): mọi firewall đang bật."""
-    from ...core.db import SessionLocal
-
-    out = []
-    with SessionLocal() as db:
-        for fw in db.scalars(select(Firewall).where(Firewall.enabled.is_(True))).all():
-            out.append(sync_firewall(db, fw))
-    return out
-
-
 # --------------------------------------------------------------------- đọc
 def account_dict(r: VpnAccount, fw_name: str) -> dict:
     return {

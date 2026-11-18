@@ -96,6 +96,10 @@ class Settings:
     # timeout đọc riêng vì firewall có nhiều user/rule trả về chậm.
     VPN_SYNC_MINUTES: int = int(os.getenv("VPN_SYNC_MINUTES", "360"))
     VPN_SCAN_TIMEOUT: int = int(os.getenv("VPN_SCAN_TIMEOUT", "180"))
+    # B2 — mặc định ban đầu; quản trị viên chỉnh trong tab Cài đặt (lưu DB, ghi đè giá trị này).
+    # VPN_RULE_GROUPS chỉ được chọn trong VPN_RULE_GROUPS_ALLOWED (integrations/sophos/policy.py).
+    VPN_RULE_GROUPS: str = os.getenv("VPN_RULE_GROUPS", "VPN")
+    VPN_EXPIRING_DAYS: int = int(os.getenv("VPN_EXPIRING_DAYS", "30"))
     LOGO_MAX_KB: int = int(os.getenv("LOGO_MAX_KB", "300"))
     OIDC_ALLOW_GUESTS: bool = _bool(os.getenv("OIDC_ALLOW_GUESTS"), False)
     # SSO một lần (v1.5.1):

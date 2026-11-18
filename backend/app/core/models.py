@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..integrations.sophos.policy import BLOCK_GROUP
@@ -303,3 +303,68 @@ class VpnSync(Base):
     error: Mapped[str] = mapped_column(Text, default="")
     summary_json: Mapped[str] = mapped_column(Text, default="{}")
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class VpnRule(Base):
+    """Firewall rule thuộc Rule Group VPN (CHỈ ĐỌC) + thời hạn đã xác định (modules/vpn/expiry.py).
+
+    Trạng thái (còn hạn / sắp hết / đã hết…) KHÔNG lưu — tính khi đọc theo ngày hôm nay và ngưỡng cấu hình.
+    Rule biến mất khỏi group: removed_at (không xóa) để giữ lịch sử.
+    """
+
+    __tablename__ = "vpn_rules"
+    __table_args__ = (UniqueConstraint("firewall_id", "rule_key", name="uq_vpn_rules_fw_rule"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    firewall_id: Mapped[int] = mapped_column(Integer, index=True)
+    rule_name: Mapped[str] = mapped_column(String(255))
+    rule_key: Mapped[str] = mapped_column(String(255), index=True)  # lowercase — tên rule là khóa (API không có ID)
+    group_name: Mapped[str] = mapped_column(String(120), default="")
+    position: Mapped[int] = mapped_column(Integer, default=0)  # thứ tự trong SecurityPolicyList của group
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    action: Mapped[str] = mapped_column(String(32), default="")
+    policy_type: Mapped[str] = mapped_column(String(32), default="")
+    log_traffic: Mapped[bool] = mapped_column(Boolean, default=False)
+    detail_json: Mapped[str] = mapped_column(Text, default="{}")  # zone/mạng nguồn, identity, đích, dịch vụ…
+    schedule_name: Mapped[str] = mapped_column(String(160), default="")
+    schedule_end: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    team: Mapped[str] = mapped_column(String(160), default="", index=True)
+    user_code: Mapped[str] = mapped_column(String(80), default="")
+    name_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    name_status: Mapped[str] = mapped_column(String(16), default="none")  # ok | none | invalid
+    expiry_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True, index=True)
+    expiry_source: Mapped[str] = mapped_column(String(16), default="none")  # schedule | name | none
+    expiry_mismatch: Mapped[bool] = mapped_column(Boolean, default=False)
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    first_seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    removed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class VpnRuleChange(Base):
+    """Lịch sử thay đổi rule VPN giữa các lần đồng bộ — nối chuỗi băm (core/hashchain) như group_changes."""
+
+    __tablename__ = "vpn_rule_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)
+    firewall_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    firewall_name: Mapped[str] = mapped_column(String(120), default="")
+    rule_name: Mapped[str] = mapped_column(String(255), default="", index=True)
+    # baseline | rule_added | rule_removed | expiry_changed | destination_changed | identity_changed |
+    # service_changed | status_changed | rule_changed
+    change_type: Mapped[str] = mapped_column(String(24))
+    before_json: Mapped[str] = mapped_column(Text, default="")
+    after_json: Mapped[str] = mapped_column(Text, default="")
+    actor: Mapped[str] = mapped_column(String(160), default="")
+    prev_hash: Mapped[str] = mapped_column(String(64), default="")
+    row_hash: Mapped[str] = mapped_column(String(64), default="")
+
+    def hash_payload(self) -> str:
+        ts = self.ts
+        if ts is not None:
+            ts = ts.replace(tzinfo=dt.timezone.utc) if ts.tzinfo is None else ts.astimezone(dt.timezone.utc)
+        return "\x1f".join([ts.isoformat() if ts else "", str(self.firewall_id or ""), self.firewall_name,
+                             self.rule_name, self.change_type, self.before_json or "", self.after_json or "",
+                             self.actor or "", self.prev_hash or ""])

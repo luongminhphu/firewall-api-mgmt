@@ -22,6 +22,12 @@ ALLOWED_FIELDS = {
                      "TunnelPolicy/PermittedNetworkResourcesIPv4/Resource"],
     "VPNIPSecConnection": ["Configuration/Name", "Configuration/Description", "Configuration/ConnectionType",
                            "Configuration/Policy", "Configuration/AllowedUser/User", "Configuration/Status"],
+    "FirewallRuleGroup": ["Name", "Description", "SecurityPolicyList/SecurityPolicy", "Policytype"],
+    "FirewallRule": ["Name", "Description", "Status", "IPFamily", "Position", "PolicyType",
+                     "(User|Network)Policy/{Action, LogTraffic, SourceZones/Zone, SourceNetworks/Network, "
+                     "Services/Service, Schedule, DestinationZones/Zone, DestinationNetworks/Network, "
+                     "MatchIdentity, Identity/Member}"],
+    "Schedule": ["Name", "Description", "Type", "ScheduleDetails/StartDate", "ScheduleDetails/EndDate"],
 }
 
 SECRET_KEY_RE = re.compile(r"pass|secret|psk|otp|token|hash|private|rsakey|presharedkey|credential", re.I)
@@ -112,4 +118,52 @@ def ipsec_connection(n: dict) -> dict:
         "status": _t(_get(n, "Configuration/Status")),
     }
     assert_no_secret(out, "VPNIPSecConnection")
+    return out
+
+
+def rule_group(n: dict) -> dict:
+    out = {
+        "name": _t(n.get("Name")),
+        "description": _t(n.get("Description"))[:500],
+        "rules": _texts(_get(n, "SecurityPolicyList/SecurityPolicy")),  # thứ tự = thứ tự rule trong group
+        "policy_type": _t(n.get("Policytype")),
+    }
+    assert_no_secret(out, "FirewallRuleGroup")
+    return out
+
+
+def firewall_rule(n: dict) -> dict:
+    pol = n.get("UserPolicy") if isinstance(n.get("UserPolicy"), dict) else n.get("NetworkPolicy")
+    pol = pol if isinstance(pol, dict) else {}
+    out = {
+        "name": _t(n.get("Name")),
+        "description": _t(n.get("Description"))[:1000],
+        "enabled": _t(n.get("Status")).lower() == "enable",
+        "ip_family": _t(n.get("IPFamily")),
+        "position": _t(n.get("Position")),
+        "policy_type": _t(n.get("PolicyType")),
+        "action": _t(pol.get("Action")),
+        "log_traffic": _t(pol.get("LogTraffic")).lower() == "enable",
+        "src_zones": _texts(_get(pol, "SourceZones/Zone")),
+        "src_networks": _texts(_get(pol, "SourceNetworks/Network")),
+        "services": _texts(_get(pol, "Services/Service")),
+        "schedule": _t(pol.get("Schedule")),
+        "dst_zones": _texts(_get(pol, "DestinationZones/Zone")),
+        "dst_networks": _texts(_get(pol, "DestinationNetworks/Network")),
+        "match_identity": _t(pol.get("MatchIdentity")).lower() == "enable",
+        "identities": _texts(_get(pol, "Identity/Member")),
+    }
+    assert_no_secret(out, "FirewallRule")
+    return out
+
+
+def schedule(n: dict) -> dict:
+    out = {
+        "name": _t(n.get("Name")),
+        "description": _t(n.get("Description"))[:500],
+        "type": _t(n.get("Type")),
+        "start_date": _t(_get(n, "ScheduleDetails/StartDate")),
+        "end_date": _t(_get(n, "ScheduleDetails/EndDate")),
+    }
+    assert_no_secret(out, "Schedule")
     return out

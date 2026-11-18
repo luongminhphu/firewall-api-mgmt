@@ -34,3 +34,14 @@ class VPNReadMixin:
     def get_ipsec_connections(self, timeout: int | None = None) -> list[dict]:
         return [c for c in (sanitize.ipsec_connection(n) for n in self._get_all("VPNIPSecConnection", timeout))
                 if c["name"]]
+
+    # ------------------------------------------------------------- B2: rule thời hạn
+    def get_rule_groups(self, timeout: int | None = None) -> list[dict]:
+        return [g for g in (sanitize.rule_group(n) for n in self._get_all("FirewallRuleGroup", timeout)) if g["name"]]
+
+    def get_firewall_rules(self, timeout: int | None = None) -> list[dict]:
+        """Đọc toàn bộ FirewallRule (Sophos không lọc được theo Rule Group) — người gọi lọc theo tên trong group."""
+        return [r for r in (sanitize.firewall_rule(n) for n in self._get_all("FirewallRule", timeout)) if r["name"]]
+
+    def get_schedules(self, timeout: int | None = None) -> list[dict]:
+        return [x for x in (sanitize.schedule(n) for n in self._get_all("Schedule", timeout)) if x["name"]]

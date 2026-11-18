@@ -780,6 +780,12 @@
   "GET /api/jobs/{job_id}",
   "GET /api/users",
   "GET /api/vpn/accounts",
+  "GET /api/vpn/changes",
+  "GET /api/vpn/changes/verify",
+  "GET /api/vpn/rules",
+  "GET /api/vpn/rules.csv",
+  "GET /api/vpn/rules/{rule_id}",
+  "GET /api/vpn/settings",
   "GET /docs/oauth2-redirect",
   "GET /index.html",
   "GET /openapi.json",
@@ -798,7 +804,8 @@
   "POST /api/vpn/sync",
   "PUT /api/branding/logo",
   "PUT /api/firewalls/{fw_id}",
-  "PUT /api/users/{uid}"
+  "PUT /api/users/{uid}",
+  "PUT /api/vpn/settings"
  ],
  "unblock": {
   "content_type": "application/json",

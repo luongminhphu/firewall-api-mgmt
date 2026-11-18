@@ -103,6 +103,34 @@ def vpn_user(username: str, action: str = "remove"):
     return {"users": [u["Username"] for u in VPN["User"]]}
 
 
+@app.post("/_vpn/rule")
+def vpn_rule(name: str, action: str = "set", new_name: str = "", dst: str = "", status: str = "",
+             schedule: str = "", schedule_end: str = ""):
+    """Test: action=remove xóa rule (khỏi group); set: đổi tên / đích / bật-tắt / schedule / EndDate schedule."""
+    rules = VPN["FirewallRule"]
+    grp = next(g for g in VPN["FirewallRuleGroup"] if g["Name"] == "VPN")
+    lst = grp["SecurityPolicyList"]["SecurityPolicy"]
+    if action == "remove":
+        VPN["FirewallRule"] = [r for r in rules if r["Name"] != name]
+        grp["SecurityPolicyList"]["SecurityPolicy"] = [n for n in lst if n != name]
+        return {"ok": True}
+    r = next(x for x in rules if x["Name"] == name)
+    pol = r.get("UserPolicy") or r.get("NetworkPolicy")
+    if new_name:
+        lst[lst.index(name)] = new_name
+        r["Name"] = new_name
+    if dst:
+        pol["DestinationNetworks"] = {"Network": dst.split(",")}
+    if status:
+        r["Status"] = status
+    if schedule:
+        pol["Schedule"] = schedule
+    if schedule_end:
+        sc = next(x for x in VPN["Schedule"] if x["Name"] == pol["Schedule"])
+        sc["ScheduleDetails"]["EndDate"] = schedule_end
+    return {"ok": True}
+
+
 @app.post("/_reset_stats")
 def reset_stats():
     for k in STATS:
