@@ -10,7 +10,7 @@ export function setBusy(btn, busy, label) {
 }
 
 /** Tiến độ khi đang chạy: thanh tiến độ + trạng thái từng firewall (đang chờ / xong / lỗi). */
-export function progressBox(job, dry) {
+export function progressBox(job, dry, title = "") {
   const total = job.total || job.firewalls?.length || 0;
   const done = job.results?.length || 0;
   const byId = Object.fromEntries((job.results || []).map((r) => [r.firewall_id, r]));
@@ -27,7 +27,7 @@ export function progressBox(job, dry) {
     .join("");
   return `<div class="progress-box" role="status">
     <div class="progress-box__head">
-      <strong>${dry ? "Đang chạy thử" : "Đang đẩy cấu hình"}</strong>
+      <strong>${title || (dry ? "Đang chạy thử" : "Đang đẩy cấu hình")}</strong>
       <span class="muted tiny">${done}/${total} firewall xong</span>
     </div>
     <progress max="${total}" value="${done}" aria-label="Tiến độ theo firewall"></progress>

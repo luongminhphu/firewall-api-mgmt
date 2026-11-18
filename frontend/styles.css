@@ -3,6 +3,9 @@
    Token gốc: hsc-tokens.css (copy nguyên văn từ HSC Design System). File này chỉ
    ánh xạ tên biến cũ của app sang token HSC + định nghĩa component.
    ========================================================================== */
+/* Thuộc tính hidden luôn thắng các rule display của component (.btn, .card…) — ẩn theo quyền phải ẩn thật */
+[hidden] { display: none !important; }
+
 :root {
   --text-xs: var(--fs-caption);      /* 12/16 */
   --text-sm: var(--fs-body-sm);      /* 14/22 */
@@ -561,3 +564,9 @@ input:disabled { opacity: .65; cursor: not-allowed; background: var(--surface-2)
   /* điện thoại: thông điệp xuống dòng riêng thay vì bị ép sang phải */
   .result-row__msg { flex-basis: 100%; margin-left: 0; text-align: left; }
 }
+
+/* ------------------------------------------------ v1.8: module VPN */
+.sync-status { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); }
+.sync-item { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); min-height: 28px; }
+.sync-item .muted { overflow-wrap: anywhere; }
+#v-table td .chip + .chip { margin-left: 2px; }

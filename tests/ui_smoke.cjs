@@ -150,7 +150,25 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.waitForFunction(() => /ui\.smoke/.test(document.querySelector("#u-table")?.textContent || ""));
     chk("tạo người dùng → hiện trong bảng", true);
 
+    // VPN: đồng bộ tài khoản (chỉ đọc) → bảng, lọc
+    await tab(page, "vpn");
+    await page.waitForSelector("#panel-vpn.is-active");
+    await page.click("#v-sync");
+    await page.waitForFunction(() => /chau\.nb@/.test(document.querySelector("#v-table")?.textContent || ""),
+      null, { timeout: 30000 });
+    chk("VPN: đồng bộ → bảng tài khoản", (await page.$$("#v-table tbody tr")).length === 5);
+    chk("VPN: trạng thái đồng bộ theo firewall", (await page.textContent("#v-sync-status")).includes("FW-UI"));
+    await page.fill("#v-q", "rms");
+    await page.waitForFunction(() => document.querySelectorAll("#v-table tbody tr").length === 2);
+    chk("VPN: lọc theo nhóm/từ khóa", true);
+    await page.fill("#v-q", "");
+    await page.selectOption("#v-scope", "all");
+    await page.waitForFunction(() => document.querySelectorAll("#v-table tbody tr").length === 6);
+    chk("VPN: phạm vi mọi tài khoản (gồm admin)", true);
+
     // Logo (tab Người dùng → Logo hiển thị): tải PNG lên, hiện ở thanh trên, rồi gỡ
+    await tab(page, "users");
+    await page.waitForSelector("#panel-users.is-active");
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40)]);
     await page.setInputFiles("#logo-file", { name: "logo.png", mimeType: "image/png", buffer: png });
     await page.waitForFunction(() => !document.querySelector("#logo-save").disabled);
@@ -199,6 +217,11 @@ const visible = (page, sel) => page.isVisible(sel);
       await p2.fill("#paste-text", "45.155.204.88");
       await p2.waitForFunction(() => document.querySelectorAll("#candidate-list .cand").length === 1);
       chk("viewer không bấm được Chặn ngay", await p2.isDisabled("#do-block"));
+      await tab(p2, "vpn");
+      await p2.waitForSelector("#panel-vpn.is-active");
+      chk("viewer xem được tab VPN nhưng không có nút Đồng bộ", !(await visible(p2, "#v-sync")));
+      chk("viewer không thấy nút Kiểm tra tất cả / Đồng bộ lịch sử / form firewall",
+        !(await visible(p2, "#test-all")) && !(await visible(p2, "#c-sync")) && !(await visible(p2, "#fw-form")));
       chk("không lỗi JS (viewer)", e2.length === 0, e2.join(" | "));
       await c2.close();
     }
@@ -208,7 +231,7 @@ const visible = (page, sel) => page.isVisible(sel);
       const { ctx: c3, page: p3, errors: e3 } = await newPage(browser, { tok: admin, viewport: { width: 390, height: 844 } });
       await p3.goto(B + "/");
       await p3.waitForSelector("#app:not(.hidden)");
-      for (const t of ["block", "groups", "firewalls", "changes", "audit", "users"]) {
+      for (const t of ["block", "groups", "firewalls", "changes", "audit", "vpn", "users"]) {
         await tab(p3, t);
         await p3.waitForTimeout(250);
         const overflow = await p3.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

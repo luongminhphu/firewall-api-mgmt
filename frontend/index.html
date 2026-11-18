@@ -86,6 +86,7 @@
           <button type="button" role="tab" id="tab-firewalls" aria-controls="panel-firewalls" aria-selected="false" class="tab" data-tab="firewalls">Firewall</button>
           <button type="button" role="tab" id="tab-changes" aria-controls="panel-changes" aria-selected="false" class="tab" data-tab="changes">Lịch sử thay đổi</button>
           <button type="button" role="tab" id="tab-audit" aria-controls="panel-audit" aria-selected="false" class="tab" data-tab="audit">Audit log</button>
+          <button type="button" role="tab" id="tab-vpn" aria-controls="panel-vpn" aria-selected="false" class="tab" data-tab="vpn">VPN</button>
           <button type="button" role="tab" aria-controls="panel-users" aria-selected="false" class="tab hidden" data-tab="users" id="tab-users">Người dùng</button>
         </nav>
         <div class="topbar-right">
@@ -376,6 +377,48 @@ Ví dụ:
         </section>
 
         <!-- --------------------------------------------------- TAB: USERS -->
+        <section class="panel" data-panel="vpn" id="panel-vpn" role="tabpanel" aria-labelledby="tab-vpn">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>Tài khoản VPN</h2>
+                <p class="muted tiny">Đọc từ firewall (chỉ đọc): tài khoản có quyền SSL VPN hoặc IPsec remote access, nhóm, trạng thái. Tài khoản đã xóa khỏi firewall vẫn được giữ lại để rà soát.</p>
+              </div>
+              <div class="row row--tight">
+                <button class="btn" id="v-sync" type="button" title="Đọc lại tài khoản / nhóm / chính sách VPN trên các firewall đang bật">Đồng bộ ngay</button>
+              </div>
+            </div>
+            <div id="v-sync-status" class="sync-status" aria-live="polite"></div>
+            <div class="filters">
+              <label class="field"><span>Firewall</span><select id="v-fw" class="select"><option value="">Tất cả</option></select></label>
+              <label class="field"><span>Phạm vi</span>
+                <select id="v-scope" class="select">
+                  <option value="vpn">Có quyền VPN</option>
+                  <option value="all">Mọi tài khoản</option>
+                </select>
+              </label>
+              <label class="field"><span>Trên firewall</span>
+                <select id="v-state" class="select">
+                  <option value="present">Còn tồn tại</option>
+                  <option value="removed">Đã bị xóa</option>
+                  <option value="all">Tất cả</option>
+                </select>
+              </label>
+              <label class="field"><span>Tài khoản / tên / nhóm</span><input id="v-q" type="search" placeholder="chau.nb hoặc RMS RESEARCH" /></label>
+            </div>
+            <div id="v-stats" class="stats"></div>
+            <div class="table-wrap">
+              <table class="table" id="v-table">
+                <thead>
+                  <tr><th>Tài khoản</th><th>Nhóm</th><th>Quyền VPN</th><th>Trạng thái</th><th>Firewall</th><th>Thấy lần cuối</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div id="v-result" class="result" aria-live="polite"></div>
+          </div>
+        </section>
+
         <section class="panel" data-panel="users" id="panel-users" role="tabpanel" aria-labelledby="tab-users">
           <div class="grid grid--fw grid--users">
             <div class="card">

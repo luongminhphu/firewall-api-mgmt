@@ -9,6 +9,7 @@ import { loadChanges } from "./pages/changes.js";
 import { loadFirewalls } from "./pages/firewalls.js";
 import { loadGroupsForSelectedFw } from "./pages/groups.js";
 import { loadUsers } from "./pages/users.js";
+import { loadVpn } from "./pages/vpn.js";
 import { initRouter, showInitial } from "./router.js";
 import { autoSso, initLogin, logout, sess, setAfterLogin, showLoginError, tryHeaderSso } from "./session.js";
 import { can, ROLE_LABEL, state, tokenStore as store } from "./store.js";
@@ -52,6 +53,7 @@ initRouter((tab) => {
   if (tab === "changes") loadChanges();
   if (tab === "groups") loadGroupsForSelectedFw();
   if (tab === "users") loadUsers();
+  if (tab === "vpn") loadVpn();
 });
 
 $("#theme-toggle").addEventListener("click", () => {
@@ -69,6 +71,7 @@ function applyRole() {
   if (fwFormCard) fwFormCard.hidden = !can("admin");
   $("#test-all").hidden = viewer;
   $("#c-sync").hidden = viewer;
+  $("#v-sync").hidden = viewer;
   $("#do-block").title = viewer ? "Vai trò Chỉ xem không được chặn IP" : "";
   $("#do-unblock").title = viewer ? "Vai trò Chỉ xem không được bỏ chặn" : "";
   if (viewer) toast("Bạn đang có quyền Readonly — liên hệ quản trị viên nếu cần quyền Write", "");

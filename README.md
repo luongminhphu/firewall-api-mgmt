@@ -4,6 +4,15 @@ Mini app HTML5 + FastAPI giúp team SOC/NOC dán thẳng đoạn chat Teams (ho�
 bóc IP tự động và đẩy vào **IP Host Group** trên **nhiều Sophos Firewall** cùng lúc qua XML API —
 thao tác được từ điện thoại trong ngày nghỉ lễ Tết.
 
+**Mới ở v1.8.0** — Module **VPN** (giai đoạn 1, CHỈ ĐỌC):
+- Tab **VPN**: danh sách tài khoản có quyền SSL VPN / IPsec remote access trên từng firewall (nhóm, trạng thái khóa,
+  tài khoản đã bị xóa khỏi firewall vẫn được giữ để rà soát), lọc theo firewall / phạm vi / trạng thái / từ khóa.
+- Đồng bộ định kỳ `VPN_SYNC_MINUTES` (mặc định 6 giờ) + nút **Đồng bộ ngay** (quyền Write). App **không ghi gì** lên
+  User / Group / FirewallRule — `policy.py` chỉ cho phép `Get`, mọi lệnh ghi bị chặn và ghi audit `policy_violation`.
+- Mật khẩu / hash / khóa IPsec trong phản hồi firewall bị loại theo **allowlist trường** trước khi lưu, log hay trả API.
+- `tools/sophos_sample.py`: lấy mẫu cấu hình VPN thật (chỉ đọc) và che dữ liệu để gửi cho người phát triển.
+- Sửa: nút bị ẩn theo quyền (`hidden`) vẫn hiện do CSS `.btn` ghi đè — viewer không còn thấy nút Kiểm tra / Đồng bộ.
+
 **Mới ở v1.7.0** — Sửa lỗi **504** khi chặn nhiều IP trên nhiều firewall cùng lúc:
 - Nguyên nhân: request `/api/block` xử lý **tuần tự** từng firewall, mỗi IP một lệnh XML API với một lần bắt tay TLS + đăng nhập
   mới, cộng thêm tra cứu từng object thành viên. 10 IP × 3 firewall ≈ 40+ lệnh → vượt timeout của Entra App Proxy / ingress
@@ -169,6 +178,8 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 | `SOPHOS_BATCH_SIZE` | Số IP Host gộp trong một lệnh tạo object (mặc định 50; `1` = tạo từng object như bản cũ) |
 | `FW_PARALLEL` | Số firewall xử lý song song khi chặn/bỏ chặn (mặc định 4) |
 | `JOB_SYNC_WAIT` | Request chặn/bỏ chặn chờ tối đa N giây (mặc định 20) rồi trả mã công việc và chạy nền — phải nhỏ hơn timeout App Proxy (~85s) / ingress (60s) |
+| `VPN_SYNC_MINUTES` | Chu kỳ đồng bộ tài khoản VPN (chỉ đọc), phút; `0` = tắt (chỉ đồng bộ tay). Mặc định 360 |
+| `VPN_SCAN_TIMEOUT` | Timeout đọc User / Group / chính sách VPN trên firewall, giây (mặc định 180) |
 | `LOG_FORMAT` | `text` (mặc định, như cũ) hoặc `json` — log JSON một dòng, có `request_id` (nhận `X-Request-ID` từ App Proxy) và dòng truy cập kèm người dùng/mã HTTP/thời gian; không bao giờ ghi mật khẩu/token |
 | `LOG_LEVEL` | Mức log (`INFO`, `DEBUG`…), để trống = mặc định |
 | `GROUP_CACHE_MIN_REFRESH_SECONDS` | Giãn cách tối thiểu giữa hai lần bấm "Quét lại" (mặc định 5) |

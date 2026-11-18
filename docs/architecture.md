@@ -1,6 +1,6 @@
 # SOC Rapid Block — Kiến trúc: hiện trạng, kiến trúc đích, kế hoạch chuyển đổi
 
-> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. **Phase 1–2 xong** (§10, §11). Tiếp theo: phase 3 (VPN B1).
+> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. **Phase 1–3 xong** (§10–§12). Tiếp theo: phase 4 (VPN B2 — thời hạn qua firewall rule).
 > Áp dụng cho: v1.7.0 (commit `88e54eb` trên `main`).
 > Phạm vi: (A) tái cấu trúc backend + frontend **không đổi hành vi**; (B) module VPN (B1 tài khoản, B2 thời hạn qua firewall rule).
 
@@ -412,3 +412,18 @@ frontend/js/
 
 `components/modal|filterbar|pagination` **chưa tạo** vì giao diện hiện tại chưa cần (tránh mã chết) — sẽ thêm cùng
 dashboard VPN ở phase 4. Smoke UI: 37 kiểm tra (mọi tab, chặn/bỏ chặn, logo, router, viewer, điện thoại 390px).
+
+---
+
+## 12. Nhật ký thực hiện phase 3 (VPN B1 — tài khoản, chỉ đọc)
+
+| Bước | Kết quả |
+|---|---|
+| 3.0 | `policy.py` mở **chỉ `Get`** cho User, UserGroup, SSLVPNPolicy, VPNIPSecConnection, Schedule, FirewallRule, FirewallRuleGroup (group ∈ `VPN_RULE_GROUPS_ALLOWED`); `integrations/sophos/sanitize.py` (allowlist trường + `assert_no_secret`); mock có Rule Group "VPN" theo mẫu tên thực tế + trường bí mật giả |
+| 3.1 | `tools/sophos_sample.py` — lấy mẫu thật, che bí mật / email / mã người (nhất quán giữa User ↔ identity ↔ tên rule) / họ tên / IP / MAC |
+| 3.2 | Bảng `vpn_accounts` (unique firewall + username, `removed_at` không xóa), `vpn_sync`; `POST /api/vpn/sync` (operator, công việc nền), `GET /api/vpn/accounts` (viewer); đồng bộ định kỳ `VPN_SYNC_MINUTES` qua `core.jobs.every` (một pod/vòng); audit `vpn_sync` |
+| 3.3 | Tab **VPN** (`pages/vpn.js`): trạng thái đồng bộ, bộ lọc, thống kê, bảng; sửa lỗi `[hidden]` bị `.btn` ghi đè |
+
+Quy tắc tính quyền (hàm thuần `compute_access`): **SSL VPN** = user có SSL VPN policy riêng, hoặc thuộc nhóm có
+policy, hoặc user/nhóm là thành viên tunnel policy; **IPsec** = user/nhóm trong `AllowedUser` của kết nối
+`RemoteAccess` (SiteToSite không tính). Cần đối chiếu lại khi có mẫu thật từ `tools/sophos_sample.py`.
