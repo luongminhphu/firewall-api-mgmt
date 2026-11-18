@@ -130,3 +130,38 @@ def list_messages(cfg: dict, since: dt.datetime, *, max_pages: int = 5) -> list[
     """Tin TẠO sau `since` (dùng cho Kiểm tra kết nối — đọc thử, không xử lý)."""
     base = f"{settings.GRAPH_BASE_URL}/chats/{quote(cfg['chat_id'], safe='')}/messages"
     return _read(cfg, f"{base}?$top=50&$orderby=createdDateTime%20desc", since, "createdDateTime", max_pages)[0]
+
+
+def group_members(cfg: dict, group_id: str, *, max_pages: int = 20) -> tuple[str, dict[str, str]]:
+    """Thành viên (kể cả lồng nhóm) là người dùng của một nhóm Entra → (tên nhóm, {object id: tên hiển thị}).
+    Quyền ứng dụng cần: GroupMember.Read.All (admin consent)."""
+    tok = token(cfg)
+    hdr = {"Authorization": f"Bearer {tok}"}
+    base = settings.GRAPH_BASE_URL
+    gid = quote(group_id, safe="")
+    members: dict[str, str] = {}
+    with _client() as c:
+        try:
+            g = c.get(f"{base}/groups/{gid}?$select=id,displayName", headers=hdr)
+            url = f"{base}/groups/{gid}/transitiveMembers/microsoft.graph.user?$select=id,displayName&$top=999"
+            name = g.json().get("displayName", "") if g.status_code == 200 else ""
+            if g.status_code == 404:
+                raise GraphError(f"Không tìm thấy nhóm Entra {group_id} (404)")
+            if g.status_code == 403:
+                raise GraphError("Graph từ chối đọc nhóm (403): app chưa được cấp GroupMember.Read.All")
+            for _ in range(max_pages):
+                r = c.get(url, headers=hdr)
+                if r.status_code == 403:
+                    raise GraphError("Graph từ chối đọc thành viên nhóm (403): app chưa được cấp GroupMember.Read.All")
+                if r.status_code != 200:
+                    raise GraphError(f"Graph lỗi {r.status_code} khi đọc thành viên nhóm")
+                j = r.json()
+                for u in j.get("value", []):
+                    if u.get("id"):
+                        members[str(u["id"]).lower()] = str(u.get("displayName") or "")[:160]
+                url = j.get("@odata.nextLink")
+                if not url:
+                    break
+        except httpx.HTTPError as exc:
+            raise GraphError(f"Không kết nối được Microsoft Graph ({type(exc).__name__})") from exc
+    return name, members

@@ -710,18 +710,54 @@ Ví dụ:
               <div id="abs-test-out" class="ab-test-out"></div>
 
               <fieldset class="field">
-                <legend>Tài khoản SOC được phép gửi lệnh</legend>
-                <p class="muted tiny">Định danh bằng Object ID Entra (tên hiển thị có thể trùng). Tin của người khác bị bỏ qua — chọn từ danh sách người gửi gần đây hoặc nhập tay.</p>
-                <div class="table-wrap">
-                  <table class="table" id="abs-senders">
-                    <thead><tr><th>Tên</th><th>Object ID</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
-                    <tbody></tbody>
-                  </table>
+                <legend>Người được gửi lệnh (team SOC trực 24/7)</legend>
+                <p class="muted tiny">Tin cậy người gửi nếu khớp <strong>một</strong> trong ba cách dưới. Tin của người khác (kể cả nhân viên HSC trong cùng group chat) bị bỏ qua và ghi nhật ký. Bấm <strong>Kiểm tra kết nối</strong> để thấy người gửi gần đây kèm tenant, rồi bấm để thêm nhanh.</p>
+
+                <div class="ab-trust">
+                  <div class="ab-trust__head"><strong>1 · Tenant của đơn vị SOC</strong> <span class="chip chip--ok">Khuyến nghị cho dịch vụ SOC Managed Service</span></div>
+                  <p class="muted tiny">Thành viên SOC là tài khoản <em>external</em> (tenant của nhà cung cấp dịch vụ) được thêm vào group chat của HSC: mọi người thuộc tenant này <strong>trong group chat</strong> đều gửi được lệnh — đổi ca, người mới chỉ cần được thêm vào chat. Không khai báo được tenant của chính HSC.</p>
+                  <div class="table-wrap">
+                    <table class="table" id="abs-tenants">
+                      <thead><tr><th>Tên đơn vị</th><th>Tenant ID</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                  <div class="row">
+                    <label class="field"><span>Tenant ID của đơn vị SOC</span><input id="abs-new-tenant" placeholder="xxxxxxxx-xxxx-…" spellcheck="false" /></label>
+                    <label class="field"><span>Tên đơn vị</span><input id="abs-new-tenant-name" placeholder="Nhà cung cấp SOC" /></label>
+                    <button class="btn btn--ghost" id="abs-add-tenant" type="button">Thêm</button>
+                  </div>
                 </div>
-                <div class="row">
-                  <label class="field"><span>Object ID</span><input id="abs-new-id" placeholder="xxxxxxxx-xxxx-…" spellcheck="false" /></label>
-                  <label class="field"><span>Tên (ghi chú)</span><input id="abs-new-name" placeholder="SOC ca đêm" /></label>
-                  <button class="btn btn--ghost" id="abs-add" type="button">Thêm</button>
+
+                <div class="ab-trust">
+                  <div class="ab-trust__head"><strong>2 · Nhóm Entra của HSC</strong> <span class="chip">SOC nội bộ / khách B2B</span></div>
+                  <p class="muted tiny">Thành viên nhóm (kể cả nhóm lồng) được tin cậy, app đọc lại mỗi 30 phút và ngay khi gặp người gửi lạ. Cần quyền ứng dụng <code>GroupMember.Read.All</code>. Tài khoản external không nằm trong danh bạ HSC nên dùng cách 1.</p>
+                  <div class="table-wrap">
+                    <table class="table" id="abs-groups">
+                      <thead><tr><th>Nhóm</th><th>Object ID</th><th class="num">Thành viên</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                  <div class="row">
+                    <label class="field"><span>Object ID nhóm Entra</span><input id="abs-new-group" placeholder="xxxxxxxx-xxxx-…" spellcheck="false" /></label>
+                    <label class="field"><span>Tên nhóm (ghi chú)</span><input id="abs-new-group-name" placeholder="SOC-24x7" /></label>
+                    <button class="btn btn--ghost" id="abs-add-group" type="button">Thêm</button>
+                  </div>
+                </div>
+
+                <div class="ab-trust">
+                  <div class="ab-trust__head"><strong>3 · Tài khoản riêng lẻ</strong></div>
+                  <div class="table-wrap">
+                    <table class="table" id="abs-senders">
+                      <thead><tr><th>Tên</th><th>Object ID</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                  <div class="row">
+                    <label class="field"><span>Object ID</span><input id="abs-new-id" placeholder="xxxxxxxx-xxxx-…" spellcheck="false" /></label>
+                    <label class="field"><span>Tên (ghi chú)</span><input id="abs-new-name" placeholder="SOC ca đêm" /></label>
+                    <button class="btn btn--ghost" id="abs-add" type="button">Thêm</button>
+                  </div>
                 </div>
                 <div id="abs-seen" class="ab-seen"></div>
               </fieldset>

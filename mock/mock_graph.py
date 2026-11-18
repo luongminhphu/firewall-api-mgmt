@@ -22,6 +22,8 @@ app = FastAPI()
 MSGS: list[dict] = []
 CALLS = {"messages": 0, "last_filter": "", "last_orderby": "", "returned": 0}
 FILTER = {"reject": False}  # giả lập tenant không nhận $filter (400)
+TENANT_DEFAULT = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+GROUPS: dict[str, dict] = {}  # id → {"name", "members": [{"id","displayName"}], "deny": bool}
 WORKFLOW: list[dict] = []   # tin Teams Workflows đã nhận (webhook trả lời vào group chat)
 WF = {"fail": False}
 
@@ -103,6 +105,39 @@ async def edit_msg(request: Request):
     raise HTTPException(404)
 
 
+@app.get("/v1.0/groups/{gid}")
+def group(gid: str, request: Request):
+    if not request.headers.get("authorization", "").startswith("Bearer tok-"):
+        raise HTTPException(401)
+    g = GROUPS.get(gid)
+    if g is None:
+        raise HTTPException(404)
+    if g.get("deny"):
+        raise HTTPException(403)
+    return {"id": gid, "displayName": g["name"]}
+
+
+@app.get("/v1.0/groups/{gid}/transitiveMembers/microsoft.graph.user")
+def group_members(gid: str, request: Request):
+    if not request.headers.get("authorization", "").startswith("Bearer tok-"):
+        raise HTTPException(401)
+    g = GROUPS.get(gid)
+    if g is None:
+        raise HTTPException(404)
+    if g.get("deny"):
+        raise HTTPException(403)
+    CALLS["group_reads"] = CALLS.get("group_reads", 0) + 1
+    return {"value": g["members"]}
+
+
+@app.post("/_group")
+async def set_group(request: Request):
+    """{"id","name","members":[{"id","displayName"}],"deny":false} — tạo / thay nhóm Entra giả lập."""
+    d = await request.json()
+    GROUPS[d["id"]] = {"name": d.get("name", ""), "members": d.get("members", []), "deny": bool(d.get("deny"))}
+    return GROUPS[d["id"]]
+
+
 @app.post("/_filter")
 def set_filter(reject: bool = False):
     FILTER["reject"] = reject
@@ -121,7 +156,8 @@ async def post(request: Request):
         "lastEditedDateTime": _iso(now) if d.get("edited") else None,
         "deletedDateTime": _iso(now) if d.get("deleted") else None,
         "from": {"user": {"id": d.get("sender_id"), "displayName": d.get("name", ""),
-                          "userIdentityType": "aadUser"}} if d.get("sender_id") else None,
+                          "userIdentityType": d.get("identity_type", "aadUser"),
+                          "tenantId": d.get("tenant_id", TENANT_DEFAULT)}} if d.get("sender_id") else None,
         "body": {"contentType": "html", "content": d.get("html", "")},
     }
     MSGS.append(m)
@@ -153,6 +189,7 @@ def reset():
     WORKFLOW.clear()
     WF["fail"] = False
     FILTER["reject"] = False
+    GROUPS.clear()
     CALLS["messages"] = 0
     return {"ok": True}
 

@@ -134,7 +134,7 @@ def _poll(db: Session) -> dict:
         db.commit()
         log.warning("Đọc Teams lỗi: %s", exc)
         return {"ok": False, "error": str(exc)}
-    soc = {s["id"]: s["name"] for s in cfg["soc_senders"]}
+    soc = Trust(db, cfg, st)
     stats = {"messages": 0, "commands": 0, "auto": 0, "pending": 0, "invalid": 0, "duplicate": 0}
     auto_reqs: list[AutoBlockRequest] = []
     pending_reqs: list[AutoBlockRequest] = []
@@ -174,6 +174,58 @@ def _poll(db: Session) -> dict:
     return {"ok": True, **stats}
 
 
+GROUP_TTL = dt.timedelta(minutes=30)       # đọc lại thành viên nhóm SOC định kỳ
+GROUP_RETRY = dt.timedelta(minutes=5)      # gặp người gửi lạ: đọc lại sớm (thành viên ca trực vừa được thêm)
+
+
+class Trust:
+    """Người gửi có phải SOC không: nhóm Entra (thành viên tự cập nhật) · tenant của đơn vị SOC · tài khoản riêng lẻ.
+    Danh sách thành viên nhóm lưu trong state (dùng chung mọi pod). Đọc nhóm lỗi → giữ danh sách đọc được lần trước."""
+
+    def __init__(self, db: Session, cfg: dict, st: dict):
+        self.db, self.cfg, self.st = db, cfg, st
+        self.senders = {s["id"]: s["name"] for s in cfg["soc_senders"]}
+        self.tenants = {s["id"]: s["name"] for s in cfg["soc_tenants"]}
+        self.refreshed = False
+        if cfg["soc_groups"] and self._age() > GROUP_TTL:
+            self.refresh()
+
+    def _age(self) -> dt.timedelta:
+        at = _ts(self.st.get("group_cache_at", ""))
+        return (_now() - at) if at else dt.timedelta.max
+
+    def refresh(self) -> None:
+        cache = dict(self.st.get("group_cache") or {})
+        errors = []
+        for g in self.cfg["soc_groups"]:
+            try:
+                name, members = graph.group_members(self.cfg, g["id"])
+                cache[g["id"]] = {"name": g["name"] or name or g["id"], "members": members,
+                                  "fetched_at": _now().isoformat()}
+            except graph.GraphError as exc:
+                errors.append(f"{g['name'] or g['id']}: {exc}")
+        self.st.update(group_cache=cache, group_cache_at=_now().isoformat(), group_error="; ".join(errors)[:500])
+        self.refreshed = True
+        if errors:
+            log.warning("Đọc nhóm SOC lỗi: %s", errors)
+
+    def check(self, sid: str, tenant: str) -> str:
+        """'' = không tin cậy; ngược lại là nhãn cách tin cậy (ghi vào lệnh + bằng chứng)."""
+        if sid in self.senders:
+            return f"Tài khoản {self.senders[sid] or sid}"
+        for g in self.cfg["soc_groups"]:
+            ent = (self.st.get("group_cache") or {}).get(g["id"]) or {}
+            if sid in ent.get("members", {}):
+                return f"Nhóm {ent.get('name') or g['name']}"
+        own = (self.cfg.get("tenant_id") or "").lower()
+        if tenant and tenant != own and tenant in self.tenants:  # tenant HSC không bao giờ được tin cậy theo tenant
+            return f"Tenant {self.tenants[tenant] or tenant}"
+        if self.cfg["soc_groups"] and not self.refreshed and self._age() > GROUP_RETRY:
+            self.refresh()  # có thể là người vừa vào ca / vừa được thêm vào nhóm
+            return self.check(sid, tenant)
+        return ""
+
+
 def snapshot(db: Session, cfg: dict, row: AutoBlockMessage, m: dict, text: str, cmds: list[dict]) -> AutoBlockEvidence:
     """Chụp bằng chứng tin chứa lệnh BLOCK IP (nguyên văn Graph + SHA-256), nối chuỗi băm, COMMIT ngay —
     trước khi chặn, để bằng chứng tồn tại độc lập với việc người gửi xóa / sửa tin sau đó."""
@@ -182,6 +234,7 @@ def snapshot(db: Session, cfg: dict, row: AutoBlockMessage, m: dict, text: str, 
     ev = AutoBlockEvidence(
         captured_at=_now(), message_id=row.id, msg_id=row.msg_id, chat_id=cfg.get("chat_id", "")[:255],
         sender_id=row.sender_id, sender_name=row.sender_name, sender_type=str(user.get("userIdentityType") or "")[:32],
+        sender_tenant=row.sender_tenant, trusted_by=row.trusted_by,
         teams_created_at=graph._parse_ts(m.get("createdDateTime")),
         teams_modified_at=graph._parse_ts(m.get("lastModifiedDateTime")), status=row.status,
         commands=json.dumps([{"line": c["raw"], "ip": c["ip"] or c["value"], "error": c["error"]} for c in cmds],
@@ -215,33 +268,38 @@ def _follow_up(db: Session, m: dict) -> None:
         db.commit()
 
 
-def _handle_message(db: Session, cfg: dict, st: dict, soc: dict, m: dict, created: dt.datetime, stats: dict,
+def _handle_message(db: Session, cfg: dict, st: dict, soc: Trust, m: dict, created: dt.datetime, stats: dict,
                     auto_reqs: list, pending_reqs: list) -> None:
     user = ((m.get("from") or {}).get("user") or {})
     sid, name = str(user.get("id") or "").lower(), str(user.get("displayName") or "")[:160]
+    tenant = str(user.get("tenantId") or "").lower()[:64]
     body = m.get("body") or {}
     text = parser.html_to_text(body.get("content", ""), body.get("contentType", "html"))
     cmds = parser.find_commands(text)
     row = AutoBlockMessage(msg_id=str(m.get("id"))[:64], sender_id=sid[:64], sender_name=name, created_at=created,
+                           sender_tenant=tenant,
                            received_at=_now(), status="processed",
                            body_hash=hashlib.sha256(text.encode()).hexdigest())
     if sid:
         seen = st.setdefault("seen_senders", {})
         e = seen.get(sid) or {"name": name, "count": 0}
-        e.update(name=name or e["name"], count=e["count"] + 1, last=created.isoformat())
+        e.update(name=name or e["name"], count=e["count"] + 1, last=created.isoformat(), tenant=tenant)
         seen[sid] = e
         if len(seen) > 30:  # chỉ giữ 30 người gửi gần nhất (để quản trị viên chọn tài khoản SOC)
             for k in sorted(seen, key=lambda k: seen[k].get("last", ""))[: len(seen) - 30]:
                 seen.pop(k)
+    # người gửi có thuộc team SOC không (nhóm Entra / tenant / tài khoản) — chỉ kiểm khi tin có thể chứa lệnh
+    via = soc.check(sid, tenant) if sid and m.get("messageType") in (None, "message") else ""
+    row.trusted_by = via[:200]
     if m.get("messageType") not in (None, "message") or not sid:
         row.status = "ignored_type"
     elif m.get("deletedDateTime"):
         row.status = "ignored_deleted"
-    elif sid not in soc:
+    elif not via:
         row.status = "ignored_sender"
-        if cmds:  # có người ngoài danh sách SOC gửi lệnh — ghi lại để điều tra
+        if cmds:  # có người ngoài nhóm / tenant / danh sách SOC gửi lệnh — ghi lại để điều tra
             event(db, "ignored_sender", ip=",".join(c["value"] for c in cmds)[:64],
-                  detail=f"{name} ({sid}) gửi lệnh nhưng không thuộc danh sách tài khoản SOC")
+                  detail=f"{name} ({sid}, tenant {tenant or '?'}) gửi lệnh nhưng không thuộc nhóm / tenant / tài khoản SOC")
     elif m.get("lastEditedDateTime"):
         row.status = "ignored_edited"
         if cmds:
@@ -269,6 +327,7 @@ def _handle_command(db: Session, cfg: dict, st: dict, msg: AutoBlockMessage, c: 
                     auto_reqs: list, pending_reqs: list) -> None:
     now = _now()
     req = AutoBlockRequest(message_id=msg.id, ip=(c["ip"] or c["value"])[:64], sender_name=msg.sender_name,
+                           note=f"SOC: {msg.trusted_by}" if msg.trusted_by else "",
                            created_at=now, requested_at=msg.created_at, status="pending", mode="pending")
     sent = _aware(msg.created_at) or now  # thời điểm SOC gửi lệnh (createdDateTime của Graph)
     lag = now - sent
@@ -567,6 +626,11 @@ def status(db: Session) -> dict:
         "cursor": st.get("cursor") or None, "last_fetched": st.get("last_fetched", 0),
         "last_truncated": bool(st.get("last_truncated")), "server_filter": st.get("server_filter"),
         "stale_minutes": int(cfgmod.stale_after(cfg).total_seconds() // 60), "soc_senders": len(cfg["soc_senders"]),
+        "soc_groups": [{"id": g["id"], "name": (st.get("group_cache") or {}).get(g["id"], {}).get("name") or g["name"],
+                        "members": len((st.get("group_cache") or {}).get(g["id"], {}).get("members", {})),
+                        "fetched_at": (st.get("group_cache") or {}).get(g["id"], {}).get("fetched_at")}
+                       for g in cfg["soc_groups"]],
+        "soc_tenants": len(cfg["soc_tenants"]), "group_error": st.get("group_error", ""),
         "night": {"start": start.isoformat(), "end": end.isoformat()}, "syntax": f"{parser.PREFIX} <ip>",
         "reply_enabled": bool(cfg["reply_enabled"] and cfg["reply_url_enc"]),
         "reply_syntax": reply.TEMPLATE.format(ip="<ip>", ts="<thời điểm>"),
@@ -574,8 +638,16 @@ def status(db: Session) -> dict:
 
 
 def seen_senders(db: Session) -> list[dict]:
-    seen = cfgmod.state(db).get("seen_senders", {})
-    return sorted(({"id": k, **v} for k, v in seen.items()), key=lambda x: x.get("last", ""), reverse=True)
+    st, cfg = cfgmod.state(db), cfgmod.raw(db)
+    trust = Trust.__new__(Trust)  # chỉ tra cứu danh sách đã lưu — không gọi Graph
+    trust.db, trust.cfg, trust.st, trust.refreshed = db, cfg, st, True
+    trust.senders = {s["id"]: s["name"] for s in cfg["soc_senders"]}
+    trust.tenants = {s["id"]: s["name"] for s in cfg["soc_tenants"]}
+    out = []
+    for k, v in (st.get("seen_senders") or {}).items():
+        via = trust.check(k, v.get("tenant", ""))
+        out.append({"id": k, **v, "is_soc": bool(via), "trusted_by": via})
+    return sorted(out, key=lambda x: x.get("last", ""), reverse=True)
 
 
 def test_connection(db: Session) -> dict:
@@ -597,9 +669,23 @@ def test_connection(db: Session) -> dict:
             body = m.get("body") or {}
             s["commands"] += len(parser.find_commands(parser.html_to_text(body.get("content", ""),
                                                                           body.get("contentType", "html"))))
-    soc = {s["id"] for s in cfg["soc_senders"]}
-    return {"ok": True, "messages": len(msgs),
-            "senders": [{**s, "is_soc": s["id"] in soc} for s in senders.values()]}
+    st = cfgmod.state(db)
+    trust = Trust(db, cfg, st)
+    if cfg["soc_groups"]:
+        trust.refresh()  # kiểm tra kết nối: đọc lại nhóm ngay, báo lỗi quyền nếu có
+    cfgmod.save_state(db, st)
+    db.commit()
+    for m in msgs:
+        u = ((m.get("from") or {}).get("user") or {})
+        if u.get("id") and u["id"].lower() in senders:
+            senders[u["id"].lower()]["tenant"] = str(u.get("tenantId") or "").lower()
+    out = []
+    for s_ in senders.values():
+        via = trust.check(s_["id"], s_.get("tenant", ""))
+        out.append({**s_, "is_soc": bool(via), "trusted_by": via})
+    return {"ok": True, "messages": len(msgs), "senders": out, "group_error": st.get("group_error", ""),
+            "groups": [{"id": g, "name": v.get("name"), "members": len(v.get("members", {}))}
+                       for g, v in (st.get("group_cache") or {}).items()]}
 
 
 def _maybe_digest(db: Session, cfg: dict, st: dict) -> None:
@@ -648,6 +734,7 @@ def evidence_for(db: Session, request_id: int) -> dict:
         "evidence": {
             "id": ev.id, "captured_at": iso(ev.captured_at), "msg_id": ev.msg_id, "chat_id": ev.chat_id,
             "sender_id": ev.sender_id, "sender_name": ev.sender_name, "sender_type": ev.sender_type,
+            "sender_tenant": ev.sender_tenant, "trusted_by": ev.trusted_by,
             "teams_created_at": iso(ev.teams_created_at), "teams_modified_at": iso(ev.teams_modified_at),
             "status_at_capture": ev.status, "commands": json.loads(ev.commands or "[]"), "text": ev.text,
             "sha256": ev.sha256, "row_hash": ev.row_hash, "prev_hash": ev.prev_hash, "intact": intact,

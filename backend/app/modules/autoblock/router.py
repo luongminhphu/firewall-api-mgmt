@@ -46,6 +46,8 @@ class SettingsIn(_In):
     clear_secret: bool | None = None
     chat_id: str | None = None
     soc_senders: list[SenderIn] | None = None
+    soc_groups: list[SenderIn] | None = None
+    soc_tenants: list[SenderIn] | None = None
     window_enabled: bool | None = None
     window_start: str | None = None
     window_end: str | None = None
@@ -145,21 +147,27 @@ def ab_breaker_reset(request: Request, db: Session = Depends(get_session), p: di
     return service.reset_breaker(db, actor=p["user"], client_ip=client_ip_of(request))
 
 
+def _groups_info(db: Session) -> dict:
+    st = service.status(db)
+    return {"groups_info": st["soc_groups"], "group_error": st["group_error"]}
+
+
 @router.get("/api/autoblock/settings")
 def ab_settings_get(db: Session = Depends(get_session), p: dict = Depends(admin)):
-    return {**cfgmod.get(db), "seen_senders": service.seen_senders(db)}
+    return {**cfgmod.get(db), "seen_senders": service.seen_senders(db), **_groups_info(db)}
 
 
 @router.put("/api/autoblock/settings")
 def ab_settings_put(request: Request, payload: SettingsIn = Body(...), db: Session = Depends(get_session),
                     p: dict = Depends(admin)):
     data = payload.model_dump(exclude_none=True)
-    if payload.soc_senders is not None:
-        data["soc_senders"] = [s.model_dump() for s in payload.soc_senders]
+    for key in ("soc_senders", "soc_groups", "soc_tenants"):
+        if getattr(payload, key) is not None:
+            data[key] = [s.model_dump() for s in getattr(payload, key)]
     if payload.whitelists is not None:
         data["whitelists"] = [w.model_dump() for w in payload.whitelists]
     out = cfgmod.update(db, data, actor=p["user"], client_ip=client_ip_of(request))
-    return {**out, "seen_senders": service.seen_senders(db)}
+    return {**out, "seen_senders": service.seen_senders(db), **_groups_info(db)}
 
 
 @router.post("/api/autoblock/test")

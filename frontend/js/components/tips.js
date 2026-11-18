@@ -33,6 +33,8 @@ const HELP = {
   "abs-secret": "Client secret của App registration (Certificates & secrets). Lưu mã hóa, không hiển thị lại; nhớ gia hạn trước khi hết hạn.",
   "abs-chat": "ID group chat với SOC: mở chat trên Teams web, chép phần 19:…@thread.v2 trên thanh địa chỉ. Đổi Chat ID → chỉ xử lý tin mới từ thời điểm đó.",
   "abs-senders": "Chỉ tin của các tài khoản này mới được nhận lệnh. Định danh bằng Object ID Entra (không đổi khi đổi tên). Tin của người khác bị bỏ qua và ghi nhật ký.",
+  "abs-new-tenant": "Tenant ID (Directory ID) của đơn vị cung cấp dịch vụ SOC. Cách lấy nhanh: bấm Kiểm tra kết nối → ở danh sách người gửi gần đây, bấm \"+ Tin cậy tenant này\" cạnh một thành viên SOC (nhãn External). Không dùng tenant của HSC.",
+  "abs-new-group": "Object ID của security group trong Entra ID của HSC chứa các thành viên SOC (nội bộ hoặc khách B2B). App cần quyền ứng dụng GroupMember.Read.All (admin consent).",
   "abs-new-id": "Object ID (GUID) của tài khoản SOC — lấy nhanh bằng nút \"+ tên\" sau khi Kiểm tra kết nối, hoặc ở Entra › Users.",
   "abs-wl": "IP / dải thuộc các danh sách này KHÔNG tự chặn: lệnh chuyển sang chờ và chỉ quản trị viên Approve. Nên khai báo dải public của HSC, dải Akamai (SiteShield / Origin IP ACL), IP đối tác.",
   "abs-window": "Tick: chỉ tự chặn theo lịch (ngoài giờ, cuối tuần, ngày lễ); giờ hành chính lệnh chờ duyệt. Bỏ tick: tự chặn 24/7.",

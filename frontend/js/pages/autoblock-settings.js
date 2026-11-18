@@ -7,7 +7,8 @@ import { toast } from "../components/toast.js";
 import { state } from "../store.js";
 import { $, esc, fmtTime } from "../util.js";
 
-const cfg = { senders: [], seen: [], wl: [], hol: [] };
+const cfg = { senders: [], tenants: [], groups: [], groupInfo: {}, own: "", seen: [], wl: [], hol: [] };
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const say = (text, kind) => {
   const el = $("#abs-msg");
   el.textContent = text;
@@ -53,20 +54,59 @@ function fill(s) {
   cfg.wl = (s.whitelists || []).map((w) => ({ name: w.name, text: w.entries.join("\n") }));
   renderWhitelists();
   cfg.senders = s.soc_senders.map((x) => ({ ...x }));
+  cfg.tenants = (s.soc_tenants || []).map((x) => ({ ...x }));
+  cfg.groups = (s.soc_groups || []).map((x) => ({ ...x }));
+  cfg.groupInfo = Object.fromEntries((s.groups_info || []).map((g) => [g.id, g]));
+  cfg.own = (s.tenant_id || "").toLowerCase();
   cfg.seen = s.seen_senders || [];
   renderSenders();
 }
 
+const delBtn = (kind, i, label) =>
+  `<button class="btn btn--ghost btn--sm" type="button" data-del-${kind}="${i}" aria-label="Xóa ${esc(label)}">✕</button>`;
+
 function renderSenders() {
+  $("#abs-tenants tbody").innerHTML = cfg.tenants.length
+    ? cfg.tenants.map((x, i) => `<tr><td>${esc(x.name || "—")}</td><td class="mono tiny">${esc(x.id)}</td>
+        <td>${delBtn("tenant", i, x.name || x.id)}</td></tr>`).join("")
+    : `<tr><td colspan="3"><p class="empty">Chưa khai báo tenant của đơn vị SOC.</p></td></tr>`;
+  $("#abs-groups tbody").innerHTML = cfg.groups.length
+    ? cfg.groups.map((x, i) => {
+      const info = cfg.groupInfo[x.id];
+      return `<tr><td>${esc(info?.name || x.name || "—")}</td><td class="mono tiny">${esc(x.id)}</td>
+        <td class="num" title="${esc(info?.fetched_at ? "Đọc lúc " + fmtTime(info.fetched_at) : "Chưa đọc")}">${info ? info.members : "—"}</td>
+        <td>${delBtn("group", i, x.name || x.id)}</td></tr>`;
+    }).join("")
+    : `<tr><td colspan="4"><p class="empty">Chưa khai báo nhóm Entra.</p></td></tr>`;
   $("#abs-senders tbody").innerHTML = cfg.senders.length
     ? cfg.senders.map((x, i) => `<tr><td>${esc(x.name || "—")}</td><td class="mono tiny">${esc(x.id)}</td>
-        <td><button class="btn btn--ghost btn--sm" type="button" data-del="${i}" aria-label="Xóa ${esc(x.name || x.id)}">✕</button></td></tr>`).join("")
-    : `<tr><td colspan="3"><p class="empty">Chưa có tài khoản SOC — app sẽ không nhận lệnh nào.</p></td></tr>`;
+        <td>${delBtn("sender", i, x.name || x.id)}</td></tr>`).join("")
+    : `<tr><td colspan="3"><p class="empty">Chưa khai báo tài khoản riêng lẻ.</p></td></tr>`;
+  // người gửi gần đây: thêm nhanh theo tài khoản hoặc theo tenant (chỉ tenant external, không phải tenant HSC)
   const ids = new Set(cfg.senders.map((x) => x.id));
-  const seen = cfg.seen.filter((x) => !ids.has(x.id));
-  $("#abs-seen").innerHTML = seen.length ? `<p class="muted tiny">Người gửi gần đây trong group chat:</p>` + seen.map((x) =>
-    `<button class="btn btn--ghost btn--sm" type="button" data-add="${esc(x.id)}" data-name="${esc(x.name || "")}"
-       title="${esc(x.id)}">+ ${esc(x.name || x.id)}${x.commands ? ` · ${x.commands} lệnh` : ""}</button>`).join(" ") : "";
+  const tids = new Set(cfg.tenants.map((x) => x.id));
+  const seen = cfg.seen.filter((x) => !x.is_soc);
+  $("#abs-seen").innerHTML = seen.length ? `<p class="muted tiny">Người gửi gần đây trong group chat (chưa được tin cậy):</p>` + seen.map((x) => {
+    const ext = x.tenant && x.tenant !== cfg.own;
+    return `<div class="ab-seen__row"><span><strong>${esc(x.name || x.id)}</strong>
+        <span class="chip ${ext ? "chip--info" : ""}">${ext ? "External" : "HSC"}</span>
+        <span class="muted tiny mono">${esc(x.tenant || "")}</span>${x.commands ? ` <span class="muted tiny">· ${x.commands} lệnh</span>` : ""}</span>
+      <span class="ab-seen__acts">
+        ${ext && !tids.has(x.tenant) ? `<button class="btn btn--ghost btn--sm" type="button" data-add-tenant="${esc(x.tenant)}">+ Tin cậy tenant này</button>` : ""}
+        ${ids.has(x.id) ? "" : `<button class="btn btn--ghost btn--sm" type="button" data-add="${esc(x.id)}" data-name="${esc(x.name || "")}">+ Chỉ tài khoản này</button>`}
+      </span></div>`;
+  }).join("") : "";
+}
+
+function addTo(list, id, name, msg) {
+  id = id.trim().toLowerCase();
+  if (!GUID.test(id)) {
+    toast(`${msg} phải có dạng GUID`, "err");
+    return false;
+  }
+  if (!list.some((x) => x.id === id)) list.push({ id, name: name.trim() });
+  renderSenders();
+  return true;
 }
 
 // ------------------------------------------------------------------ ngày lễ
@@ -144,16 +184,30 @@ function addSender(id, name) {
   renderSenders();
 }
 
+$("#abs-add-tenant").addEventListener("click", () => {
+  const id = $("#abs-new-tenant").value.trim().toLowerCase();
+  if (id && id === cfg.own) return toast("Không khai báo tenant của chính HSC — chỉ tenant của đơn vị SOC (external)", "err");
+  if (addTo(cfg.tenants, id, $("#abs-new-tenant-name").value, "Tenant ID")) $("#abs-new-tenant").value = $("#abs-new-tenant-name").value = "";
+});
+$("#abs-add-group").addEventListener("click", () => {
+  if (addTo(cfg.groups, $("#abs-new-group").value, $("#abs-new-group-name").value, "Object ID nhóm")) {
+    $("#abs-new-group").value = $("#abs-new-group-name").value = "";
+  }
+});
 $("#abs-add").addEventListener("click", () => {
   addSender($("#abs-new-id").value, $("#abs-new-name").value);
   $("#abs-new-id").value = $("#abs-new-name").value = "";
 });
 $("#ab-form").addEventListener("click", (e) => {
-  const d = e.target.closest("[data-del]");
-  if (d) {
-    cfg.senders.splice(Number(d.dataset.del), 1);
-    renderSenders();
+  for (const [kind, list] of [["sender", cfg.senders], ["tenant", cfg.tenants], ["group", cfg.groups]]) {
+    const d = e.target.closest(`[data-del-${kind}]`);
+    if (d) {
+      list.splice(Number(d.getAttribute(`data-del-${kind}`)), 1);
+      renderSenders();
+    }
   }
+  const t = e.target.closest("[data-add-tenant]");
+  if (t) addTo(cfg.tenants, t.dataset.addTenant, "", "Tenant ID");
   const a = e.target.closest("[data-add]");
   if (a) addSender(a.dataset.add, a.dataset.name);
 });
@@ -166,7 +220,9 @@ $("#abs-test").addEventListener("click", async () => {
     await save(false); // lưu kết nối trước (không đổi trạng thái bật/tắt)
     const r = await api("/api/autoblock/test", { method: "POST" });
     cfg.seen = r.senders;
-    out.innerHTML = `<p class="alert alert--ok">Kết nối OK — đọc được ${r.messages} tin gần nhất của group chat.</p>`;
+    cfg.groupInfo = Object.fromEntries((r.groups || []).map((g) => [g.id, { ...cfg.groupInfo[g.id], ...g }]));
+    out.innerHTML = `<p class="alert alert--ok">Kết nối OK — đọc được ${r.messages} tin gần nhất của group chat.</p>`
+      + (r.group_error ? `<p class="alert alert--warn">Đọc nhóm Entra: ${esc(r.group_error)}</p>` : "");
     renderSenders();
   } catch (ex) {
     out.innerHTML = `<p class="alert alert--error">${esc(ex.message)}</p>`;
@@ -178,7 +234,7 @@ $("#abs-test").addEventListener("click", async () => {
 async function save(withEnabled = true) {
   const body = {
     tenant_id: $("#abs-tenant").value.trim(), client_id: $("#abs-client").value.trim(),
-    chat_id: $("#abs-chat").value.trim(), soc_senders: cfg.senders,
+    chat_id: $("#abs-chat").value.trim(), soc_senders: cfg.senders, soc_tenants: cfg.tenants, soc_groups: cfg.groups,
     window_enabled: $("#abs-window").checked, window_start: $("#abs-wstart").value, window_end: $("#abs-wend").value,
     weekend_full: $("#abs-weekend").checked,
     holidays: cfg.hol.filter((h) => h.from).map((h) => ({ from: h.from, to: h.to || h.from, name: h.name || "" })),

@@ -486,6 +486,8 @@ class AutoBlockMessage(Base):
     # processed | no_command | ignored_sender | ignored_edited | ignored_deleted | ignored_type
     status: Mapped[str] = mapped_column(String(24), index=True)
     excerpt: Mapped[str] = mapped_column(Text, default="")  # chỉ lưu nội dung tin của tài khoản SOC
+    sender_tenant: Mapped[str] = mapped_column(String(64), default="")
+    trusted_by: Mapped[str] = mapped_column(String(200), default="")  # vd "Nhóm SOC-24x7" / "Tenant VNPT SOC" / "Tài khoản"
     body_hash: Mapped[str] = mapped_column(String(64), default="")
     # Theo dõi sau khi xử lý: tin bị XÓA / SỬA trên Teams (giờ Microsoft) + lúc app phát hiện
     deleted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -569,6 +571,8 @@ class AutoBlockEvidence(Base):
     sender_id: Mapped[str] = mapped_column(String(64), default="")
     sender_name: Mapped[str] = mapped_column(String(160), default="")
     sender_type: Mapped[str] = mapped_column(String(32), default="")
+    sender_tenant: Mapped[str] = mapped_column(String(64), default="")
+    trusted_by: Mapped[str] = mapped_column(String(200), default="")  # cách xác định người gửi là SOC lúc chụp
     teams_created_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     teams_modified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="")    # trạng thái xử lý tin lúc chụp
@@ -586,6 +590,7 @@ class AutoBlockEvidence(Base):
             return (t.replace(tzinfo=dt.timezone.utc) if t.tzinfo is None else t.astimezone(dt.timezone.utc)).isoformat()
 
         return "\x1f".join([iso(self.captured_at), str(self.message_id or ""), self.msg_id or "", self.chat_id or "",
-                            self.sender_id or "", self.sender_name or "", iso(self.teams_created_at),
+                            self.sender_id or "", self.sender_name or "", self.sender_tenant or "",
+                            self.trusted_by or "", iso(self.teams_created_at),
                             iso(self.teams_modified_at), self.status or "", self.commands or "", self.text or "",
                             self.sha256 or "", self.prev_hash or ""])

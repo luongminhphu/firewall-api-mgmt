@@ -442,6 +442,67 @@ chk("khung giờ tự chặn tính theo lúc SOC gửi (trong khung) dù app đ�
     r and r["mode"] == "auto", r)
 c.put("/api/autoblock/settings", headers=H, json={"window_enabled": False})
 
+# ------------------------------------------------------------ team SOC 24/7 nhiều người: tenant MSSP / nhóm Entra
+MSSP = "5ec5ec5e-0000-4000-8000-00000000550c"          # tenant của đơn vị cung cấp dịch vụ SOC (external)
+SOC_A, SOC_B = "aaaa0001-0000-4000-8000-000000000001", "aaaa0002-0000-4000-8000-000000000002"
+HSC_STAFF = "bbbb0001-0000-4000-8000-000000000001"     # nhân viên HSC trong cùng group chat (tenant HSC)
+c.put("/api/autoblock/settings", headers=H, json={"window_enabled": False})
+r = c.put("/api/autoblock/settings", headers=H, json={"soc_tenants": [{"id": TENANT.upper(), "name": "HSC"}]})
+chk("KHÔNG cho khai báo tenant HSC (trùng Tenant ID của app) làm tenant SOC", r.status_code == 400
+    and "tenant của chính HSC" in r.json()["detail"], r.text[:200])
+_state(cursor=dt.datetime.now(dt.timezone.utc).isoformat())
+post(f"<p>{CMD} 99.0.0.1</p>", sender=SOC_A, name="MSSP Trực ca 1", tenant_id=MSSP, identity_type="federatedUser")
+t = c.post("/api/autoblock/test", headers=H).json()
+ext = next((x for x in t["senders"] if x["id"] == SOC_A), {})
+chk("Kiểm tra kết nối: người gửi external hiện kèm tenant, chưa được tin cậy", ext.get("tenant") == MSSP
+    and not ext.get("is_soc"), ext)
+poll()
+chk("thành viên MSSP chưa khai báo → không chặn", by_ip("99.0.0.1") is None)
+r = c.put("/api/autoblock/settings", headers=H, json={"soc_tenants": [{"id": MSSP, "name": "MSSP SOC"}]})
+chk("khai báo tenant của đơn vị SOC (MSSP)", r.status_code == 200 and r.json()["soc_tenants"][0]["id"] == MSSP, r.text[:200])
+post(f"<p>{CMD} 99.0.0.2</p>", sender=SOC_B, name="MSSP Trực ca 2 (người mới vào ca)", tenant_id=MSSP,
+     identity_type="federatedUser")
+post(f"<p>{CMD} 99.0.0.3</p>", sender=HSC_STAFF, name="Nhân viên HSC", tenant_id=TENANT)
+poll()
+r = wait_status("99.0.0.2", "blocked")
+chk("thành viên MSSP bất kỳ (kể cả người mới vào ca) gửi lệnh → tự chặn, ghi rõ tin cậy theo tenant",
+    r and r["mode"] == "auto" and "Tenant MSSP SOC" in r["note"], r)
+chk("nhân viên HSC trong cùng group chat gửi lệnh → không chặn (tenant HSC không được tin cậy)",
+    by_ip("99.0.0.3") is None)
+ev5 = c.get(f"/api/autoblock/requests/{r['id']}/evidence", headers=V).json()["evidence"]
+chk("bằng chứng ghi tenant người gửi + cách tin cậy", ev5["sender_tenant"] == MSSP
+    and ev5["trusted_by"] == "Tenant MSSP SOC" and ev5["intact"], ev5)
+
+# nhóm Entra (SOC nội bộ / khách B2B): thành viên tự cập nhật
+GRP = "9999aaaa-0000-4000-8000-0000000000f1"
+GUEST = "cccc0001-0000-4000-8000-000000000001"
+g.post("/_group", json={"id": GRP, "name": "SOC-24x7", "members": [{"id": GUEST, "displayName": "Guest SOC"}]})
+r = c.put("/api/autoblock/settings", headers=H, json={"soc_groups": [{"id": GRP, "name": ""}]})
+chk("khai báo nhóm Entra của team SOC", r.status_code == 200, r.text[:200])
+post(f"<p>{CMD} 99.0.0.4</p>", sender=GUEST, name="Guest SOC", tenant_id=TENANT, identity_type="aadUser")
+poll()
+r = wait_status("99.0.0.4", "blocked")
+chk("thành viên nhóm Entra → tự chặn, ghi 'Nhóm SOC-24x7'", r and "Nhóm SOC-24x7" in r["note"], r)
+st = c.get("/api/autoblock/status", headers=V).json()
+chk("trạng thái: số thành viên nhóm + thời điểm đọc", st["soc_groups"][0]["members"] == 1
+    and st["soc_groups"][0]["fetched_at"] and st["soc_tenants"] == 1, st["soc_groups"])
+NEWBIE = "cccc0002-0000-4000-8000-000000000002"
+g.post("/_group", json={"id": GRP, "name": "SOC-24x7", "members": [{"id": GUEST, "displayName": "Guest SOC"},
+                                                                   {"id": NEWBIE, "displayName": "Người mới"}]})
+_state(group_cache_at=(dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=10)).isoformat())
+post(f"<p>{CMD} 99.0.0.5</p>", sender=NEWBIE, name="Người mới", tenant_id=TENANT)
+poll()
+chk("người vừa được thêm vào nhóm → app đọc lại nhóm khi gặp người gửi lạ, tự chặn",
+    (wait_status("99.0.0.5", "blocked") or {}).get("mode") == "auto")
+g.post("/_group", json={"id": GRP, "name": "SOC-24x7", "members": [], "deny": True})
+_state(group_cache_at=(dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)).isoformat())
+post(f"<p>{CMD} 99.0.0.6</p>", sender=GUEST, name="Guest SOC", tenant_id=TENANT)
+poll()
+st = c.get("/api/autoblock/status", headers=V).json()
+chk("đọc nhóm lỗi (thiếu GroupMember.Read.All) → báo lỗi, GIỮ danh sách cũ nên vẫn chặn được",
+    "GroupMember.Read.All" in st["group_error"] and (wait_status("99.0.0.6", "blocked") or {}).get("status") == "blocked", st["group_error"])
+c.put("/api/autoblock/settings", headers=H, json={"soc_groups": []})
+
 # ------------------------------------------------------------ bằng chứng: SOC gửi lệnh rồi XÓA tin
 import hashlib as _hl  # noqa: E402
 

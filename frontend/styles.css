@@ -565,6 +565,11 @@ progress::-moz-progress-bar { background: var(--primary-text); border-radius: 99
 .ab-breaker p { margin-top: var(--s1); }
 .ab-test-out:empty { display: none; }
 .ab-test-out { margin-top: var(--s2); }
+.ab-trust { margin-top: var(--s4); padding: var(--s3) var(--s4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.ab-trust__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-bottom: var(--s1); }
+.ab-trust .table-wrap { margin-top: var(--s2); }
+.ab-seen__row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--s2); width: 100%; padding: var(--s2) 0; border-bottom: 1px solid var(--border); }
+.ab-seen__acts { display: flex; gap: var(--s2); flex-wrap: wrap; }
 .ab-seen { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-top: var(--s3); }
 .ab-seen:empty { display: none; }
 .ab-seen p { width: 100%; }

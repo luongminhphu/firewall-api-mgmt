@@ -640,3 +640,30 @@ Test (`tests/autoblock_test.py`): Graph được gọi với bộ lọc · chu k
 - Tab Tự động chặn › Tất cả lệnh › nút **Bằng chứng**.
 
 Test: gửi → chặn → xóa → bản chụp còn nguyên, có mốc xóa · gửi → sửa · file JSON tự kiểm SHA-256 · lệnh của người lạ cũng được chụp · sửa nội dung bản chụp trong DB thì bị phát hiện.
+
+---
+
+## 21. Team SOC trực 24/7 — ai được gửi lệnh
+
+**Bối cảnh (18/11/2026):**
+- Group chat thuộc tenant HSC.
+- Thành viên SOC là tài khoản **external** của nhà cung cấp dịch vụ SOC Managed Service, nhiều người, xoay ca.
+- Khai báo từng Object ID không theo kịp việc đổi ca.
+
+**Ba cách tin cậy** (khớp một là đủ; class `Trust` trong `autoblock/service.py`):
+
+| Cách | Cấu hình | Cơ chế |
+|---|---|---|
+| Tenant của đơn vị SOC | `soc_tenants` | So `from.user.tenantId` của tin (Graph). Kết hợp việc HSC kiểm soát thành viên group chat thành allowlist hiệu quả: thêm hay gỡ người khỏi chat là đủ. **Tenant HSC (trùng Tenant ID của App registration) bị từ chối** ở bước lưu và cả bước kiểm tra, để nhân viên HSC trong chat không kích hoạt được lệnh |
+| Nhóm Entra | `soc_groups` | `GET /groups/{id}/transitiveMembers/microsoft.graph.user` (`GroupMember.Read.All`). Cache trong state (dùng chung các pod), đọc lại mỗi 30 phút, và đọc lại ngay khi gặp người gửi lạ nếu cache cũ hơn 5 phút. Đọc lỗi thì giữ danh sách cũ và báo `group_error`. Không áp dụng được cho tài khoản external (không có trong danh bạ HSC) |
+| Tài khoản riêng lẻ | `soc_senders` | Object ID |
+
+**Ghi nhận:**
+- `autoblock_messages.sender_tenant` / `trusted_by`.
+- `autoblock_evidence.sender_tenant` / `trusted_by` (nằm trong chuỗi băm).
+- Ghi chú của lệnh ("SOC: Tenant …").
+- Sự kiện `ignored_sender` ghi tenant người gửi.
+
+**Giao diện:** *Cài đặt › Người được gửi lệnh* có ba khối. *Kiểm tra kết nối* liệt kê người gửi gần đây chưa được tin cậy, kèm tenant và nhãn External / HSC, với nút **"+ Tin cậy tenant này"** (chỉ có ở người external) và **"+ Chỉ tài khoản này"**.
+
+Test: thành viên MSSP chưa khai báo thì bỏ qua → khai báo tenant → người mới vào ca gửi lệnh được chặn · nhân viên HSC trong chat thì bỏ qua · khai báo tenant HSC → 400 · nhóm Entra: thành viên được chặn, người vừa thêm vào nhóm được nhận nhờ đọc lại, đọc nhóm 403 thì giữ danh sách cũ · bằng chứng ghi tenant và cách tin cậy.
