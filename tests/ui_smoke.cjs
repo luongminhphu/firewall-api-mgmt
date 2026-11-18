@@ -88,6 +88,7 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.fill("#fw-pass", "Sophos@123");
     await page.click('#fw-form button[type="submit"]');
     await page.waitForSelector("#fw-list .fw-card");
+    chk("thêm firewall → hiện thông báo thành công", await visible(page, "#fw-form-msg.alert--ok"));
     chk("thêm firewall → hiện thẻ firewall", (await page.textContent("#fw-list")).includes("FW-UI"));
     await page.click('#fw-list button[data-act="test"]');
     await page.waitForSelector('#fw-list .chip--ok');

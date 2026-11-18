@@ -558,9 +558,9 @@
         method: id ? "PUT" : "POST",
         body: payload,
       });
+      fillFwForm(null); // đặt lại form trước — fillFwForm ẩn ô thông báo
       msg.textContent = id ? "Đã cập nhật firewall" : "Đã thêm firewall";
       msg.className = "alert alert--ok";
-      fillFwForm(null);
       await loadFirewalls();
     } catch (ex) {
       msg.textContent = ex.message;
