@@ -8,6 +8,7 @@ import datetime as dt
 import io
 import os
 import re
+import threading
 import urllib.parse
 from typing import Any
 
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Session
 from . import auth as sso
 from . import changelog
 from . import group_cache as gc
+from . import jobs
 from . import users as um
 from .config import settings
 from .crypto import MasterKeyMissing, decrypt, encrypt, issue_token, verify_principal
@@ -63,6 +65,10 @@ def _startup() -> None:
             {Firewall.default_group: BLOCK_GROUP}, synchronize_session=False
         )
         db.commit()
+        try:
+            jobs.purge_old(db)
+        except Exception:  # noqa: BLE001
+            pass
     # Bộ lập lịch cache: lần đầu quét firewall chưa có cache/quá hạn, sau đó quét đầy đủ hằng ngày (TTL / GROUP_CACHE_DAILY_AT)
     if settings.GROUP_CACHE_WARMUP:
         import threading
@@ -472,7 +478,11 @@ def test_all(
     user = p["user"]
     fws = selected_firewalls(db, payload.get("firewall_ids"))
     ip = client_ip_of(request)
-    return {"results": [test_firewall(db, fw, user, ip) for fw in fws]}
+    ids = [fw.id for fw in fws]
+    job_id = jobs.submit("test", user, ids, lambda s, fw: test_firewall(s, fw, user, ip))
+    jobs.wait(job_id, settings.API_CONNECT_TIMEOUT + settings.API_TIMEOUT + 5)
+    db.expire_all()
+    return {"results": jobs.to_dict(jobs.get(db, job_id))["results"]}
 
 
 # --------------------------------------------------------------- object view
@@ -619,10 +629,31 @@ def parse_text(payload: dict = Body(...), user: str = Depends(current_user)):
 
 
 # --------------------------------------------------------------------- block
+def _after_write(changed: list[int], hints: dict[int, dict] | None = None) -> None:
+    """Sau khi ghi firewall: đánh dấu cache cũ + quét nhẹ lại (luồng nền, không giữ request)."""
+    if not changed:
+        return
+    from .db import SessionLocal
+
+    with SessionLocal() as s:
+        gc.mark_dirty(s, changed)
+    for fid in dict.fromkeys(changed):
+        threading.Thread(target=gc.refresh_now, args=(fid,),
+                         kwargs={"force": True, "mode": "lite", "hints": (hints or {}).get(fid)},
+                         name=f"refresh-{fid}", daemon=True).start()
+
+
+def _job_response(db: Session, job_id: str) -> JSONResponse:
+    """Chờ tối đa JOB_SYNC_WAIT giây. Xong → 200 + kết quả đầy đủ; chưa xong → 202 + tiến độ (hỏi /api/jobs/{id})."""
+    finished = jobs.wait(job_id, settings.JOB_SYNC_WAIT)
+    db.expire_all()
+    body = jobs.to_dict(jobs.get(db, job_id))
+    return JSONResponse(body, status_code=200 if finished and body["status"] != "running" else 202)
+
+
 @app.post("/api/block")
 def block(
     request: Request,
-    bg: BackgroundTasks,
     payload: dict = Body(...),
     db: Session = Depends(get_session),
     p: dict = Depends(operator),
@@ -631,7 +662,7 @@ def block(
     locked_group(db, request, payload.get("group"), user)
     values: list[str] = [str(v) for v in (payload.get("values") or [])]
     if payload.get("text"):
-        values += [i["value"] for i in extract(payload["text"], payload.get("extra_safe")) ["accepted"]]
+        values += [i["value"] for i in extract(payload["text"], payload.get("extra_safe"))["accepted"]]
     entries, rejected = normalize_entries(values, payload.get("extra_safe"))
     if not entries:
         raise HTTPException(400, "Không có IP hợp lệ nào để chặn")
@@ -640,29 +671,30 @@ def block(
 
     fws = selected_firewalls(db, payload.get("firewall_ids"))
     ip = client_ip_of(request)
-    results = [
-        block_on_firewall(
-            db, fw, entries,
-            reason=payload.get("reason") or "",
-            source=payload.get("source") or "manual",
-            actor=user, client_ip=ip, dry_run=bool(payload.get("dry_run")), who=p,
-        )
-        for fw in fws
-    ]
-    if not payload.get("dry_run"):
+    reason = payload.get("reason") or ""
+    source = payload.get("source") or "manual"
+    dry = bool(payload.get("dry_run"))
+
+    def work(s: Session, fw: Firewall) -> dict:
+        return block_on_firewall(s, fw, entries, reason=reason, source=source, actor=user, client_ip=ip,
+                                 dry_run=dry, who=p)
+
+    def on_done(results: list[dict]) -> dict:
+        if dry:
+            return {"cache_refresh": []}
         changed = [r["firewall_id"] for r in results if r.get("summary", {}).get("added")]
-        gc.mark_dirty(db, changed)
-        # quét nhẹ lại group sau khi trả kết quả để cache khớp firewall (kèm chi tiết object vừa tạo)
-        _schedule_refresh(bg, changed, hints=_block_hints(results, payload.get("reason") or ""))
-    return {"entries": entries, "rejected": rejected, "results": results,
-            "cache_refresh": [r["firewall_id"] for r in results if r.get("summary", {}).get("added")]
-            if not payload.get("dry_run") else []}
+        _after_write(changed, _block_hints(results, reason))  # cache khớp firewall (kèm chi tiết object vừa tạo)
+        return {"cache_refresh": changed}
+
+    job_id = jobs.submit("block", user, [fw.id for fw in fws], work, on_done=on_done,
+                         meta={"entries": entries, "rejected": rejected, "dry_run": dry,
+                               "firewalls": [{"id": fw.id, "name": fw.name} for fw in fws]})
+    return _job_response(db, job_id)
 
 
 @app.post("/api/unblock")
 def unblock(
     request: Request,
-    bg: BackgroundTasks,
     payload: dict = Body(...),
     db: Session = Depends(get_session),
     p: dict = Depends(operator),
@@ -674,19 +706,31 @@ def unblock(
         raise HTTPException(400, "Chưa chọn IP/object nào để bỏ chặn")
     fws = selected_firewalls(db, payload.get("firewall_ids"))
     ip = client_ip_of(request)
-    results = [
-        unblock_on_firewall(
-            db, fw, targets,
-            delete_object=bool(payload.get("delete_object")),
-            reason=payload.get("reason") or "",
-            actor=user, client_ip=ip, who=p,
-        )
-        for fw in fws
-    ]
-    changed = [r["firewall_id"] for r in results if r.get("summary", {}).get("removed")]
-    gc.mark_dirty(db, changed)
-    _schedule_refresh(bg, changed)
-    return {"targets": targets, "results": results, "cache_refresh": changed}
+    delete_object = bool(payload.get("delete_object"))
+    reason = payload.get("reason") or ""
+
+    def work(s: Session, fw: Firewall) -> dict:
+        return unblock_on_firewall(s, fw, targets, delete_object=delete_object, reason=reason,
+                                   actor=user, client_ip=ip, who=p)
+
+    def on_done(results: list[dict]) -> dict:
+        changed = [r["firewall_id"] for r in results if r.get("summary", {}).get("removed")]
+        _after_write(changed)
+        return {"cache_refresh": changed}
+
+    job_id = jobs.submit("unblock", user, [fw.id for fw in fws], work, on_done=on_done,
+                         meta={"targets": targets,
+                               "firewalls": [{"id": fw.id, "name": fw.name} for fw in fws]})
+    return _job_response(db, job_id)
+
+
+@app.get("/api/jobs/{job_id}")
+def job_status(job_id: str, db: Session = Depends(get_session), p: dict = Depends(principal)):
+    """Tiến độ / kết quả một lượt chặn hoặc bỏ chặn chạy nền. Chỉ người tạo hoặc quản trị viên xem được."""
+    job = jobs.get(db, job_id[:32])
+    if job is None or (job.actor != p["user"] and not sso.role_at_least(p["role"], "admin")):
+        raise HTTPException(404, "Không tìm thấy công việc (đã hết hạn lưu hoặc không thuộc về bạn)")
+    return jobs.to_dict(job)
 
 
 # --------------------------------------------------------------------- audit
@@ -838,10 +882,10 @@ def changes_sync(
     out = []
     for fw in fws:
         try:
-            cli = client_for(fw)
-            g = cli.get_group(group)
-            hosts = list(g["hosts"]) if g else []
-            det, _ = resolve_hosts(cli, hosts, cached_details(db, fw.id)) if hosts else ({}, [])
+            with client_for(fw) as cli:
+                g = cli.get_group(group)
+                hosts = list(g["hosts"]) if g else []
+                det, _ = resolve_hosts(cli, hosts, cached_details(db, fw.id)) if hosts else ({}, [])
             details = {n: _host_value(h) for n, h in det.items()}
             res = changelog.detect_drift(db, fw, group, {h: details.get(h, "") for h in hosts})
             db.commit()

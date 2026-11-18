@@ -20,7 +20,8 @@ from .policy import BLOCK_GROUP
 
 connect_args = {}
 if settings.DATABASE_URL.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
+    # timeout: v1.7 ghi DB từ nhiều luồng song song (mỗi firewall một luồng) — chờ khóa thay vì lỗi ngay
+    connect_args = {"check_same_thread": False, "timeout": 30}
 
 engine = create_engine(
     settings.DATABASE_URL, pool_pre_ping=True, future=True, connect_args=connect_args
@@ -205,6 +206,24 @@ class GroupCache(Base):
     scan_ms: Mapped[int] = mapped_column(Integer, default=0)
     dirty: Mapped[bool] = mapped_column(Boolean, default=False)  # có thay đổi, chờ quét lại
     refreshing_since: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Job(Base):
+    """Lượt chặn/bỏ chặn chạy nền (v1.7). Lưu trong DB để mọi pod đều trả lời được /api/jobs/{id}."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))  # block | unblock
+    actor: Mapped[str] = mapped_column(String(160), default="", index=True)
+    status: Mapped[str] = mapped_column(String(16), default="running")  # running | done | error
+    total: Mapped[int] = mapped_column(Integer, default=0)  # số firewall
+    done: Mapped[int] = mapped_column(Integer, default=0)
+    result_json: Mapped[str] = mapped_column(Text, default="{}")
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AppSetting(Base):

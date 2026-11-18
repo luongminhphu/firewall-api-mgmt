@@ -184,7 +184,8 @@ def mark_status(db: Session, fw: Firewall, status: str, message: str) -> None:
 # --------------------------------------------------------------------- test
 def test_firewall(db: Session, fw: Firewall, actor: str, client_ip: str) -> dict:
     try:
-        res = client_for(fw).test_login()
+        with client_for(fw) as cli:
+            res = cli.test_login()
         mark_status(db, fw, "ok", res.message)
         audit(
             db, action="test", fw=fw, target=f"{fw.host}:{fw.port}", result="ok",
@@ -206,6 +207,19 @@ def test_firewall(db: Session, fw: Firewall, actor: str, client_ip: str) -> dict
 
 
 # -------------------------------------------------------------------- block
+def _block_fail(db: Session, fw: Firewall, entries: list[dict], msg: str, code: str, *, group: str,
+                reason: str, source: str, actor: str, client_ip: str) -> dict:
+    mark_status(db, fw, "error", msg)
+    for e in entries:
+        audit(db, action="block", fw=fw, target=e["value"], result="error", message=msg, code=code,
+              group=group, reason=reason, source=source, actor=actor, client_ip=client_ip)
+    db.commit()
+    return {
+        "firewall_id": fw.id, "firewall": fw.name, "group": group, "ok": False, "error": msg, "rows": [],
+        "summary": {"added": 0, "existed": 0, "error": len(entries), "dry_run": 0},
+    }
+
+
 def block_on_firewall(
     db: Session,
     fw: Firewall,
@@ -218,164 +232,105 @@ def block_on_firewall(
     dry_run: bool = False,
     who: dict | None = None,
 ) -> dict:
+    """Chặn danh sách IP trên MỘT firewall.
+
+    Số lệnh gửi firewall (v1.7): 1 đọc group + ⌈N/SOPHOS_BATCH_SIZE⌉ tạo object + 1 ghi group,
+    tất cả trên cùng một kết nối HTTPS. Bản cũ: 1 lệnh/IP + tối đa HOST_LOOKUP_LIMIT lệnh tra object,
+    mỗi lệnh một lần bắt tay TLS → 10 IP × 3 firewall chạy tuần tự vượt timeout gateway (504).
+    """
+    with fw_lock(fw.id), client_for(fw) as cli:
+        return _block_locked(db, fw, cli, entries, reason=reason, source=source, actor=actor,
+                             client_ip=client_ip, dry_run=dry_run, who=who)
+
+
+def _block_locked(db: Session, fw: Firewall, cli: SophosClient, entries: list[dict], *, reason: str,
+                  source: str, actor: str, client_ip: str, dry_run: bool, who: dict | None) -> dict:
     group = BLOCK_GROUP  # cố định — xem policy.py
     who = who or {"user": actor, "name": actor, "method": "local"}
-    rows: list[dict] = []
+    fail = dict(group=group, reason=reason, source=source, actor=actor, client_ip=client_ip)
     try:
-        cli = client_for(fw)
         existing_group = cli.get_group(group)
-        if not existing_group:
-            # Không tự tạo group: group mới chưa gắn vào rule chặn nào sẽ khiến việc "chặn" vô tác dụng
-            raise SophosError(
-                f"IP Host Group '{group}' chưa tồn tại trên {fw.name}. Admin firewall cần tạo group "
-                f"này ({BLOCK_GROUP_FAMILY}) và gắn vào firewall rule chặn trước khi dùng app.",
-                "526",
-            )
     except (SophosError, SophosAuthError, ValueError) as exc:
-        msg = str(exc)
-        mark_status(db, fw, "error", msg)
-        for e in entries:
-            audit(
-                db, action="block", fw=fw, target=e["value"], result="error",
-                message=msg, group=group, reason=reason, source=source,
-                actor=actor, client_ip=client_ip, code=getattr(exc, "code", ""),
-            )
-        db.commit()
-        return {
-            "firewall_id": fw.id, "firewall": fw.name, "group": group,
-            "ok": False, "error": msg, "rows": [], 
-            "summary": {"added": 0, "existed": 0, "error": len(entries), "skipped": 0},
-        }
+        return _block_fail(db, fw, entries, str(exc), getattr(exc, "code", ""), **fail)
+    if not existing_group:
+        # Không tự tạo group: group mới chưa gắn vào rule chặn nào sẽ khiến việc "chặn" vô tác dụng
+        return _block_fail(
+            db, fw, entries,
+            f"IP Host Group '{group}' chưa tồn tại trên {fw.name}. Admin firewall cần tạo group "
+            f"này ({BLOCK_GROUP_FAMILY}) và gắn vào firewall rule chặn trước khi dùng app.", "526", **fail)
 
     group_family = existing_group.get("ip_family") or "IPv4"
     if group_family != BLOCK_GROUP_FAMILY:
         # Sophos không cho trộn IPv4 và IPv6 trong cùng một IPHostGroup
-        msg = (f"Group '{group}' là IPHostGroup {group_family} — không thể thêm IP Host IPv4. "
-               "Hãy chọn/tạo group IPv4 khác.")
-        for e in entries:
-            audit(db, action="block", fw=fw, target=e["value"], result="error", message=msg,
-                  group=group, reason=reason, source=source, actor=actor, client_ip=client_ip)
-        db.commit()
-        return {
-            "firewall_id": fw.id, "firewall": fw.name, "group": group, "ok": False, "error": msg,
-            "rows": [], "summary": {"added": 0, "existed": 0, "error": len(entries), "skipped": 0},
-        }
+        return _block_fail(
+            db, fw, entries,
+            f"Group '{group}' là IPHostGroup {group_family} — không thể thêm IP Host IPv4. "
+            "Hãy chọn/tạo group IPv4 khác.", "", **fail)
     group_desc = existing_group.get("description") or ""
     group_hosts = list(existing_group["hosts"])
 
-    # Giá trị IP/CIDR của các thành viên hiện có (để nhận ra IP đã bị chặn, kể cả object tên kiểu cũ)
-    # v1.6.1: không đọc toàn bộ IP Host (chậm/timeout với firewall nhiều object) — dùng cache + suy từ tên.
-    _all_hosts: list[dict] | None = None
-
-    def all_hosts() -> list[dict]:
-        """Chỉ dùng khi hiếm gặp: firewall báo đã có object khác cùng IP (mã 503)."""
-        nonlocal _all_hosts
-        if _all_hosts is None:
-            _all_hosts = cli.get_hosts(timeout=settings.GROUP_SCAN_TIMEOUT)
-        return _all_hosts
-
-    member_value: dict[str, str] = {}
-    if group_hosts:
-        try:
-            det, _ = resolve_hosts(cli, group_hosts, cached_details(db, fw.id))
-            member_value = {n: _host_value(h) for n, h in det.items()}
-        except Exception:  # noqa: BLE001
-            member_value = {}
+    # Giá trị IP/CIDR của thành viên hiện có — chỉ từ cache + suy từ tên, KHÔNG gọi firewall.
+    # Object tạo tay chưa có trong cache: nếu trùng IP, firewall trả 503 và nhánh xử lý 503 bên dưới sẽ tìm ra.
+    det, _ = resolve_hosts(None, group_hosts, cached_details(db, fw.id))
+    member_value = {n: _host_value(h) for n, h in det.items()}
     in_group = {host_object_name(v): n for n, v in member_value.items() if v}
 
-    # Phát hiện thay đổi ngoài app trước khi sửa group
+    # Phát hiện thay đổi ngoài app trước khi sửa group (không để drift chặn thao tác khẩn cấp)
     try:
         changelog.detect_drift(
             db, fw, group, {h: "" for h in group_hosts},
             resolve_values=lambda names: {n: member_value.get(n, "") for n in names},
         )
-    except Exception:  # noqa: BLE001 — không để drift chặn thao tác khẩn cấp
-        pass
-    to_link: list[str] = []
+    except Exception:  # noqa: BLE001
+        log.exception("detect_drift lỗi trên %s", fw.name)
 
+    rows: list[dict] = []
+    pending: list[tuple[dict, str, str]] = []  # (row, kind, value) cần tạo object
     for e in entries:
         value, kind = e["value"], e.get("kind") or "IP"
         obj = host_object_name(value)
         row = {"value": value, "object": obj, "result": "", "code": "", "message": ""}
-
-        already = in_group.get(obj)
-        if already:
-            row.update(object=already, result="existed",
-                       message=f"Đã nằm trong {group} (object '{already}')")
-            rows.append(row)
-            continue
-
-        if dry_run:
-            row.update(result="dry-run", message=f"Sẽ tạo object {obj} và thêm vào {group}")
-            rows.append(row)
-            continue
-
-        try:
-            res = cli.add_ip_host(obj, kind, value, description=reason[:255])
-            if res.ok:
-                row.update(result="added", code=res.code, message=res.message)
-            elif res.code == "502":  # đã có object đúng tên — chỉ dùng lại nếu trỏ đúng địa chỉ
-                cur = cli.get_host(obj)
-                cur_val = _host_value(cur) if cur else ""
-                if cur and host_object_name(cur_val) == obj:
-                    row.update(result="existed", code=res.code, message="Object đã tồn tại, dùng lại")
-                else:
-                    row.update(result="error", code=res.code,
-                               message=f"Đã có object tên '{obj}' nhưng trỏ tới '{cur_val or '?'}' — không dùng")
-            elif res.code == "503":  # đã có object khác cùng IP
-                ip_index = {host_object_name(_host_value(h)): h["name"] for h in all_hosts() if _host_value(h)}
-                found = ip_index.get(obj)
-                if found:
-                    obj = found
-                    row.update(
-                        object=obj, result="existed", code=res.code,
-                        message=f"IP đã tồn tại dưới object '{found}', dùng lại",
-                    )
-                else:
-                    row.update(result="error", code=res.code, message=res.message)
-            else:
-                row.update(result="error", code=res.code, message=res.message)
-        except (SophosError, SophosAuthError) as exc:
-            row.update(result="error", code=getattr(exc, "code", ""), message=str(exc))
-
-        if row["result"] in ("added", "existed"):
-            if obj in group_hosts:
-                row["message"] = (row["message"] + " · đã nằm trong group").strip(" ·")
-                row["result"] = "existed"
-            else:
-                to_link.append(obj)
         rows.append(row)
+        if (already := in_group.get(obj)):
+            row.update(object=already, result="existed", message=f"Đã nằm trong {group} (object '{already}')")
+        elif dry_run:
+            row.update(result="dry-run", message=f"Sẽ tạo object {obj} và thêm vào {group}")
+        else:
+            pending.append((row, kind, value))
+
+    to_link: list[str] = []
+    if pending:
+        try:
+            results: list = cli.add_ip_hosts([(r["object"], k, v) for r, k, v in pending],
+                                             description=reason[:255])
+        except (SophosError, SophosAuthError) as exc:
+            # Lệnh gộp lỗi giữa chừng: một số object có thể đã được tạo — lần chặn lại sẽ nhận ra (mã 502, dùng lại).
+            results = [exc] * len(pending)
+        all_hosts_cache: list[dict] | None = None
+
+        def all_hosts() -> list[dict]:
+            """Chỉ dùng khi hiếm gặp: firewall báo đã có object khác cùng IP (mã 503)."""
+            nonlocal all_hosts_cache
+            if all_hosts_cache is None:
+                all_hosts_cache = cli.get_hosts(timeout=settings.GROUP_SCAN_TIMEOUT)
+            return all_hosts_cache
+
+        for (row, _kind, _value), res in zip(pending, results):
+            try:
+                _apply_add_result(cli, row, res, all_hosts)
+            except (SophosError, SophosAuthError) as exc:
+                row.update(result="error", code=getattr(exc, "code", ""), message=str(exc))
+            if row["result"] in ("added", "existed"):
+                if row["object"] in group_hosts:
+                    row["message"] = (row["message"] + " · đã nằm trong group").strip(" ·")
+                    row["result"] = "existed"
+                elif row["object"] not in to_link:
+                    to_link.append(row["object"])
 
     group_result = {"changed": False, "code": "", "message": ""}
-    if not dry_run and to_link:
-        merged = group_hosts + [h for h in to_link if h not in group_hosts]
-        try:
-            gres = cli.set_group_hosts(group, merged, group_desc, group_family)
-            group_result = {"changed": gres.ok, "code": gres.code, "message": gres.message}
-            if gres.ok:
-                values = {r["object"]: r["value"] for r in rows}
-                batch = changelog.new_batch()
-                changelog.record(
-                    db, fw=fw, group=group, change_type="add",
-                    items=[(o, values.get(o, "")) for o in to_link],
-                    count_before=len(group_hosts), count_after=len(merged), who=who,
-                    reason=reason, source=source, client_ip=client_ip, batch_id=batch,
-                )
-                group_result["batch_id"] = batch
-                snap = changelog.get_snapshot(db, fw.id, group)
-                known = __import__("json").loads(snap.members_json) if snap else {}
-                changelog.save_snapshot(db, fw.id, group,
-                                        {h: values.get(h) or known.get(h, "") for h in merged})
-            if not gres.ok:
-                for r in rows:
-                    if r["object"] in to_link:
-                        r.update(result="error", code=gres.code,
-                                 message=f"Tạo object OK nhưng cập nhật group lỗi: {gres.message}")
-        except (SophosError, SophosAuthError, ValueError) as exc:
-            group_result = {"changed": False, "code": getattr(exc, "code", ""), "message": str(exc)}
-            for r in rows:
-                if r["object"] in to_link:
-                    r.update(result="error", message=f"Cập nhật group lỗi: {exc}")
+    if to_link:
+        group_result = _link_to_group(db, fw, cli, rows, to_link, group_hosts, group_desc, group_family,
+                                      who=who, reason=reason, source=source, client_ip=client_ip)
 
     for r in rows:
         audit(
@@ -389,8 +344,8 @@ def block_on_firewall(
     db.commit()
 
     # Payload IPHostGroup (dự kiến khi chạy thử / đã gửi khi chạy thật) để người trực đối chiếu
-    planned = [r["object"] for r in rows if r["result"] in ("added", "existed", "dry-run")]
-    final_hosts = group_hosts + [h for h in planned if h not in group_hosts]
+    planned = [r["object"] for r in ok_rows]
+    final_hosts = group_hosts + [h for h in dict.fromkeys(planned) if h not in group_hosts]
     try:
         group_xml = pretty_xml(build_iphostgroup_xml(group, final_hosts, group_desc, group_family))
     except ValueError as exc:
@@ -415,6 +370,67 @@ def block_on_firewall(
     }
 
 
+def _apply_add_result(cli: SophosClient, row: dict, res, all_hosts) -> None:
+    """Điền kết quả tạo object vào `row` (result/code/message, có thể đổi `object` khi dùng lại object khác)."""
+    if isinstance(res, Exception):
+        row.update(result="error", code=getattr(res, "code", ""), message=str(res))
+        return
+    obj = row["object"]
+    if res.ok:
+        row.update(result="added", code=res.code, message=res.message)
+    elif res.code == "502":  # đã có object đúng tên — chỉ dùng lại nếu trỏ đúng địa chỉ
+        cur = cli.get_host(obj)
+        cur_val = _host_value(cur) if cur else ""
+        if cur and host_object_name(cur_val) == obj:
+            row.update(result="existed", code=res.code, message="Object đã tồn tại, dùng lại")
+        else:
+            row.update(result="error", code=res.code,
+                       message=f"Đã có object tên '{obj}' nhưng trỏ tới '{cur_val or '?'}' — không dùng")
+    elif res.code == "503":  # đã có object khác cùng IP
+        found = next((h["name"] for h in all_hosts()
+                      if _host_value(h) and host_object_name(_host_value(h)) == obj), None)
+        if found:
+            row.update(object=found, result="existed", code=res.code,
+                       message=f"IP đã tồn tại dưới object '{found}', dùng lại")
+        else:
+            row.update(result="error", code=res.code, message=res.message)
+    else:
+        row.update(result="error", code=res.code, message=res.message)
+
+
+def _link_to_group(db: Session, fw: Firewall, cli: SophosClient, rows: list[dict], to_link: list[str],
+                   group_hosts: list[str], group_desc: str, group_family: str, *, who: dict, reason: str,
+                   source: str, client_ip: str) -> dict:
+    """Ghi lại HostList (một lệnh) + nhật ký thay đổi + snapshot. Lỗi → đánh dấu các dòng liên quan."""
+    group = BLOCK_GROUP
+    merged = group_hosts + [h for h in to_link if h not in group_hosts]
+    try:
+        gres = cli.set_group_hosts(group, merged, group_desc, group_family)
+    except (SophosError, SophosAuthError, ValueError) as exc:
+        for r in rows:
+            if r["object"] in to_link:
+                r.update(result="error", message=f"Cập nhật group lỗi: {exc}")
+        return {"changed": False, "code": getattr(exc, "code", ""), "message": str(exc)}
+    out = {"changed": gres.ok, "code": gres.code, "message": gres.message}
+    if not gres.ok:
+        for r in rows:
+            if r["object"] in to_link:
+                r.update(result="error", code=gres.code,
+                         message=f"Tạo object OK nhưng cập nhật group lỗi: {gres.message}")
+        return out
+    values = {r["object"]: r["value"] for r in rows}
+    out["batch_id"] = changelog.record(
+        db, fw=fw, group=group, change_type="add",
+        items=[(o, values.get(o, "")) for o in to_link],
+        count_before=len(group_hosts), count_after=len(merged), who=who,
+        reason=reason, source=source, client_ip=client_ip,
+    )
+    snap = changelog.get_snapshot(db, fw.id, group)
+    known = json.loads(snap.members_json) if snap else {}
+    changelog.save_snapshot(db, fw.id, group, {h: values.get(h) or known.get(h, "") for h in merged})
+    return out
+
+
 # ------------------------------------------------------------------ unblock
 def unblock_on_firewall(
     db: Session,
@@ -428,11 +444,17 @@ def unblock_on_firewall(
     who: dict | None = None,
 ) -> dict:
     """`targets` có thể là tên object hoặc địa chỉ IP."""
+    with fw_lock(fw.id), client_for(fw) as cli:
+        return _unblock_locked(db, fw, cli, targets, delete_object=delete_object, reason=reason,
+                               actor=actor, client_ip=client_ip, who=who)
+
+
+def _unblock_locked(db: Session, fw: Firewall, cli: SophosClient, targets: list[str], *, delete_object: bool,
+                    reason: str, actor: str, client_ip: str, who: dict | None) -> dict:
     group = BLOCK_GROUP  # cố định — xem policy.py
     who = who or {"user": actor, "name": actor, "method": "local"}
     rows: list[dict] = []
     try:
-        cli = client_for(fw)
         g = cli.get_group(group)
         if not g:
             raise SophosError(f"Group '{group}' không tồn tại trên firewall này", "526")

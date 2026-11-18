@@ -58,7 +58,9 @@ def _save(state: dict) -> None:
 STATE = _load()
 # Mô phỏng firewall chậm: số giây trễ khi Get toàn bộ IPHost (không Filter)
 FULL_DELAY = float(os.getenv("MOCK_FULL_IPHOST_DELAY", "0"))
-STATS = {"iphost_full": 0, "iphost_one": 0}
+# Mô phỏng firewall phản hồi chậm ở MỌI lệnh (giây/lệnh) — dùng để tái hiện lỗi 504 khi chặn nhiều IP
+REQ_DELAY = float(os.getenv("MOCK_REQ_DELAY", "0"))
+STATS = {"iphost_full": 0, "iphost_one": 0, "requests": 0, "set_requests": 0, "iphost_set_entities": 0}
 
 
 @app.get("/_stats")
@@ -67,10 +69,19 @@ def stats():
 
 
 @app.post("/_delay")
-def set_delay(seconds: float = 0):
-    global FULL_DELAY
+def set_delay(seconds: float = 0, per_request: float | None = None):
+    global FULL_DELAY, REQ_DELAY
     FULL_DELAY = seconds
-    return {"delay": FULL_DELAY}
+    if per_request is not None:
+        REQ_DELAY = per_request
+    return {"delay": FULL_DELAY, "per_request": REQ_DELAY}
+
+
+@app.post("/_reset_stats")
+def reset_stats():
+    for k in STATS:
+        STATS[k] = 0
+    return STATS
 
 
 def _resp(body: str) -> Response:
@@ -81,8 +92,8 @@ def _resp(body: str) -> Response:
     )
 
 
-def _status(tag: str, code: str, text: str) -> str:
-    return f'<{tag} transactionid=""><Status code="{code}">{text}</Status></{tag}>'
+def _status(tag: str, code: str, text: str, tid: str = "") -> str:
+    return f'<{tag} transactionid="{_x(tid)}"><Status code="{code}">{text}</Status></{tag}>'
 
 
 def _x(v) -> str:
@@ -100,6 +111,9 @@ def _as_list(v) -> list:
 @app.post("/webconsole/APIController")
 @app.get("/webconsole/APIController")
 def controller(reqxml: str = Form(default="")):
+    STATS["requests"] += 1
+    if REQ_DELAY:
+        time.sleep(REQ_DELAY)
     req = xmltodict.parse(reqxml).get("Request", {})
     login = req.get("Login") or {}
     if login.get("Username") != USER or login.get("Password") != PASSWORD:
@@ -161,33 +175,13 @@ def controller(reqxml: str = Form(default="")):
 
     # ------------------------------------------------------------------ SET
     if "Set" in req:
+        STATS["set_requests"] += 1
         st = req["Set"] or {}
         op = (st.get("@operation") or "add").lower()
 
         if "IPHost" in st:
-            h = st["IPHost"]
-            name = h["Name"]
-            if "," in name or name[:1] in ("#", ",") or len(name) > 60:
-                return _resp(_status("IPHost", "500", "Invalid Name (no comma, not start with #, max 60)"))
-            if op == "add" and name in STATE["hosts"]:
-                return _resp(_status("IPHost", "502",
-                                     f'Host "{name}" already exists.'))
-            same_ip = [
-                n for n, v in STATE["hosts"].items()
-                if v.get("IPAddress") == h.get("IPAddress") and n != name
-            ]
-            if op == "add" and same_ip:
-                return _resp(_status("IPHost", "503",
-                                     "Entity having same parameter details already exists."))
-            STATE["hosts"][name] = {
-                "HostType": h.get("HostType", "IP"),
-                "IPFamily": h.get("IPFamily", "IPv4"),
-                "IPAddress": h.get("IPAddress", ""),
-                "Subnet": h.get("Subnet", ""),
-                "Description": h.get("Description", ""),
-            }
-            _save(STATE)
-            return _resp(_status("IPHost", "200", f'Host "{name}" has been added successfully.'))
+            # Sophos cho phép nhiều entity trong một <Set>; mỗi entity trả về một Status, kèm transactionid
+            return _resp("".join(_set_iphost(h, op) for h in _as_list(st["IPHost"])))
 
         if "IPHostGroup" in st:
             g = st["IPHostGroup"]
@@ -242,6 +236,31 @@ def controller(reqxml: str = Form(default="")):
             return _resp(_status("IPHost", "200", "Host has been deleted successfully."))
 
     return _resp(_status("Request", "529", "Invalid XML request for entity/entities."))
+
+
+def _set_iphost(h: dict, op: str) -> str:
+    STATS["iphost_set_entities"] += 1
+    tid = h.get("@transactionid") or ""
+    name = h["Name"]
+    if "," in name or name[:1] in ("#", ",") or len(name) > 60:
+        return _status("IPHost", "500", "Invalid Name (no comma, not start with #, max 60)", tid)
+    if op == "add" and name in STATE["hosts"]:
+        return _status("IPHost", "502", f'Host "{name}" already exists.', tid)
+    same_ip = [
+        n for n, v in STATE["hosts"].items()
+        if v.get("IPAddress") == h.get("IPAddress") and v.get("Subnet", "") == h.get("Subnet", "") and n != name
+    ]
+    if op == "add" and same_ip:
+        return _status("IPHost", "503", "Entity having same parameter details already exists.", tid)
+    STATE["hosts"][name] = {
+        "HostType": h.get("HostType", "IP"),
+        "IPFamily": h.get("IPFamily", "IPv4"),
+        "IPAddress": h.get("IPAddress", ""),
+        "Subnet": h.get("Subnet", ""),
+        "Description": h.get("Description", ""),
+    }
+    _save(STATE)
+    return _status("IPHost", "200", f'Host "{name}" has been added successfully.', tid)
 
 
 def _self_signed() -> tuple[str, str]:

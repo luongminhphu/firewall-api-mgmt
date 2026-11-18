@@ -33,6 +33,14 @@ class Settings:
     API_TIMEOUT: int = int(os.getenv("API_TIMEOUT", "30"))
     # Số IP Host gộp trong một lệnh <Set operation="add"> (mỗi entity có transactionid). 1 = tạo từng object như bản cũ.
     SOPHOS_BATCH_SIZE: int = int(os.getenv("SOPHOS_BATCH_SIZE", "50"))
+    # v1.7 — chống 504 khi chặn nhiều IP / nhiều firewall:
+    #  FW_PARALLEL: số firewall xử lý song song trong một lượt chặn/bỏ chặn.
+    #  JOB_SYNC_WAIT: request chờ tối đa N giây; xong kịp thì trả kết quả luôn, chưa xong thì trả mã công việc (HTTP 202)
+    #  và tiếp tục chạy nền — giao diện hỏi /api/jobs/{id}. Phải nhỏ hơn timeout của App Proxy (~85s) và ingress (60s).
+    FW_PARALLEL: int = max(1, int(os.getenv("FW_PARALLEL", "4")))
+    JOB_SYNC_WAIT: float = float(os.getenv("JOB_SYNC_WAIT", "20"))
+    JOB_STALE_MINUTES: int = int(os.getenv("JOB_STALE_MINUTES", "15"))
+    JOB_RETENTION_DAYS: int = int(os.getenv("JOB_RETENTION_DAYS", "7"))
     # Timeout bắt tay TCP/TLS (giây) — firewall chết/không route thì báo lỗi nhanh, không chờ hết API_TIMEOUT.
     API_CONNECT_TIMEOUT: int = int(os.getenv("API_CONNECT_TIMEOUT", "10"))
     # Timeout đọc riêng cho lượt quét đầy đủ chạy nền (đọc mọi IP Host trên firewall) — firewall nhiều object cần lâu hơn.
@@ -113,7 +121,7 @@ class Settings:
     HEADER_OPERATORS: str = os.getenv("HEADER_OPERATORS", "")
 
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "1.6.1"
+    APP_VERSION: str = "1.7.0"
 
     @property
     def auth_modes(self) -> list[str]:

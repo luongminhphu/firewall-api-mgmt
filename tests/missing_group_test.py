@@ -9,6 +9,8 @@ calls = []
 
 
 class FakeCli:
+    def __enter__(self): return self
+    def __exit__(self, *a): pass
     def get_group(self, name):
         calls.append(("get_group", name)); return None
     def __getattr__(self, n):

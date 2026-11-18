@@ -114,8 +114,8 @@ def scan(db: Session, fw: Firewall, group: str = BLOCK_GROUP, *, mode: str = "fu
     old = data(row)
     known = {d["name"]: d for d in old.get("details", []) if isinstance(d, dict) and d.get("name")}
     try:
-        cli = client_for(fw)
-        g, det, details_mode, note = _scan_members(cli, group, mode, known, hints)
+        with client_for(fw) as cli:
+            g, det, details_mode, note = _scan_members(cli, group, mode, known, hints)
         now_iso = _now().isoformat()
         if not g:
             new = {"exists": False, "description": "", "ip_family": "", "total": 0, "members": [], "details": [],
