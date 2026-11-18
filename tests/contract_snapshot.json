@@ -664,6 +664,14 @@
   },
   "status": 404
  },
+ "logo_bad_mime": {
+  "content_type": "application/json",
+  "detail": "Logo phải là PNG, JPEG, WebP hoặc SVG",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 400
+ },
  "logo_delete": {
   "content_type": "application/json",
   "shape": {
@@ -674,12 +682,34 @@
   },
   "status": 200
  },
+ "logo_get": {
+  "content_type": "image/png",
+  "status": 200
+ },
  "logo_get_none": {
   "content_type": "application/json",
   "shape": {
    "detail": "*"
   },
   "status": 404
+ },
+ "logo_png": {
+  "content_type": "application/json",
+  "shape": {
+   "app_name": "*",
+   "has_logo": "*",
+   "logo_max_kb": "*",
+   "logo_url": "*"
+  },
+  "status": 200
+ },
+ "logo_svg_script": {
+  "content_type": "application/json",
+  "detail": "SVG chứa script, sự kiện hoặc liên kết ngoài — không cho phép",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 400
  },
  "me_password_shared": {
   "content_type": "application/json",

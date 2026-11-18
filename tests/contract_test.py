@@ -150,6 +150,14 @@ call("user_delete", "DELETE", f"/api/users/{u['id']}", headers=H)
 call("me_password_shared", "POST", "/api/me/password", headers=H, json={"current": "a", "new": "b"},
      keep_detail=True)
 call("logo_get_none", "GET", "/api/branding/logo")
+import base64 as _b64  # noqa: E402
+_svg_bad = "data:image/svg+xml;base64," + _b64.b64encode(b'<svg onload="alert(1)"></svg>').decode()
+call("logo_svg_script", "PUT", "/api/branding/logo", headers=H, json={"data_url": _svg_bad}, keep_detail=True)
+call("logo_bad_mime", "PUT", "/api/branding/logo", headers=H, json={"data_url": "data:text/html;base64,PGI+"},
+     keep_detail=True)
+_png = "data:image/png;base64," + _b64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 32).decode()
+call("logo_png", "PUT", "/api/branding/logo", headers=H, json={"data_url": _png})
+call("logo_get", "GET", "/api/branding/logo")
 call("logo_delete", "DELETE", "/api/branding/logo", headers=H)
 call("fw_delete", "DELETE", f"/api/firewalls/{fid}", headers=H)
 
