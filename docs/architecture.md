@@ -1,6 +1,6 @@
 # SOC Rapid Block — Kiến trúc: hiện trạng, kiến trúc đích, kế hoạch chuyển đổi
 
-> Trạng thái: **BẢN NHÁP — chờ duyệt**. Chưa có dòng code nào của kế hoạch này được viết.
+> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. Đang thực hiện phase 1.
 > Áp dụng cho: v1.7.0 (commit `88e54eb` trên `main`).
 > Phạm vi: (A) tái cấu trúc backend + frontend **không đổi hành vi**; (B) module VPN (B1 tài khoản, B2 thời hạn qua firewall rule).
 
@@ -193,7 +193,7 @@ frontend/
 
 ### 5.1 Entity Sophos — đã xác minh
 
-Nguồn: tài liệu API chính thức **Sophos Firewall 22.0** (`docs.sophos.com/nsg/sophos-firewall/22.0/api/`), đọc trực tiếp các trang Add/Edit (khối *Sample Configuration*). **Cần anh xác nhận phiên bản SFOS đang chạy** — nếu là 20.x/21.x em sẽ đối chiếu lại đúng bản trước phase 3.
+Nguồn: tài liệu API chính thức **Sophos Firewall 22.0** (`docs.sophos.com/nsg/sophos-firewall/22.0/api/`), đọc trực tiếp các trang Add/Edit (khối *Sample Configuration*). Firewall HSC chạy **SFOS 22.0 MR3** — khớp bản tài liệu.
 
 | Mục đích | Tag XML | Trang tài liệu | Trường dùng |
 |---|---|---|---|
@@ -282,7 +282,8 @@ API (đề xuất): `GET /api/vpn/rules`, `GET /api/vpn/rules/{fw_id}/{name}`, `
 - Idempotent: `dedupe_key = f"{kind}:{fw_id}:{rule}:{expiry_date}:{bucket}"`, bucket = mốc nhắc (30/14/7/1 ngày) → chạy sync nhiều lần không gửi trùng; đổi hạn → khóa mới.
 - Loại: *sắp hết hạn* (đại diện team + Infra), *đã hết hạn nhưng vẫn bật* (Infra, nhắc hằng tuần).
 - Worker gửi SMTP (`core/jobs.every`, khóa advisory), retry lùi dần; nội dung không chứa dữ liệu ngoài tên rule, user_code, ngày, đích.
-- Cấu hình (admin): ngưỡng, mốc nhắc, email Infra, bảng `vpn_team_contacts(team, emails)`.
+- Cấu hình (admin): ngưỡng, mốc nhắc, email Infra, bảng `vpn_team_contacts(team, emails)` — **nhập tay** trong app.
+- **SMTP cấu hình trên giao diện** (tab *Cài đặt › SMTP*, chỉ admin): host, cổng, bảo mật (`none|starttls|ssl`), tài khoản, mật khẩu, địa chỉ gửi, tên hiển thị, nút **Gửi thử**. Lưu ở `app_settings` (khóa `smtp.*`); mật khẩu mã hóa AES-GCM bằng `MASTER_KEY` như credential firewall, API **không bao giờ trả lại** mật khẩu (chỉ `has_password`). Mọi thay đổi ghi audit `settings_cud`. Pod cần được mở mạng tới SMTP relay.
 
 ### 5.6 Phân quyền VPN
 
@@ -325,7 +326,7 @@ Mỗi dòng = 1 commit; cột "Kiểm chứng" là điều kiện để đẩy.
 
 ### Phase 3 — VPN B1 · Phase 4 — VPN B2 + dashboard · Phase 5 — Email
 
-Bắt đầu phase 3 chỉ khi đã có câu trả lời §8.1–8.2. Mỗi phase: mock Sophos mở rộng trước (User/UserGroup/Schedule/FirewallRule/FirewallRuleGroup "VPN" với các rule mẫu ở §5.4, có trường bí mật giả để test lọc) → model/migration thêm bảng → integration → service + test thuần → router → UI.
+Bước đầu phase 3: công cụ **`tools/sophos_sample.py`** (chỉ đọc) — admin chạy với tài khoản API read-only, công cụ gửi `<Get>` các entity ở §5.1, **che** mật khẩu/hash/khóa/email/IP và tên người (thay bằng mã giả nhất quán), ghi ra file XML để gửi lại; mock được dựng theo mẫu này. Trong lúc chờ mẫu thật, mock dựng theo tài liệu 22.0 và parser phải chịu được biến thể. Mỗi phase: mock Sophos mở rộng trước (User/UserGroup/Schedule/FirewallRule/FirewallRuleGroup "VPN" với các rule mẫu ở §5.4, có trường bí mật giả để test lọc) → model/migration thêm bảng → integration → service + test thuần → router → UI.
 
 **Test bắt buộc** (theo yêu cầu): parser tên rule (đủ mẫu + mẫu lỗi), ưu tiên schedule > tên, phân loại trạng thái theo ngày (tham số `today`), mọi Set/Remove lên `FirewallRule`/`User` bị chặn kèm audit `policy_violation`, không lộ trường bí mật (DB, log, API), mock có Rule Group "VPN".
 
@@ -353,3 +354,15 @@ Bắt đầu phase 3 chỉ khi đã có câu trả lời §8.1–8.2. Mỗi phas
 3. **SMTP relay** cho thông báo (host/port, có cần đăng nhập không, địa chỉ gửi) — cần mở mạng từ pod.
 4. **Đại diện team**: nhập tay trong app (đề xuất) hay lấy từ nhóm AD/Entra?
 5. Duyệt các quyết định: cấu trúc §3.1, xử lý 400 §3.4, `LOG_FORMAT` mặc định `text`, deep link tab §4, quy ước ngày **dd/mm** §5.4.
+
+---
+
+## 9. Quyết định đã duyệt (18/11/2026)
+
+| # | Câu hỏi | Quyết định |
+|---|---|---|
+| 1 | Phiên bản SFOS | 22.0 MR3 |
+| 2 | Mẫu XML thật | Chưa có cách lấy → app cung cấp `tools/sophos_sample.py` (chỉ đọc, tự che dữ liệu) ở đầu phase 3 |
+| 3 | SMTP | Cấu hình trên giao diện, mục **Cài đặt** (admin), mật khẩu mã hóa, có gửi thử |
+| 4 | Đại diện team | Nhập tay trong app |
+| 5 | Cấu trúc §3.1, lỗi 400 §3.4, `LOG_FORMAT` mặc định `text`, deep link tab §4, ngày dd/mm §5.4 | Duyệt |
