@@ -132,8 +132,11 @@ def _clean_header(v: str) -> str:
     return v
 
 
-def send(db: Session, to: list[str], subject: str, body: str) -> None:
-    """Gửi ngay một email. Ném MailError (thông điệp tiếng Việt, không chứa mật khẩu) nếu lỗi."""
+def send(db: Session, to: list[str], subject: str, body: str,
+         attachments: list[tuple[str, bytes, str]] | None = None) -> None:
+    """Gửi ngay một email. Ném MailError (thông điệp tiếng Việt, không chứa mật khẩu) nếu lỗi.
+
+    attachments: [(tên file, nội dung, MIME type "maintype/subtype")] — vd báo cáo PDF / Excel."""
     cfg = _raw(db)
     if not (cfg["host"] and cfg["from_addr"]):
         raise MailError("Chưa cấu hình máy chủ SMTP / địa chỉ gửi (tab Cài đặt)")
@@ -148,6 +151,9 @@ def send(db: Session, to: list[str], subject: str, body: str) -> None:
     msg["Message-ID"] = make_msgid(domain=cfg["from_addr"].split("@")[-1])
     msg["Auto-Submitted"] = "auto-generated"  # RFC 3834: thư tự động, không trả lời tự động
     msg.set_content(body)
+    for name, data, mime in attachments or []:
+        main, _, sub = mime.partition("/")
+        msg.add_attachment(data, maintype=main, subtype=sub, filename=_clean_header(name))
     ctx = ssl.create_default_context()
     if not cfg["verify_tls"]:
         ctx.check_hostname = False

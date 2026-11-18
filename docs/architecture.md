@@ -572,3 +572,29 @@ Anh yêu cầu thiết kế lại tự do, không ràng buộc HSC Design System
 | Truy cập | Vùng chạm ≥ 40px trên điện thoại, font 16px cho ô nhập (iOS không zoom), focus luôn nhìn thấy, `prefers-reduced-motion` |
 
 Giữ nguyên toàn bộ id / `data-*` mà JS và test dùng. Router vẫn dùng `.tab[data-tab]`. Smoke test chỉ đổi helper mở menu trên điện thoại và thêm kiểm tra tooltip.
+
+---
+
+## 18. Báo cáo chặn IP (v2.2)
+
+**Yêu cầu (18/11/2026):**
+- Kỳ báo cáo: 7 / 14 / 30 ngày, hoặc **chọn trên lịch**.
+- Nội dung: danh sách IP bị chặn, phương thức (con người / tự động), thời gian thực hiện.
+- Định dạng: **PDF + Excel**, mở đầu bằng **Executive Summary**, sau đó là chi tiết.
+- Trình bày: **màu và font HSC Design System**, **logo ở header**.
+- Gửi email qua SMTP đã cấu hình.
+
+**Module `modules/reports/`:**
+
+| Thành phần | Vai trò |
+|---|---|
+| `data.py` | `resolve` kỳ báo cáo (mốc nhanh hoặc khoảng ngày; giờ VN; tối đa 366 ngày). `build` lấy số liệu từ `group_changes` (`add` = lượt chặn; `remove` / `drift_remove` về sau = đã gỡ) và `autoblock_requests` / `autoblock_messages` (thời gian SOC gửi → chặn xong). `executive` sinh câu tổng quan, nhận định, cần lưu ý — chỉ từ số liệu, không đoán |
+| Phương thức | `auto` khi tác nhân là `autoblock`. Còn lại là `manual`, gồm Approve lệnh SOC (vì con người quyết định) |
+| `pdf.py` | reportlab, A4 ngang. Header là dải cover HSC (#0058AF / #00468C) với logo trong ô trắng. Trang 1 là Executive Summary, các trang sau là chi tiết (biểu đồ cột chồng, bảng). `CondPageBreak` để tiêu đề không đứng một mình cuối trang; chân trang "Trang x/y" |
+| `xlsx.py` | openpyxl: sheet Executive Summary (có logo) → Theo ngày (biểu đồ) → Danh sách IP → Chi tiết lượt chặn → Người thực hiện. Font Inter, tiêu đề bảng #00468C, cột thời gian kiểu datetime, có bộ lọc |
+| `logo.py` | Dùng logo đã tải lên (PNG / JPG / WebP → PNG). SVG hoặc chưa có logo → biểu tượng khiên mặc định vẽ bằng Pillow |
+| `fonts/` | Inter / Inter Display tĩnh (Regular, SemiBold, Bold) tạo từ Inter variable chính thức bằng fontTools, sửa bảng tên để PDF nhúng không trùng tên; giấy phép OFL |
+| `router.py` | `GET /api/reports/summary`, `blocks.pdf`, `blocks.xlsx` (viewer; tải qua `?token=`), `POST /api/reports/email` (Write; SMTP phải cấu hình và đang bật; tối đa 20 người nhận). Audit `report_export` / `report_email` |
+
+`notify/smtp.send` nhận thêm `attachments`. Thư viện mới: `openpyxl`, `reportlab`, `Pillow` (đã ghim phiên bản).
+Test: `tests/reports_test.py` kiểm tra số liệu, kỳ trên lịch, PDF (văn bản, logo, tiếng Việt), Excel (sheet, font, kiểu ngày), email đính kèm, phân quyền.

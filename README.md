@@ -34,6 +34,7 @@ Phiên bản hiện tại: **v2.2.0**. Lịch sử thay đổi ở [mục 9](#9-
 | **Tự động chặn từ Teams** | Đọc group chat qua Microsoft Graph theo chu kỳ (mặc định 5 phút, chỉnh trên giao diện) · Chỉ nhận đúng dòng `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>` (IN HOA) của **tài khoản SOC** trong danh sách; **tin đã sửa bị bỏ qua** · **Whitelist** HSC / Akamai / Đối tác → chờ quản trị viên **Approve** · Khung giờ tự chặn (mặc định 18:00–08:00) · Tối đa **20 IP/giờ**, vượt thì ngắt, chuyển chờ duyệt và báo nhóm Admin · **Công tắc tắt khẩn cấp** · Danh sách **ca đêm** + gỡ một chạm · Trả lời kết quả vào group chat |
 | **Không còn lỗi 504** | Mỗi firewall chỉ cần 3 lệnh trên 1 kết nối, nhờ gộp lệnh tạo IP Host · Các firewall chạy song song · Quá `JOB_SYNC_WAIT` giây thì chuyển sang **công việc nền**, giao diện hiện tiến độ từng firewall |
 | **IP Host Group** | Xem thành viên `SCANPORT GROUP` tức thì từ cache trong PostgreSQL · Quét lại nền · Bỏ chặn và xóa IP Host do app tạo |
+| **Báo cáo** | Thống kê IP bị chặn theo **phương thức** (thủ công / tự động) và **thời gian thực hiện**, kỳ 7 / 14 / 30 ngày hoặc **chọn trên lịch** · **Executive Summary** (tổng quan, nhận định, cần lưu ý) rồi tới chi tiết · xuất **PDF** (A4, theo HSC Design System: font Inter, màu HSC, logo ở header) và **Excel** (nhiều sheet, lọc được) · **gửi email** qua SMTP đã cấu hình |
 | **Lịch sử thay đổi** | Ghi từng IP thêm/bớt (ai, lúc nào, lý do/ticket, số object trước → sau) · **Phát hiện sửa trực tiếp trên WebAdmin** · Chuỗi băm SHA-256 chống sửa log · Xuất CSV |
 | **VPN — tài khoản** | Danh sách tài khoản có quyền SSL VPN / IPsec remote access trên từng firewall (nhóm, trạng thái khóa). Tài khoản đã bị xóa khỏi firewall vẫn được giữ lại để rà soát · Đồng bộ định kỳ và đồng bộ tay |
 | **VPN — thời hạn** | Đọc rule trong Rule Group `VPN`. Lấy hạn từ Schedule (OneTime), nếu không có thì bóc từ tên rule · Dashboard: *Sắp hết hạn, Hết hạn nhưng vẫn bật, User không còn / bị khóa, Không đọc được tên, Lệch thời hạn, Không có hạn, Còn hạn* · Lịch sử thay đổi rule nối chuỗi băm · **CSV danh sách cần xử lý** |
@@ -85,6 +86,7 @@ backend/app/
     notify/     smtp, planner (lập kế hoạch nhắc), outbox (hàng đợi gửi)
     review/     đợt rà soát, quyết định, CSV bằng chứng
     autoblock/  đọc group chat Teams (graph), parser cú pháp, quyết định tự chặn / chờ duyệt, reply (Teams Workflows)
+    reports/    số liệu báo cáo (data), Executive Summary, PDF (reportlab), Excel (openpyxl), logo, font Inter nhúng
 frontend/                 ES module thuần, không build: js/main.js + js/pages/* (từng tab) + js/components/*
                           (tips.js: nội dung tooltip hướng dẫn) · theme.css (token màu) · styles.css · fonts.css
 deploy/k8s/               base/ · overlays/prod/ · overlays/rancher/ · kubesphere/
@@ -510,6 +512,34 @@ Mật khẩu được mã hóa và không bao giờ hiển thị lại.
 - **Tự động chặn từ Teams:** kết nối Graph, tài khoản SOC, whitelist, trả lời vào group chat, khung giờ, ngưỡng, chu kỳ
   đọc, email nhóm Admin, firewall đích. Xem [mục 5.9](#59-tab-tự-động-chặn-từ-teams).
 
+### 5.8a Tab Báo cáo
+
+1. **Chọn kỳ báo cáo:** **7 / 14 / 30 ngày** gần nhất, hoặc **Chọn trên lịch** (từ ngày → đến ngày, tối đa 366 ngày, giờ Việt Nam).
+2. **Executive Summary:**
+   - câu tổng quan: số IP bị chặn, thủ công / tự động, tỷ lệ tự động;
+   - 6 thẻ chỉ số, trong đó có thời gian từ lúc SOC gửi lệnh tới lúc chặn xong;
+   - **nhận định nổi bật**: ngày cao điểm, trung bình IP/ngày, lệnh SOC, người chặn nhiều nhất;
+   - **cần lưu ý / hành động**: lệnh còn chờ duyệt, đề xuất chặn IP thuộc whitelist, lệnh lỗi hoặc sai cú pháp.
+3. **Chi tiết:**
+   - biểu đồ IP bị chặn theo ngày (thủ công / tự động);
+   - bảng người / tác nhân thực hiện;
+   - danh sách IP: thời gian thực hiện, phương thức, người / kênh, firewall, trạng thái (đang chặn / đã gỡ), lý do.
+4. **Tải PDF:** bản trình lãnh đạo, A4 ngang theo **HSC Design System** (font Inter / Inter Display, màu navy #0B2D5C /
+   brand #2681FF / brand-deep #00468C).
+   - **Logo ở header** là logo tải ở tab Người dùng; chưa có logo hoặc logo SVG thì dùng biểu tượng mặc định.
+   - Trang 1 là Executive Summary, các trang sau là chi tiết.
+5. **Tải Excel:** các sheet *Executive Summary · Theo ngày* (kèm biểu đồ) *· Danh sách IP · Chi tiết lượt chặn · Người thực hiện*.
+   Cột thời gian là kiểu ngày giờ thật, có bộ lọc.
+6. **Gửi email** (quyền Write trở lên):
+   - nhập người nhận (tối đa 20), chọn đính kèm PDF / Excel, ghi chú đầu thư.
+   - Thư đi qua **máy chủ SMTP đã cấu hình** ở tab Cài đặt (phải đang bật); nội dung thư là Executive Summary.
+
+**Phương thức chặn:**
+- **Tự động**: app tự chặn từ lệnh SOC.
+- **Thủ công**: con người thao tác, gồm chặn tay (dán Teams / nhập tay / CSV) **và** Approve lệnh SOC chờ duyệt.
+
+Mọi lần tải và gửi đều ghi audit (`report_export` / `report_email`).
+
 ### 5.9 Tab Tự động chặn (từ Teams)
 
 **Quy ước với SOC.** Muốn app tự chặn, SOC thêm **một dòng riêng, viết IN HOA** vào tin nhắn trong group chat:
@@ -697,7 +727,7 @@ Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che d
 
 | Phiên bản | Nội dung chính |
 |---|---|
-| **2.2.0** | **Giao diện mới** (menu trái, bảng/thẻ cân đối, Fira Sans/Code, tooltip hướng dẫn cấu hình). Tự động chặn từ group chat Teams: cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, tài khoản SOC, bỏ qua tin đã sửa, whitelist + Approve, lịch tự chặn (ngoài giờ ngày thường, cả ngày cuối tuần, ngày lễ, "cả ngày hôm nay"), ngưỡng 20 IP/giờ, công tắc khẩn cấp, danh sách ca đêm, trả lời `INFRA ĐÃ BLOCK …` qua Teams Workflows |
+| **2.2.0** | **Báo cáo** PDF / Excel (Executive Summary, theo HSC Design System, logo, chọn kỳ trên lịch, gửi email qua SMTP). **Giao diện mới** (menu trái, bảng/thẻ cân đối, Fira Sans/Code, tooltip hướng dẫn cấu hình). Tự động chặn từ group chat Teams: cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, tài khoản SOC, bỏ qua tin đã sửa, whitelist + Approve, lịch tự chặn (ngoài giờ ngày thường, cả ngày cuối tuần, ngày lễ, "cả ngày hôm nay"), ngưỡng 20 IP/giờ, công tắc khẩn cấp, danh sách ca đêm, trả lời `INFRA ĐÃ BLOCK …` qua Teams Workflows |
 | **2.1.0** | Rà soát quyền VPN định kỳ theo ISO 27001 (tab Rà soát, vai trò Rà soát, CSV bằng chứng / cần thu hồi, chuỗi băm quyết định). Overlay Rancher |
 | **2.0.0** | Thông báo email: cấu hình SMTP trên giao diện, nhắc trước hạn, báo hết hạn hằng tuần, outbox idempotent |
 | **1.9.0** | VPN giai đoạn 2: thời hạn qua firewall rule (Schedule / tên rule), dashboard trạng thái, lịch sử rule, CSV cần xử lý |

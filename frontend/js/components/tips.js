@@ -47,6 +47,13 @@ const HELP = {
   "abs-admins": "Nhận email: vượt ngưỡng, lệnh chờ duyệt, báo cáo khi hết ca ngoài giờ. Mỗi dòng một địa chỉ. Để trống = mọi quản trị viên có email.",
   "abs-fws": "Firewall sẽ nhận lệnh tự chặn. Không chọn = mọi firewall đang bật.",
 
+  // ---------------------------------------------------------------- Báo cáo
+  "rp-from": "Chọn khoảng ngày bất kỳ (tối đa 366 ngày, giờ Việt Nam). Ngày cuối là hôm nay thì số liệu tính tới hiện tại.",
+  "rp-to-addr": "Một hoặc nhiều email (tối đa 20), phân cách dấu phẩy / chấm phẩy. Thư gửi qua máy chủ SMTP ở tab Cài đặt (phải đang bật).",
+  "rp-note": "Lời nhắn đặt trên đầu thư, trước Executive Summary — vd \"Kính gửi anh/chị, báo cáo tuần 47\".",
+  "rp-f-pdf": "PDF: bản trình lãnh đạo — Executive Summary trang đầu, biểu đồ, bảng chi tiết; logo + màu HSC.",
+  "rp-f-xlsx": "Excel: Executive Summary + các sheet chi tiết (theo ngày, danh sách IP, từng lượt chặn, người thực hiện) để lọc / phân tích.",
+
   // ---------------------------------------------------------------- VPN / rà soát
   "vs-days": "Rule còn hạn ≤ số ngày này được đánh dấu \"Sắp hết hạn\" trên dashboard VPN (mặc định 30).",
   "vs-groups": "Rule Group trên firewall chứa rule cấp quyền VPN. Chỉ chọn được group có trong whitelist mã nguồn (hardening).",

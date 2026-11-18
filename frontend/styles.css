@@ -582,6 +582,39 @@ progress::-moz-progress-bar { background: var(--primary-text); border-radius: 99
 #ab-form fieldset.field > legend { float: left; width: 100%; margin-bottom: var(--s2); font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
 #ab-form fieldset.field > legend + * { clear: both; }
 
+/* ============================================================= BÁO CÁO === */
+.table th.num, .table td.num { text-align: right; width: 1%; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rp-range { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s3) var(--s4); }
+.rp-dates { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s3); }
+.rp-dates .field { width: 170px; }
+.rp-label { flex-basis: 100%; }
+.rp-headline { font-size: var(--fs-md); line-height: 1.6; margin-bottom: var(--s4); max-width: 100ch; }
+.rp-cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.rp-two { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--s4); }
+.rp-two h3 { margin-bottom: var(--s2); }
+.rp-attn { padding: var(--s3) var(--s4); border: 1px solid var(--line-warn); border-radius: var(--radius); background: var(--tint-warn); }
+.rp-list { margin: 0; padding-left: var(--s5); display: grid; gap: var(--s1); font-size: var(--fs-sm); }
+.rp-grid { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+.rp-legend { display: flex; align-items: center; gap: var(--s2); font-size: var(--fs-xs); color: var(--text-muted); }
+.rp-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-left: var(--s2); }
+.rp-dot--manual, .rp-bar__manual { background: var(--primary-text); }
+.rp-dot--auto, .rp-bar__auto { background: var(--accent); }
+.rp-chart {
+  display: grid; grid-template-columns: repeat(var(--n, 7), minmax(0, 1fr)); gap: 4px; align-items: end;
+  height: 240px; padding: var(--s2) 0 0; border-bottom: 1px solid var(--border);
+  background: repeating-linear-gradient(to top, transparent 0 59px, var(--border) 59px 60px);
+}
+.rp-bar { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.rp-bar__stack { width: min(100%, 36px); min-height: 0; display: flex; flex-direction: column; border-radius: 3px 3px 0 0; overflow: hidden; }
+.rp-bar__stack span { display: block; min-height: 0; }
+.rp-bar__v { position: absolute; left: 0; right: 0; bottom: calc(var(--h, 0%) + 2px); text-align: center; font-size: 11px; font-weight: 600; color: var(--text-muted); pointer-events: none; }
+.rp-bar__d { position: absolute; bottom: -20px; font-size: 11px; color: var(--text-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#rp-chart { margin-bottom: 22px; }
+#rp-q { width: 260px; }
+.rp-mail__foot { align-items: center; }
+.rp-mail__foot .check { margin-top: 0; }
+.rp-mail__foot .btn { margin-left: auto; }
+
 /* ============================================================ CÀI ĐẶT === */
 .smtp-test { align-items: flex-end; margin-top: auto; padding-top: var(--s4); border-top: 1px solid var(--border); }
 .smtp-test .field { flex: 1; margin: 0; }
@@ -652,7 +685,8 @@ progress::-moz-progress-bar { background: var(--primary-text); border-radius: 99
   .grid--settings { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 1080px) {
-  .grid--block, .grid--fw, .grid--users { grid-template-columns: minmax(0, 1fr); }
+  .grid--block, .grid--fw, .grid--users, .rp-grid { grid-template-columns: minmax(0, 1fr); }
+  .rp-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 /* Màn hình hẹp: menu trái thành ngăn kéo */
 @media (max-width: 960px) {
@@ -696,7 +730,10 @@ progress::-moz-progress-bar { background: var(--primary-text); border-radius: 99
   .rv-actions .btn { flex: 1 1 auto; }
   .smtp-test .btn { width: 100%; }
   /* Trực đêm trên điện thoại: chờ duyệt / ca ngoài giờ dạng thẻ — nút Approve / Gỡ chặn luôn trong màn hình */
-  .ab-cards, #vr-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ab-cards, #vr-cards, .rp-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rp-two, .rp-grid { grid-template-columns: minmax(0, 1fr); }
+  .rp-dates, .rp-dates .field, #rp-q { width: 100%; }
+  .rp-mail__foot .btn { margin-left: 0; width: 100%; }
   .ab-cards > :last-child:nth-child(odd) { grid-column: 1 / -1; }   /* số thẻ lẻ: thẻ cuối trải hết hàng */
   .status-card { min-height: 72px; }
   .status-card b, .stat b { font-size: var(--fs-lg); }

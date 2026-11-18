@@ -11,6 +11,7 @@ import { loadChanges } from "./pages/changes.js";
 import { loadFirewalls } from "./pages/firewalls.js";
 import { loadGroupsForSelectedFw } from "./pages/groups.js";
 import { loadUsers } from "./pages/users.js";
+import { loadReports } from "./pages/reports.js";
 import { loadReview } from "./pages/review.js";
 import { loadSettings } from "./pages/settings.js";
 import { loadVpn } from "./pages/vpn.js";
@@ -94,6 +95,7 @@ initRouter((tab) => {
   if (tab === "settings") loadSettings();
   if (tab === "review") loadReview();
   if (tab === "autoblock") loadAutoblock();
+  if (tab === "reports") loadReports();
 });
 
 $("#theme-toggle").addEventListener("click", () => {

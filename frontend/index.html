@@ -93,6 +93,7 @@
             <p class="nav-label" aria-hidden="true">Giám sát</p>
             <button type="button" role="tab" id="tab-changes" aria-controls="panel-changes" aria-selected="false" class="tab" data-tab="changes"><svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg><span>Lịch sử thay đổi</span></button>
             <button type="button" role="tab" id="tab-audit" aria-controls="panel-audit" aria-selected="false" class="tab" data-tab="audit"><svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg><span>Audit log</span></button>
+            <button type="button" role="tab" id="tab-reports" aria-controls="panel-reports" aria-selected="false" class="tab" data-tab="reports"><svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg><span>Báo cáo</span></button>
           </div>
           <div class="nav-group" role="presentation">
             <p class="nav-label" aria-hidden="true">VPN & tuân thủ</p>
@@ -521,6 +522,91 @@ Ví dụ:
               </table>
             </div>
           </div>
+        </section>
+
+        <section class="panel" data-panel="reports" id="panel-reports" role="tabpanel" aria-labelledby="tab-reports">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>Báo cáo chặn IP</h2>
+                <p class="muted tiny">Thống kê IP bị chặn theo phương thức (thủ công / tự động) và thời gian thực hiện. Bản PDF / Excel theo HSC Design System, có Executive Summary ở đầu, nội dung chi tiết phía sau.</p>
+              </div>
+              <div class="row row--tight">
+                <a class="btn" id="rp-pdf" href="#" download>Tải PDF</a>
+                <a class="btn" id="rp-xlsx" href="#" download>Tải Excel</a>
+              </div>
+            </div>
+            <div class="rp-range">
+              <div class="seg" id="rp-seg" role="group" aria-label="Kỳ báo cáo">
+                <button class="seg-btn is-active" type="button" data-days="7">7 ngày</button>
+                <button class="seg-btn" type="button" data-days="14">14 ngày</button>
+                <button class="seg-btn" type="button" data-days="30">30 ngày</button>
+                <button class="seg-btn" type="button" data-days="custom">Chọn trên lịch</button>
+              </div>
+              <div class="rp-dates" id="rp-dates" hidden>
+                <label class="field"><span>Từ ngày</span><input id="rp-from" type="date" /></label>
+                <label class="field"><span>Đến ngày</span><input id="rp-to" type="date" /></label>
+                <button class="btn btn--primary" id="rp-apply" type="button">Xem báo cáo</button>
+              </div>
+              <p class="muted tiny rp-label" id="rp-label" aria-live="polite"></p>
+            </div>
+          </div>
+
+          <div class="card rp-exec">
+            <div class="card-head"><h2>Executive Summary</h2></div>
+            <p class="rp-headline" id="rp-headline"></p>
+            <div id="rp-cards" class="status-cards rp-cards"></div>
+            <div class="grid rp-two">
+              <div><h3>Nhận định nổi bật</h3><ul class="rp-list" id="rp-highlights"></ul></div>
+              <div class="rp-attn"><h3>Cần lưu ý / hành động</h3><ul class="rp-list" id="rp-attention"></ul></div>
+            </div>
+          </div>
+
+          <div class="grid rp-grid">
+            <div class="card">
+              <div class="card-head"><h2>IP bị chặn theo ngày</h2>
+                <div class="rp-legend"><span class="rp-dot rp-dot--manual"></span>Thủ công <span class="rp-dot rp-dot--auto"></span>Tự động</div></div>
+              <div class="rp-chart" id="rp-chart" role="img" aria-label="Biểu đồ IP bị chặn theo ngày"></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h2>Người / tác nhân thực hiện</h2></div>
+              <div class="table-wrap">
+                <table class="table" id="rp-actors">
+                  <thead><tr><th>Người / tác nhân</th><th>Phương thức</th><th class="num">IP</th><th class="num">Lượt</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><div><h2>Danh sách IP bị chặn</h2><p class="muted tiny" id="rp-ips-note"></p></div>
+              <input id="rp-q" type="search" placeholder="Lọc IP / người / lý do…" aria-label="Lọc danh sách IP" /></div>
+            <div class="table-wrap">
+              <table class="table" id="rp-ips">
+                <thead><tr><th>IP / CIDR</th><th>Thời gian thực hiện</th><th>Phương thức</th><th>Người / nguồn</th><th>Firewall</th><th>Trạng thái</th><th>Lý do</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div id="rp-pager" class="pager"></div>
+          </div>
+
+          <form class="card rp-mail" id="rp-mail" autocomplete="off">
+            <div class="card-head"><div><h2>Gửi báo cáo qua email</h2>
+              <p class="muted tiny">Gửi ngay qua máy chủ SMTP đã cấu hình ở tab Cài đặt. Nội dung thư là Executive Summary; file đính kèm theo kỳ đang chọn.</p></div></div>
+            <div class="row row--2">
+              <label class="field"><span>Người nhận (phân cách dấu phẩy / chấm phẩy)</span>
+                <input id="rp-to-addr" placeholder="ceo@hsc.com.vn; infra@hsc.com.vn" /></label>
+              <label class="field"><span>Ghi chú đầu thư (không bắt buộc)</span>
+                <input id="rp-note" maxlength="1000" placeholder="Kính gửi anh/chị, báo cáo tuần…" /></label>
+            </div>
+            <div class="row rp-mail__foot">
+              <label class="check"><input type="checkbox" id="rp-f-pdf" checked /> <span>Đính kèm PDF</span></label>
+              <label class="check"><input type="checkbox" id="rp-f-xlsx" checked /> <span>Đính kèm Excel</span></label>
+              <button class="btn btn--primary" id="rp-send" type="submit">Gửi email</button>
+            </div>
+            <p id="rp-mail-msg" class="alert hidden" role="status"></p>
+          </form>
         </section>
 
         <section class="panel" data-panel="autoblock" id="panel-autoblock" role="tabpanel" aria-labelledby="tab-autoblock">

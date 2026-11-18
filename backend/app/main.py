@@ -33,6 +33,7 @@ from .modules.ipblock.changes_router import router as changes_router
 from .modules.ipblock.router import router as ipblock_router
 from .modules.notify import outbox as notify_outbox
 from .modules.notify.router import router as notify_router
+from .modules.reports.router import router as reports_router
 from .modules.review import service as review_service
 from .modules.review.router import router as review_router
 from .modules.vpn import sync as vpn_sync
@@ -88,7 +89,8 @@ app_errors.install(app)
 app_logging.install(app)
 
 for _router in (auth_router, firewalls_router, users_router, ipblock_router, changes_router, audit_router,
-                branding_router, vpn_router, notify_router, review_router, autoblock_router):
+                branding_router, vpn_router, notify_router, review_router, autoblock_router,
+                reports_router):
     app.include_router(_router)
 
 

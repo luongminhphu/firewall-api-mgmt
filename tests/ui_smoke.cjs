@@ -317,6 +317,34 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.waitForSelector("#ab-verify-msg .chip--ok");
     chk("Tự động chặn: kiểm tra chuỗi băm nhật ký", true);
 
+    // Báo cáo: Executive Summary, chọn kỳ / chọn trên lịch, link tải PDF / Excel, form gửi email
+    await tab(page, "reports");
+    await page.waitForFunction(() => document.querySelector("#rp-headline").textContent.includes("Trong 7 ngày"));
+    chk("Báo cáo: Executive Summary + 6 thẻ chỉ số + biểu đồ 7 cột", (await page.$$("#rp-cards .status-card")).length === 6
+      && (await page.$$("#rp-chart .rp-bar")).length === 7);
+    chk("Báo cáo: link tải PDF / Excel kèm kỳ + token", /blocks\.pdf\?days=7&token=/.test(await page.getAttribute("#rp-pdf", "href"))
+      && /blocks\.xlsx\?days=7&token=/.test(await page.getAttribute("#rp-xlsx", "href")));
+    await page.click('#rp-seg [data-days="30"]');
+    await page.waitForFunction(() => document.querySelectorAll("#rp-chart .rp-bar").length === 30);
+    chk("Báo cáo: chọn 30 ngày → 30 cột", true);
+    await page.click('#rp-seg [data-days="custom"]');
+    const from3 = await page.evaluate(() => {
+      const d = new Date(Date.now() - 2 * 86400000);
+      return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
+    });
+    await page.fill("#rp-from", from3);
+    await page.click("#rp-apply");
+    await page.waitForFunction(() => document.querySelectorAll("#rp-chart .rp-bar").length === 3);
+    chk("Báo cáo: chọn trên lịch 3 ngày → link tải theo from/to", /from=\d{4}-\d\d-\d\d&to=/.test(await page.getAttribute("#rp-pdf", "href")));
+    const pdfResp = await page.evaluate(async (u) => { const r = await fetch(u); return [r.status, r.headers.get("content-type")]; },
+      await page.getAttribute("#rp-pdf", "href"));
+    chk("Báo cáo: tải PDF từ giao diện", pdfResp[0] === 200 && pdfResp[1] === "application/pdf", JSON.stringify(pdfResp));
+    chk("Báo cáo: admin thấy form gửi email", await visible(page, "#rp-mail"));
+    await page.fill("#rp-to-addr", "sep@hsc.com.vn");
+    await page.click("#rp-send");
+    await page.waitForSelector("#rp-mail-msg.alert--error");
+    chk("Báo cáo: SMTP đang tắt → báo lỗi rõ ràng", (await page.textContent("#rp-mail-msg")).includes("TẮT"));
+
     // Rà soát định kỳ (admin): mở đợt, quyết định (thu hồi cần lý do), tiến độ theo team
     await tab(page, "review");
     await page.waitForSelector("#panel-review.is-active");
@@ -390,6 +418,9 @@ const visible = (page, sel) => page.isVisible(sel);
       await p2.waitForSelector("#panel-vpn.is-active");
       chk("viewer xem được tab VPN nhưng không có nút Đồng bộ", !(await visible(p2, "#v-sync")));
       chk("viewer không thấy tab Cài đặt", !(await visible(p2, "#tab-settings")));
+      await tab(p2, "reports");
+      await p2.waitForSelector("#rp-cards .status-card");
+      chk("viewer xem được Báo cáo nhưng không có form gửi email", !(await visible(p2, "#rp-mail")));
       await tab(p2, "autoblock");
       await p2.waitForSelector("#ab-cards .ab-card");
       chk("viewer xem tab Tự động chặn nhưng không có nút Tắt khẩn cấp / Approve / Gỡ chặn",
@@ -425,7 +456,7 @@ const visible = (page, sel) => page.isVisible(sel);
       const { ctx: c3, page: p3, errors: e3 } = await newPage(browser, { tok: admin, viewport: { width: 390, height: 844 } });
       await p3.goto(B + "/");
       await p3.waitForSelector("#app:not(.hidden)");
-      for (const t of ["block", "groups", "firewalls", "changes", "audit", "vpn", "review", "autoblock", "settings", "users"]) {
+      for (const t of ["block", "groups", "firewalls", "changes", "audit", "reports", "vpn", "review", "autoblock", "settings", "users"]) {
         await tab(p3, t);
         await p3.waitForTimeout(250);
         const overflow = await p3.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
