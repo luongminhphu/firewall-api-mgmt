@@ -4,10 +4,12 @@ import { resultChip } from "../components/badge.js";
 import { progressBox, setBusy } from "../components/progress.js";
 import { tableMessage } from "../components/table.js";
 import { toast } from "../components/toast.js";
-import { can, state } from "../store.js";
+import { can, on, state } from "../store.js";
 import { $, $$, esc } from "../util.js";
 
 // ----------------------------------------------------------- object group
+on("firewalls", () => renderFwSelect());
+
 export function renderFwSelect() {
   const sel = $("#g-fw");
   const prev = sel.value;

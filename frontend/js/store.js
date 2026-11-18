@@ -27,3 +27,16 @@ export const tokenStore = (() => {
     return null;
   }
 })();
+
+// ------------------------------------------------------------- bus sự kiện
+// Trang không import lẫn nhau: trang Firewall phát "firewalls" sau khi tải danh sách, trang Chặn / IP Host
+// Group / Lịch sử nghe để vẽ lại phần phụ thuộc; trang Chặn phát "cache-refresh" để trang IP Host Group theo dõi.
+const listeners = {};
+
+export function on(topic, fn) {
+  (listeners[topic] ||= []).push(fn);
+}
+
+export function emit(topic, data) {
+  (listeners[topic] || []).forEach((fn) => fn(data));
+}
