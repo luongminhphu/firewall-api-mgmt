@@ -100,7 +100,7 @@ def check_request(inner_xml: str) -> list[tuple[str, str, str | None]]:
 def check_remove_iphost(name: str, actual_value: str | None) -> None:
     """Chỉ được xóa IP Host do app tạo: tên = chính địa chỉ của object, hoặc tên kiểu cũ có HOST_PREFIX."""
     from ...core.config import settings
-    from ...ipparse import is_app_owned
+    from .naming import is_app_owned
 
     if not is_app_owned(name, actual_value):
         raise GroupPolicyError(

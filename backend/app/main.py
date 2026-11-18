@@ -8,42 +8,29 @@ import datetime as dt
 import io
 import os
 import re
-import threading
 
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from . import changelog
 from . import group_cache as gc
 from . import jobs
 from .core.config import settings
 from .core.db import get_session, init_db
-from .auth.rbac import admin, current_user, operator, principal, role_at_least
+from .auth.rbac import admin, current_user, principal
 from .auth.router import resolve_sso  # noqa: F401 — tests/sso_once_test.py dùng main.resolve_sso
 from .auth.router import router as auth_router
 from .auth.users.router import router as users_router
 from .modules.firewalls.router import router as firewalls_router
-from .modules.shared import enforce_group_audited
-from .core.deps import client_ip_of, get_fw, selected_firewalls
+from .modules.ipblock.changes_router import router as changes_router
+from .modules.ipblock.router import router as ipblock_router
+from .core.deps import client_ip_of
 from .core.models import AppSetting, AuditLog, Firewall
-from .ipparse import extract, host_object_name
 from .policy import BLOCK_GROUP
-from .service import (
-    _host_value,
-    audit,
-    block_on_firewall,
-    cached_details,
-    derive_host,
-    resolve_hosts,
-    client_for,
-    normalize_entries,
-    unblock_on_firewall,
-)
-from .sophos import SophosAuthError, SophosError
+from .service import audit
 
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION, docs_url="/api/docs")
 
@@ -62,6 +49,8 @@ app_errors.install(app)
 app.include_router(auth_router)
 app.include_router(firewalls_router)
 app.include_router(users_router)
+app.include_router(ipblock_router)
+app.include_router(changes_router)
 
 
 @app.on_event("startup")
@@ -87,265 +76,6 @@ def _startup() -> None:
 
 
 # ------------------------------------------------------------------- helpers
-
-
-def locked_group(db: Session, request: Request, requested, actor: str) -> str:
-    """Áp chính sách group cố định; vi phạm → 403 và ghi audit 'policy_violation'."""
-    return enforce_group_audited(db, requested, actor=actor, client_ip=client_ip_of(request))
-
-
-# ---------------------------------------------------------------------- auth
-
-
-# ----------------------------------------------------------------- firewalls
-
-
-# --------------------------------------------------------------- object view
-@app.get("/api/firewalls/{fw_id}/groups")
-def fw_groups(
-    fw_id: int, db: Session = Depends(get_session), user: str = Depends(current_user)
-):
-    fw = get_fw(db, fw_id)
-    row = gc.get_row(db, fw.id)
-    if row is None or row.scanned_at is None:
-        row = _scan_wait(db, fw, "full") or row  # chưa có cache: quét (chờ tối đa GROUP_CACHE_REFRESH_WAIT giây)
-    d = gc.data(row)
-    if row is None or not d:
-        if row is not None and row.status == "error":
-            raise HTTPException(502, row.error)
-        return {"firewall": fw.name, "default_group": BLOCK_GROUP, "locked": True, "groups": [],
-                "pending": True, "cache": gc.meta(row)}
-    groups = []
-    if d.get("exists"):
-        groups = [{"name": d.get("group", BLOCK_GROUP), "description": d.get("description", ""),
-                   "ip_family": d.get("ip_family", ""), "count": d.get("total", 0)}]
-    return {"firewall": fw.name, "default_group": BLOCK_GROUP, "locked": True, "groups": groups,
-            "cache": gc.meta(row)}
-
-
-def _schedule_refresh(bg: BackgroundTasks, fw_ids: list[int], force: bool = True, mode: str = "lite",
-                      hints: dict[int, dict] | None = None) -> None:
-    """Sau thao tác ghi: quét NHẸ (group theo tên + chi tiết từ cache/tên) — nhanh kể cả firewall nhiều object."""
-    for fid in dict.fromkeys(fw_ids):
-        bg.add_task(gc.refresh_now, fid, force=force, mode=mode, hints=(hints or {}).get(fid))
-
-
-def _scan_wait(db: Session, fw, mode: str = "full"):
-    """Quét trong luồng riêng, chờ tối đa GROUP_CACHE_REFRESH_WAIT giây.
-
-    Xong kịp → trả row mới. Firewall chậm → trả None, lượt quét vẫn chạy nền; giao diện hỏi /group-cache để cập nhật.
-    Tránh request treo quá timeout của Entra App Proxy (~85 giây) / NGINX.
-    """
-    import threading
-
-    t = threading.Thread(target=gc.refresh_now, args=(fw.id,), kwargs={"force": True, "mode": mode},
-                         name=f"scan-{fw.id}", daemon=True)
-    t.start()
-    t.join(settings.GROUP_CACHE_REFRESH_WAIT)
-    db.expire_all()
-    row = gc.get_row(db, fw.id)
-    return None if t.is_alive() else row
-
-
-def _block_hints(results: list[dict], reason: str) -> dict[int, dict]:
-    """Chi tiết object vừa tạo (giá trị + ghi chú = lý do) để cache hiển thị đủ ngay, không cần đọc lại firewall."""
-    out: dict[int, dict] = {}
-    for r in results:
-        h = {}
-        for row in r.get("rows", []):
-            if row.get("result") == "added" and row.get("object"):
-                v = row.get("value", "")
-                d = derive_host(v) or {}
-                h[row["object"]] = {**d, "name": row["object"], "description": (reason or "")[:255], "derived": False}
-        if h:
-            out[r["firewall_id"]] = h
-    return out
-
-
-@app.get("/api/firewalls/{fw_id}/group-members")
-def fw_group_members(
-    fw_id: int,
-    request: Request,
-    bg: BackgroundTasks,
-    group: str = Query(default=""),
-    q: str = Query(default=""),
-    refresh: bool = Query(default=False),
-    db: Session = Depends(get_session),
-    user: str = Depends(current_user),
-):
-    """Trả danh sách từ cache (nhanh). refresh=1: quét lại firewall ngay. Cache cũ/dirty: trả ngay + quét nền."""
-    group = locked_group(db, request, group, user)
-    fw = get_fw(db, fw_id)
-    row = gc.get_row(db, fw.id)
-    source = "cache"
-    if refresh and row is not None and not gc.can_force(row):
-        refresh = False  # vừa quét xong vài giây trước — dùng luôn kết quả đó
-    if row is None or row.scanned_at is None or refresh:
-        new = _scan_wait(db, fw, "full")
-        if new is not None:
-            row, source = new, "live"
-        else:
-            row = gc.get_row(db, fw.id)  # firewall chậm: trả cache cũ (nếu có), lượt quét tiếp tục nền
-            if row is None or not gc.data(row):
-                return {"firewall": fw.name, "group": group, "description": "", "ip_family": "", "total": 0,
-                        "members": [], "source": "pending", "pending": True, "cache": gc.meta(row)}
-    else:
-        m = gc.meta(row)
-        if (m["stale"] or m["dirty"]) and not m["refreshing"]:
-            row.refreshing_since = dt.datetime.now(dt.timezone.utc)
-            db.commit()
-            _schedule_refresh(bg, [fw.id], mode="full" if m["stale"] else "lite")
-    d = gc.data(row)
-    if not d:
-        raise HTTPException(502, row.error or f"Không đọc được group trên {fw.name}")
-    if not d.get("exists"):
-        raise HTTPException(404, f"Group '{group}' không tồn tại trên {fw.name}")
-    members = d.get("members", [])
-    if q:
-        needle = q.lower().strip()
-        members = [m for m in members if needle in m["object"].lower() or needle in m["value"].lower()]
-    return {
-        "firewall": fw.name, "group": d.get("group", group), "description": d.get("description", ""),
-        "ip_family": d.get("ip_family", ""), "total": d.get("total", 0), "members": members,
-        "source": source, "cache": gc.meta(row),
-    }
-
-
-@app.get("/api/firewalls/{fw_id}/group-cache")
-def fw_group_cache(fw_id: int, db: Session = Depends(get_session), user: str = Depends(current_user)):
-    """Trạng thái cache (nhẹ, để giao diện hỏi định kỳ khi đang quét lại)."""
-    fw = get_fw(db, fw_id)
-    row = gc.get_row(db, fw.id)
-    return {"firewall_id": fw.id, "firewall": fw.name, "total": gc.data(row).get("total"), **gc.meta(row)}
-
-
-@app.get("/api/group-cache")
-def group_cache_overview(db: Session = Depends(get_session), user: str = Depends(current_user)):
-    """Tổng quan cache SCANPORT GROUP của mọi firewall (không kèm danh sách thành viên)."""
-    out = []
-    for fw in db.scalars(select(Firewall).order_by(Firewall.name)):
-        row = gc.get_row(db, fw.id)
-        d = gc.data(row)
-        out.append({"firewall_id": fw.id, "firewall": fw.name, "site": fw.site, "enabled": fw.enabled,
-                    "exists": d.get("exists"), "total": d.get("total"), **gc.meta(row)})
-    return {"group": BLOCK_GROUP, "ttl_minutes": settings.GROUP_CACHE_TTL_MINUTES,
-            "daily_at": settings.GROUP_CACHE_DAILY_AT, "firewalls": out}
-
-
-# ------------------------------------------------------------------- parsing
-@app.post("/api/parse")
-def parse_text(payload: dict = Body(...), user: str = Depends(current_user)):
-    text = payload.get("text") or ""
-    extra_safe = payload.get("extra_safe") or []
-    res = extract(text, extra_safe)
-    for item in res["accepted"]:
-        item["object"] = host_object_name(item["value"])
-    return res
-
-
-# --------------------------------------------------------------------- block
-def _after_write(changed: list[int], hints: dict[int, dict] | None = None) -> None:
-    """Sau khi ghi firewall: đánh dấu cache cũ + quét nhẹ lại (luồng nền, không giữ request)."""
-    if not changed:
-        return
-    from .core.db import SessionLocal
-
-    with SessionLocal() as s:
-        gc.mark_dirty(s, changed)
-    for fid in dict.fromkeys(changed):
-        threading.Thread(target=gc.refresh_now, args=(fid,),
-                         kwargs={"force": True, "mode": "lite", "hints": (hints or {}).get(fid)},
-                         name=f"refresh-{fid}", daemon=True).start()
-
-
-def _job_response(db: Session, job_id: str) -> JSONResponse:
-    """Chờ tối đa JOB_SYNC_WAIT giây. Xong → 200 + kết quả đầy đủ; chưa xong → 202 + tiến độ (hỏi /api/jobs/{id})."""
-    finished = jobs.wait(job_id, settings.JOB_SYNC_WAIT)
-    db.expire_all()
-    body = jobs.to_dict(jobs.get(db, job_id))
-    return JSONResponse(body, status_code=200 if finished and body["status"] != "running" else 202)
-
-
-@app.post("/api/block")
-def block(
-    request: Request,
-    payload: dict = Body(...),
-    db: Session = Depends(get_session),
-    p: dict = Depends(operator),
-):
-    user = p["user"]
-    locked_group(db, request, payload.get("group"), user)
-    values: list[str] = [str(v) for v in (payload.get("values") or [])]
-    if payload.get("text"):
-        values += [i["value"] for i in extract(payload["text"], payload.get("extra_safe"))["accepted"]]
-    entries, rejected = normalize_entries(values, payload.get("extra_safe"))
-    if not entries:
-        raise HTTPException(400, "Không có IP hợp lệ nào để chặn")
-    if len(entries) > 500:
-        raise HTTPException(400, "Tối đa 500 IP mỗi lần để tránh treo firewall")
-
-    fws = selected_firewalls(db, payload.get("firewall_ids"))
-    ip = client_ip_of(request)
-    reason = payload.get("reason") or ""
-    source = payload.get("source") or "manual"
-    dry = bool(payload.get("dry_run"))
-
-    def work(s: Session, fw: Firewall) -> dict:
-        return block_on_firewall(s, fw, entries, reason=reason, source=source, actor=user, client_ip=ip,
-                                 dry_run=dry, who=p)
-
-    def on_done(results: list[dict]) -> dict:
-        if dry:
-            return {"cache_refresh": []}
-        changed = [r["firewall_id"] for r in results if r.get("summary", {}).get("added")]
-        _after_write(changed, _block_hints(results, reason))  # cache khớp firewall (kèm chi tiết object vừa tạo)
-        return {"cache_refresh": changed}
-
-    job_id = jobs.submit("block", user, [fw.id for fw in fws], work, on_done=on_done,
-                         meta={"entries": entries, "rejected": rejected, "dry_run": dry,
-                               "firewalls": [{"id": fw.id, "name": fw.name} for fw in fws]})
-    return _job_response(db, job_id)
-
-
-@app.post("/api/unblock")
-def unblock(
-    request: Request,
-    payload: dict = Body(...),
-    db: Session = Depends(get_session),
-    p: dict = Depends(operator),
-):
-    user = p["user"]
-    locked_group(db, request, payload.get("group"), user)
-    targets = [str(t).strip() for t in (payload.get("targets") or []) if str(t).strip()]
-    if not targets:
-        raise HTTPException(400, "Chưa chọn IP/object nào để bỏ chặn")
-    fws = selected_firewalls(db, payload.get("firewall_ids"))
-    ip = client_ip_of(request)
-    delete_object = bool(payload.get("delete_object"))
-    reason = payload.get("reason") or ""
-
-    def work(s: Session, fw: Firewall) -> dict:
-        return unblock_on_firewall(s, fw, targets, delete_object=delete_object, reason=reason,
-                                   actor=user, client_ip=ip, who=p)
-
-    def on_done(results: list[dict]) -> dict:
-        changed = [r["firewall_id"] for r in results if r.get("summary", {}).get("removed")]
-        _after_write(changed)
-        return {"cache_refresh": changed}
-
-    job_id = jobs.submit("unblock", user, [fw.id for fw in fws], work, on_done=on_done,
-                         meta={"targets": targets,
-                               "firewalls": [{"id": fw.id, "name": fw.name} for fw in fws]})
-    return _job_response(db, job_id)
-
-
-@app.get("/api/jobs/{job_id}")
-def job_status(job_id: str, db: Session = Depends(get_session), p: dict = Depends(principal)):
-    """Tiến độ / kết quả một lượt chặn hoặc bỏ chặn chạy nền. Chỉ người tạo hoặc quản trị viên xem được."""
-    job = jobs.get(db, job_id[:32])
-    if job is None or (job.actor != p["user"] and not role_at_least(p["role"], "admin")):
-        raise HTTPException(404, "Không tìm thấy công việc (đã hết hạn lưu hoặc không thuộc về bạn)")
-    return jobs.to_dict(job)
 
 
 # --------------------------------------------------------------------- audit
@@ -397,120 +127,6 @@ def audit_csv(
 
 
 # ------------------------------------------------------------- change log
-def _parse_day(v: str, end: bool = False) -> dt.datetime | None:
-    if not v:
-        return None
-    try:
-        d = dt.date.fromisoformat(v)
-    except ValueError as exc:
-        raise HTTPException(400, f"Ngày không hợp lệ: {v} (định dạng YYYY-MM-DD)") from exc
-    tz = dt.timezone(dt.timedelta(hours=7))  # Asia/Ho_Chi_Minh
-    base = dt.datetime.combine(d, dt.time.min, tzinfo=tz)
-    return base + dt.timedelta(days=1) if end else base
-
-
-@app.get("/api/changes")
-def changes(
-    request: Request,
-    firewall_id: int | None = Query(default=None),
-    group: str = Query(default=""),
-    type: str = Query(default=""),
-    actor: str = Query(default=""),
-    q: str = Query(default=""),
-    date_from: str = Query(default="", alias="from"),
-    date_to: str = Query(default="", alias="to"),
-    limit: int = Query(default=100, le=500),
-    db: Session = Depends(get_session),
-    user: str = Depends(current_user),
-):
-    group = locked_group(db, request, group, user)
-    batches = changelog.query_batches(
-        db, firewall_id=firewall_id, group=group, change_type=type, actor=actor.strip(),
-        q=q, date_from=_parse_day(date_from), date_to=_parse_day(date_to, end=True),
-        limit_batches=limit,
-    )
-    totals = {
-        "batches": len(batches),
-        "added": sum(len(b["added"]) for b in batches),
-        "removed": sum(len(b["removed"]) for b in batches),
-        "drift": sum(1 for b in batches if b["kind"] == "drift"),
-    }
-    return {"batches": batches, "totals": totals, "groups": [BLOCK_GROUP], "locked_group": BLOCK_GROUP}
-
-
-@app.get("/api/changes.csv")
-def changes_csv(
-    token: str = Query(default=""),
-    firewall_id: int | None = Query(default=None),
-    group: str = Query(default=""),
-    q: str = Query(default=""),
-    date_from: str = Query(default="", alias="from"),
-    date_to: str = Query(default="", alias="to"),
-    db: Session = Depends(get_session),
-):
-    principal(token, db)  # cùng kiểm tra như API: token hợp lệ, user chưa bị khóa/xóa
-    if group.strip() not in ("", BLOCK_GROUP):
-        raise HTTPException(403, f"Chỉ xuất lịch sử của IP Host Group '{BLOCK_GROUP}'")
-    batches = changelog.query_batches(
-        db, firewall_id=firewall_id, group=BLOCK_GROUP, q=q,
-        date_from=_parse_day(date_from), date_to=_parse_day(date_to, end=True), limit_batches=5000,
-    )
-    labels = {"change": "thao tac trong app", "drift": "thay doi ngoai app",
-              "baseline": "trang thai ban dau", "create_group": "tao group"}
-    buf = io.StringIO()
-    buf.write("\ufeff")  # BOM để Excel đọc đúng tiếng Việt
-    w = csv.writer(buf)
-    w.writerow(["thoi_gian_vn", "lo_thao_tac", "loai", "thay_doi", "ip_cidr", "object", "firewall",
-                "group", "so_object_truoc", "so_object_sau", "nguoi_thuc_hien", "ten_hien_thi",
-                "phuong_thuc_dang_nhap", "ly_do", "nguon", "ip_client"])
-    for b in batches:
-        lines = [("+", i) for i in b["added"]] + [("-", i) for i in b["removed"]] or [("", {"value": "", "object": ""})]
-        for sign, it in lines:
-            w.writerow([changelog.vn_time(b["ts"]), b["batch_id"], labels.get(b["kind"], b["kind"]),
-                        {"+": "THEM", "-": "BOT"}.get(sign, ""), it["value"], it["object"],
-                        b["firewall_name"], b["group_name"], b["count_before"], b["count_after"],
-                        b["actor"], b["actor_name"], b["auth_method"], b["reason"], b["source"],
-                        b["client_ip"]])
-    buf.seek(0)
-    return StreamingResponse(
-        iter([buf.getvalue()]), media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": "attachment; filename=lich_su_thay_doi_object_group.csv"},
-    )
-
-
-@app.get("/api/changes/verify")
-def changes_verify(db: Session = Depends(get_session), user: str = Depends(current_user)):
-    return changelog.verify_chain(db)
-
-
-@app.post("/api/changes/sync")
-def changes_sync(
-    request: Request,
-    bg: BackgroundTasks,
-    payload: dict = Body(default={}),
-    db: Session = Depends(get_session),
-    p: dict = Depends(operator),
-):
-    """Đọc lại group cố định trên firewall để phát hiện thay đổi ngoài app."""
-    group = locked_group(db, request, payload.get("group"), p["user"])
-    fws = selected_firewalls(db, payload.get("firewall_ids"))
-    out = []
-    for fw in fws:
-        try:
-            with client_for(fw) as cli:
-                g = cli.get_group(group)
-                hosts = list(g["hosts"]) if g else []
-                det, _ = resolve_hosts(cli, hosts, cached_details(db, fw.id)) if hosts else ({}, [])
-            details = {n: _host_value(h) for n, h in det.items()}
-            res = changelog.detect_drift(db, fw, group, {h: details.get(h, "") for h in hosts})
-            db.commit()
-            out.append({"firewall": fw.name, "group": group, "ok": True, "exists": bool(g),
-                        "total": len(hosts), **res})
-        except (SophosError, SophosAuthError, ValueError) as exc:
-            db.rollback()
-            out.append({"firewall": fw.name, "group": group, "ok": False, "error": str(exc)})
-    _schedule_refresh(bg, [fw.id for fw in fws])
-    return {"results": out}
 
 
 # ------------------------------------------------------------------ branding
