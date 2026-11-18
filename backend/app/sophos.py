@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 import xmltodict
 
-from .config import settings
+from .core.config import settings
 from .policy import BLOCK_GROUP, GroupPolicyError
 
 log = logging.getLogger("sophos")

@@ -20,8 +20,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import changelog
-from .config import settings
-from .db import Firewall, GroupCache, SessionLocal
+from .core.config import settings
+from .core.db import SessionLocal
+from .core.models import Firewall, GroupCache
 from .policy import BLOCK_GROUP
 from .service import _host_value, client_for, resolve_hosts
 from .sophos import SophosAuthError, SophosError

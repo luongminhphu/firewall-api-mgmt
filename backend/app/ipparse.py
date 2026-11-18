@@ -4,7 +4,7 @@ from __future__ import annotations
 import ipaddress
 import re
 
-from .config import settings
+from .core.config import settings
 
 # IPv4 và IPv4/CIDR, kèm dạng bị làm mờ "1.2.3[.]4" hay "1.2.3(.)4" thường thấy trong chat SOC.
 _IP_RE = re.compile(

@@ -18,7 +18,7 @@ import uuid
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from .db import Firewall, GroupChange, GroupSnapshot
+from .core.models import Firewall, GroupChange, GroupSnapshot
 
 _chain_lock = threading.Lock()
 

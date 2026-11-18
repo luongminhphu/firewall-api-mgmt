@@ -22,8 +22,9 @@ from typing import Callable
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from .config import settings
-from .db import Firewall, Job, SessionLocal
+from .core.config import settings
+from .core.db import SessionLocal
+from .core.models import Firewall, Job
 
 log = logging.getLogger("jobs")
 

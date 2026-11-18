@@ -24,9 +24,11 @@ from . import changelog
 from . import group_cache as gc
 from . import jobs
 from . import users as um
-from .config import settings
-from .crypto import MasterKeyMissing, decrypt, encrypt, issue_token, verify_principal
-from .db import AppSetting, AppUser, AuditLog, Firewall, GroupChange, get_session, init_db
+from .core.config import settings
+from .core.security import MasterKeyMissing, decrypt, encrypt, issue_token, verify_principal
+from .core.db import get_session, init_db
+from .core.deps import client_ip_of, get_fw, selected_firewalls
+from .core.models import AppSetting, AppUser, AuditLog, Firewall, GroupChange
 from .ipparse import extract, host_object_name
 from .policy import BLOCK_GROUP, GroupPolicyError, enforce_group
 from .service import (
@@ -58,7 +60,7 @@ app.add_middleware(
 def _startup() -> None:
     init_db()
     # Hardening: chuẩn hóa mọi firewall về group cố định (dữ liệu cũ có thể còn SOC_BLOCKED_IPS)
-    from .db import SessionLocal
+    from .core.db import SessionLocal
 
     with SessionLocal() as db:
         db.query(Firewall).filter(Firewall.default_group != BLOCK_GROUP).update(
@@ -121,13 +123,6 @@ def admin(p: dict = Depends(require("admin"))) -> dict:
     return p
 
 
-def client_ip_of(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else ""
-
-
 def locked_group(db: Session, request: Request, requested, actor: str) -> str:
     """Áp chính sách group cố định; vi phạm → 403 và ghi audit 'policy_violation'."""
     try:
@@ -137,23 +132,6 @@ def locked_group(db: Session, request: Request, requested, actor: str) -> str:
               message=str(exc), group=str(requested)[:120], actor=actor, client_ip=client_ip_of(request))
         db.commit()
         raise HTTPException(403, str(exc)) from exc
-
-
-def get_fw(db: Session, fw_id: int) -> Firewall:
-    fw = db.get(Firewall, fw_id)
-    if not fw:
-        raise HTTPException(404, f"Không tìm thấy firewall id={fw_id}")
-    return fw
-
-
-def selected_firewalls(db: Session, ids: list[int] | None) -> list[Firewall]:
-    stmt = select(Firewall).where(Firewall.enabled.is_(True))
-    if ids:
-        stmt = select(Firewall).where(Firewall.id.in_(ids))
-    fws = list(db.scalars(stmt).all())
-    if not fws:
-        raise HTTPException(400, "Chưa chọn firewall nào (hoặc firewall đang bị tắt)")
-    return fws
 
 
 # ---------------------------------------------------------------------- auth
@@ -633,7 +611,7 @@ def _after_write(changed: list[int], hints: dict[int, dict] | None = None) -> No
     """Sau khi ghi firewall: đánh dấu cache cũ + quét nhẹ lại (luồng nền, không giữ request)."""
     if not changed:
         return
-    from .db import SessionLocal
+    from .core.db import SessionLocal
 
     with SessionLocal() as s:
         gc.mark_dirty(s, changed)

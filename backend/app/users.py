@@ -19,8 +19,8 @@ import time
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .config import settings
-from .db import AppUser
+from .core.config import settings
+from .core.models import AppUser
 
 PERMISSIONS = ("write", "readonly")
 AUTH_TYPES = ("local", "microsoft")

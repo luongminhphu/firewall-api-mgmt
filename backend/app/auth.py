@@ -22,7 +22,7 @@ import httpx
 import jwt
 from jwt import PyJWKClient
 
-from .config import settings
+from .core.config import settings
 
 ROLE_RANK = {"viewer": 0, "operator": 1, "admin": 2}
 

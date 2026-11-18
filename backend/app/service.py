@@ -12,9 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import changelog
-from .config import settings
-from .crypto import decrypt
-from .db import AuditLog, Firewall, GroupCache
+from .core.config import settings
+from .core.security import decrypt
+from .core.audit import audit  # noqa: F401 — giữ tên `service.audit` cho mã cũ
+from .core.models import Firewall, GroupCache
 from .ipparse import classify, host_object_name, legacy_object_name
 from .policy import BLOCK_GROUP, BLOCK_GROUP_FAMILY, GroupPolicyError
 from .sophos import SophosAuthError, SophosClient, SophosError, build_iphostgroup_xml, pretty_xml
@@ -124,39 +125,6 @@ def resolve_hosts(cli: SophosClient | None, names: list[str], known: dict[str, d
     except SophosError as exc:
         log.warning("Không tra được chi tiết %d IP Host: %s", len(unknown), exc)
     return out, [n for n in unknown if n not in out]
-
-
-def audit(
-    db: Session,
-    *,
-    action: str,
-    fw: Firewall | None,
-    target: str,
-    result: str,
-    code: str = "",
-    message: str = "",
-    group: str = "",
-    reason: str = "",
-    source: str = "",
-    actor: str = "soc",
-    client_ip: str = "",
-) -> None:
-    db.add(
-        AuditLog(
-            action=action,
-            firewall_id=fw.id if fw else None,
-            firewall_name=fw.name if fw else "",
-            group_name=group,
-            target=target,
-            result=result,
-            status_code=code,
-            message=message[:2000],
-            reason=reason[:2000],
-            source=source,
-            actor=actor,
-            client_ip=client_ip,
-        )
-    )
 
 
 def _host_value(h: dict) -> str:
