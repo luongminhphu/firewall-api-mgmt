@@ -3,12 +3,13 @@
      ca ngoài giờ gần nhất (đêm / cuối tuần / ngày lễ), tất cả lệnh, kiểm tra chuỗi băm.
    - Write: duyệt / từ chối, gỡ chặn (từng IP hoặc cả ca), TẮT KHẨN CẤP.
    - Quản trị viên: bật lại công tắc, mở lại sau khi vượt ngưỡng, đọc Teams ngay. */
-import { api, errorBox, runJob } from "../api.js";
+import { API, api, errorBox, runJob } from "../api.js";
+import { openModal } from "../components/modal.js";
 import { pageSlice, renderPager } from "../components/pagination.js";
 import { tableMessage } from "../components/table.js";
 import { resultChip } from "../components/badge.js";
 import { toast } from "../components/toast.js";
-import { can } from "../store.js";
+import { can, state } from "../store.js";
 import { $, $$, esc, fmtTime } from "../util.js";
 
 const ab = { status: null, all: [], page: 1 };
@@ -217,6 +218,9 @@ async function loadNight() {
   }
 }
 
+const evBtn = (r) => (["invalid", "duplicate"].includes(r.status) && !r.requested_at ? ""
+  : `<button class="btn btn--ghost btn--sm" type="button" data-ev="${r.id}" aria-label="Bằng chứng lệnh ${esc(r.ip)}">Bằng chứng</button>`);
+
 const unblockBtn = (r) => ["blocked", "failed"].includes(r.status)
   ? `<button class="btn btn--danger-ghost btn--sm" type="button" data-unblock="${r.id}" data-ip="${esc(r.ip)}">Gỡ chặn</button>` : "";
 
@@ -252,7 +256,7 @@ function renderAll() {
   const tb = $("#ab-all tbody");
   const op = can("operator");
   if (!ab.all.length) {
-    tableMessage(tb, op ? 7 : 6, "empty", "Chưa có lệnh nào.");
+    tableMessage(tb, 7, "empty", "Chưa có lệnh nào.");
     renderPager($("#ab-pager"), { page: 1, pages: 1, total: 0 }, () => {});
     return;
   }
@@ -266,7 +270,7 @@ function renderAll() {
     return `<tr><td class="mono">${esc(hhmm(r.requested_at || r.created_at))}</td><td class="mono">${esc(r.ip)}</td>
       <td>${esc(r.sender)}</td><td>${esc(MODE[r.mode] || r.mode)}</td><td>${chip(r.status)}</td>
       <td class="tiny">${rep}${esc(note)}${r.results?.length ? `<div>${fwResults(r)}</div>` : ""}</td>
-      ${op ? `<td>${unblockBtn(r)}</td>` : ""}</tr>`;
+      <td class="nowrap">${evBtn(r)}${op ? unblockBtn(r) : ""}</td></tr>`;
   }).join("");
   renderPager($("#ab-pager"), { page: pg.page, pages: pg.pages, total: ab.all.length }, (p) => {
     ab.page = p;
@@ -282,4 +286,43 @@ $("#ab-verify").addEventListener("click", async () => {
   } catch (ex) {
     toast(ex.message, "err");
   }
+});
+
+// ------------------------------------------------------------------ bằng chứng (bản chụp tin Teams)
+const TEAMS_STATE = {
+  intact: ["chip--ok", "Tin còn nguyên trên Teams"],
+  edited: ["chip--warn", "Tin đã bị SỬA trên Teams"],
+  deleted: ["chip--err", "Tin đã bị XÓA trên Teams"],
+};
+
+async function showEvidence(id) {
+  try {
+    const d = await api(`/api/autoblock/requests/${id}/evidence`);
+    const e = d.evidence, t = d.teams_now;
+    const [cls, label] = TEAMS_STATE[t.state] || ["", t.state];
+    const href = `${API}/api/autoblock/requests/${id}/evidence.json?token=${encodeURIComponent(state.token)}`;
+    openModal(`Bằng chứng lệnh BLOCK IP ${d.request.ip}`, `
+      <p class="ev-state"><span class="chip ${cls}">${label}</span>
+        <span class="chip ${e.intact ? "chip--ok" : "chip--err"}">${e.intact ? "Bản chụp toàn vẹn (SHA-256 + chuỗi băm khớp)" : "Bản chụp KHÔNG khớp băm"}</span></p>
+      ${t.deleted_at ? `<p class="alert alert--warn">Người gửi đã xóa tin lúc <strong>${esc(fmtTime(t.deleted_at))}</strong> (giờ Microsoft); app phát hiện lúc ${esc(fmtTime(t.deleted_seen_at))}. Bản chụp dưới đây được lưu lúc app nhận tin, trước khi chặn.</p>` : ""}
+      ${t.edited_at ? `<p class="alert alert--warn">Tin bị sửa lúc <strong>${esc(fmtTime(t.edited_at))}</strong> sau khi app xử lý; bản chụp giữ nội dung gốc.</p>` : ""}
+      <dl class="kv">
+        <dt>SOC gửi lúc (Teams)</dt><dd class="mono">${esc(fmtTime(e.teams_created_at))}</dd>
+        <dt>App nhận &amp; chụp lúc</dt><dd class="mono">${esc(fmtTime(e.captured_at))}</dd>
+        <dt>Chặn xong lúc</dt><dd class="mono">${esc(fmtTime(d.request.blocked_at) || "—")}</dd>
+        <dt>Người gửi</dt><dd>${esc(e.sender_name)} <span class="muted tiny mono">${esc(e.sender_id)}</span></dd>
+        <dt>Message ID · Chat ID</dt><dd class="mono tiny">${esc(e.msg_id)} · ${esc(e.chat_id)}</dd>
+        <dt>Lệnh bóc được</dt><dd>${e.commands.map((c) => `<code>${esc(c.line)}</code>`).join("<br>")}</dd>
+        <dt>SHA-256 bản gốc</dt><dd class="mono tiny">${esc(e.sha256)}</dd>
+      </dl>
+      <h3 class="dialog__sub">Nội dung tin gốc (lúc app nhận)</h3>
+      <pre class="ev-text">${esc(e.text)}</pre>
+      <div class="actions"><a class="btn btn--primary" href="${href}" download>Tải bằng chứng (JSON)</a></div>`);
+  } catch (ex) {
+    toast(ex.message, "err");
+  }
+}
+$("#panel-autoblock").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-ev]");
+  if (b) showEvidence(Number(b.dataset.ev));
 });

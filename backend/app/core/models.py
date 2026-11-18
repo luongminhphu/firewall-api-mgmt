@@ -487,6 +487,11 @@ class AutoBlockMessage(Base):
     status: Mapped[str] = mapped_column(String(24), index=True)
     excerpt: Mapped[str] = mapped_column(Text, default="")  # chỉ lưu nội dung tin của tài khoản SOC
     body_hash: Mapped[str] = mapped_column(String(64), default="")
+    # Theo dõi sau khi xử lý: tin bị XÓA / SỬA trên Teams (giờ Microsoft) + lúc app phát hiện
+    deleted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    edited_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    edited_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AutoBlockRequest(Base):
@@ -544,3 +549,43 @@ class AutoBlockEvent(Base):
             ts = ts.replace(tzinfo=dt.timezone.utc) if ts.tzinfo is None else ts.astimezone(dt.timezone.utc)
         return "\x1f".join([ts.isoformat() if ts else "", str(self.request_id or ""), self.ip or "",
                             self.event or "", self.actor or "", self.detail or "", self.prev_hash or ""])
+
+
+class AutoBlockEvidence(Base):
+    """Bản chụp bằng chứng tin Teams chứa lệnh BLOCK IP, chụp NGAY lúc app nhận (trước khi chặn).
+
+    Giữ nguyên vĩnh viễn kể cả khi người gửi xóa / sửa tin sau đó. `raw_json` = nguyên văn đối tượng chatMessage
+    Microsoft Graph trả về (JSON chuẩn hóa: sort_keys, không khoảng trắng) · `sha256` = băm của raw_json ·
+    nối chuỗi băm (prev_hash / row_hash) → sửa / xóa bản chụp trong DB sẽ bị phát hiện.
+    """
+
+    __tablename__ = "autoblock_evidence"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    captured_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)  # giờ app nhận
+    message_id: Mapped[int] = mapped_column(Integer, index=True)  # autoblock_messages.id
+    msg_id: Mapped[str] = mapped_column(String(64), index=True)   # id tin trên Teams
+    chat_id: Mapped[str] = mapped_column(String(255), default="")
+    sender_id: Mapped[str] = mapped_column(String(64), default="")
+    sender_name: Mapped[str] = mapped_column(String(160), default="")
+    sender_type: Mapped[str] = mapped_column(String(32), default="")
+    teams_created_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    teams_modified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="")    # trạng thái xử lý tin lúc chụp
+    commands: Mapped[str] = mapped_column(Text, default="")        # các dòng lệnh bóc được (JSON)
+    text: Mapped[str] = mapped_column(Text, default="")            # nội dung văn bản (đã bỏ HTML)
+    raw_json: Mapped[str] = mapped_column(Text, default="")
+    sha256: Mapped[str] = mapped_column(String(64), default="")
+    prev_hash: Mapped[str] = mapped_column(String(64), default="")
+    row_hash: Mapped[str] = mapped_column(String(64), default="")
+
+    def hash_payload(self) -> str:
+        def iso(t):
+            if t is None:
+                return ""
+            return (t.replace(tzinfo=dt.timezone.utc) if t.tzinfo is None else t.astimezone(dt.timezone.utc)).isoformat()
+
+        return "\x1f".join([iso(self.captured_at), str(self.message_id or ""), self.msg_id or "", self.chat_id or "",
+                            self.sender_id or "", self.sender_name or "", iso(self.teams_created_at),
+                            iso(self.teams_modified_at), self.status or "", self.commands or "", self.text or "",
+                            self.sha256 or "", self.prev_hash or ""])

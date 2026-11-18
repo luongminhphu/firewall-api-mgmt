@@ -80,6 +80,29 @@ async def touch(request: Request):
     raise HTTPException(404)
 
 
+@app.post("/_delete")
+async def delete_msg(request: Request):
+    """Giả lập người gửi XÓA tin: deletedDateTime + lastModifiedDateTime = bây giờ, nội dung rỗng (như Graph)."""
+    d = await request.json()
+    for m in MSGS:
+        if m["id"] == d["id"]:
+            now = _iso(dt.datetime.now(dt.timezone.utc))
+            m.update(deletedDateTime=now, lastModifiedDateTime=now, body={"contentType": "html", "content": ""})
+            return m
+    raise HTTPException(404)
+
+
+@app.post("/_edit")
+async def edit_msg(request: Request):
+    d = await request.json()
+    for m in MSGS:
+        if m["id"] == d["id"]:
+            now = _iso(dt.datetime.now(dt.timezone.utc))
+            m.update(lastEditedDateTime=now, lastModifiedDateTime=now, body={"contentType": "html", "content": d.get("html", "")})
+            return m
+    raise HTTPException(404)
+
+
 @app.post("/_filter")
 def set_filter(reject: bool = False):
     FILTER["reject"] = reject

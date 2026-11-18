@@ -615,6 +615,12 @@ progress::-moz-progress-bar { background: var(--primary-text); border-radius: 99
 .rp-mail__foot .check { margin-top: 0; }
 .rp-mail__foot .btn { margin-left: auto; }
 
+.ev-state { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s3) 0; }
+.ev-text {
+  max-height: 260px; overflow: auto; margin: 0; padding: var(--s3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg); font-size: var(--fs-xs); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
 /* ============================================================ CÀI ĐẶT === */
 .smtp-test { align-items: flex-end; margin-top: auto; padding-top: var(--s4); border-top: 1px solid var(--border); }
 .smtp-test .field { flex: 1; margin: 0; }

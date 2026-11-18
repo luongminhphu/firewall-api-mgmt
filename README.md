@@ -556,6 +556,11 @@ App nhận lệnh theo các quy tắc sau:
 - **Chỉ IPv4 đơn.** CIDR, dải, IPv6 hay tên miền không được tự chặn; dòng đó bị ghi "Không hợp lệ".
 - **Sửa tin = bỏ qua.** Tin **đã sửa** không được xử lý. Gõ nhầm thì SOC gửi tin mới.
 - **Chỉ tài khoản SOC.** Tin của người ngoài danh sách tài khoản SOC bị bỏ qua và ghi vào nhật ký.
+- **Bằng chứng.**
+  - Ngay lúc nhận lệnh (trước khi chặn), app **chụp lại nguyên văn tin Teams**: nội dung, người gửi, Message ID,
+    giờ gửi theo Microsoft, SHA-256, nối chuỗi băm.
+  - Người gửi xóa hay sửa tin sau đó thì bản chụp vẫn còn nguyên; app ghi thêm thời điểm xóa/sửa.
+  - Xem ở *Tất cả lệnh › Bằng chứng*, tải file JSON để kiểm chứng độc lập.
 - **Thời điểm lệnh = lúc SOC gửi tin** (`createdDateTime` của Teams). Lịch tự chặn và ca ngoài giờ tính theo thời điểm này,
   không theo lúc app đọc. Lệnh gửi quá **30 phút** mới được đọc (app ngừng, mất mạng) thì không tự chặn mà chờ duyệt.
 - **Không đọc lại lịch sử.**

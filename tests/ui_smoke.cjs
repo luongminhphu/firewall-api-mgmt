@@ -302,6 +302,13 @@ const visible = (page, sel) => page.isVisible(sel);
       await page.selectOption("#ab-status", "");
     }
     chk("Tự động chặn: IP thường → tự chặn", true);
+    await page.click("#ab-all [data-ev]");
+    await page.waitForSelector("#modal[open] .ev-text");
+    chk("Tự động chặn: nút Bằng chứng → bản chụp tin gốc + SHA-256 + link tải JSON",
+      (await page.textContent("#modal .ev-text")).includes("ĐỀ XUẤT CỦA SOC: BLOCK IP")
+      && /evidence\.json\?token=/.test(await page.getAttribute("#modal a[download]", "href"))
+      && (await page.textContent("#modal")).includes("toàn vẹn"));
+    await page.click("#modal [data-close]");
     await page.waitForFunction(() => /Đã báo Teams/.test(document.querySelector("#ab-all").textContent), null, { timeout: 15000 }).catch(() => {});
     if (!/Đã báo Teams/.test(await page.textContent("#ab-all"))) { await page.selectOption("#ab-status", ""); await page.waitForTimeout(800); }
     chk("Tự động chặn: cột ghi chú hiện 'Đã báo Teams'", /Đã báo Teams/.test(await page.textContent("#ab-all")));

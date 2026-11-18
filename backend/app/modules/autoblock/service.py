@@ -28,7 +28,7 @@ from ...core.audit import audit
 from ...core.config import settings
 from ...core.db import SessionLocal
 from ...core.errors import AppError
-from ...core.models import AppUser, AutoBlockEvent, AutoBlockMessage, AutoBlockRequest, Firewall
+from ...core.models import AppUser, AutoBlockEvent, AutoBlockEvidence, AutoBlockMessage, AutoBlockRequest, Firewall
 from ..ipblock.service import block_on_firewall, normalize_entries, unblock_on_firewall
 from ..notify import outbox
 from . import graph, parser, reply
@@ -147,6 +147,7 @@ def _poll(db: Session) -> dict:
         if created is None or created <= start_at:
             continue  # tin gửi trước lúc bật / đổi Chat ID (kể cả vừa được sửa / thả cảm xúc) — không xử lý
         if db.scalar(select(AutoBlockMessage.id).where(AutoBlockMessage.msg_id == str(m.get("id"))[:64])):
+            _follow_up(db, m)  # tin đã xử lý quay lại: có thể vừa bị xóa / sửa → ghi mốc thời gian làm bằng chứng
             continue
         stats["messages"] += 1
         _handle_message(db, cfg, st, soc, m, created, stats, auto_reqs, pending_reqs)
@@ -171,6 +172,47 @@ def _poll(db: Session) -> dict:
               + f"\n\nDuyệt / từ chối tại {_link()}.\nIP: {ips}")
     _maybe_digest(db, cfg, st)
     return {"ok": True, **stats}
+
+
+def snapshot(db: Session, cfg: dict, row: AutoBlockMessage, m: dict, text: str, cmds: list[dict]) -> AutoBlockEvidence:
+    """Chụp bằng chứng tin chứa lệnh BLOCK IP (nguyên văn Graph + SHA-256), nối chuỗi băm, COMMIT ngay —
+    trước khi chặn, để bằng chứng tồn tại độc lập với việc người gửi xóa / sửa tin sau đó."""
+    raw = json.dumps(m, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    user = ((m.get("from") or {}).get("user") or {})
+    ev = AutoBlockEvidence(
+        captured_at=_now(), message_id=row.id, msg_id=row.msg_id, chat_id=cfg.get("chat_id", "")[:255],
+        sender_id=row.sender_id, sender_name=row.sender_name, sender_type=str(user.get("userIdentityType") or "")[:32],
+        teams_created_at=graph._parse_ts(m.get("createdDateTime")),
+        teams_modified_at=graph._parse_ts(m.get("lastModifiedDateTime")), status=row.status,
+        commands=json.dumps([{"line": c["raw"], "ip": c["ip"] or c["value"], "error": c["error"]} for c in cmds],
+                            ensure_ascii=False),
+        text=text[:20000], raw_json=raw, sha256=hashlib.sha256(raw.encode()).hexdigest())
+    hashchain.append(db, AutoBlockEvidence, [ev])
+    return ev
+
+
+def _follow_up(db: Session, m: dict) -> None:
+    """Tin đã xử lý được Graph trả lại (lastModifiedDateTime đổi): ghi nhận nếu bị XÓA / SỬA trên Teams.
+    Bản chụp bằng chứng gốc KHÔNG đổi; chỉ thêm mốc thời gian + sự kiện chuỗi băm."""
+    row = db.scalars(select(AutoBlockMessage).where(AutoBlockMessage.msg_id == str(m.get("id"))[:64])).first()
+    if row is None:
+        return
+    has_ev = db.scalar(select(func.count()).select_from(AutoBlockEvidence).where(AutoBlockEvidence.message_id == row.id))
+    now = _now()
+    deleted, edited = graph._parse_ts(m.get("deletedDateTime")), graph._parse_ts(m.get("lastEditedDateTime"))
+    changed = False
+    if deleted and not row.deleted_at:
+        row.deleted_at, row.deleted_seen_at, changed = deleted, now, True
+        if has_ev:
+            event(db, "msg_deleted_after", detail=(f"Tin {row.msg_id} của {row.sender_name} (gửi {_vn(row.created_at)}) "
+                                                   f"đã bị XÓA trên Teams lúc {_vn(deleted)} — bản chụp bằng chứng giữ nguyên"))
+    if edited and not row.edited_at and not row.deleted_at:
+        row.edited_at, row.edited_seen_at, changed = edited, now, True
+        if has_ev:
+            event(db, "msg_edited_after", detail=(f"Tin {row.msg_id} của {row.sender_name} (gửi {_vn(row.created_at)}) "
+                                                  f"đã bị SỬA trên Teams lúc {_vn(edited)} sau khi app xử lý"))
+    if changed:
+        db.commit()
 
 
 def _handle_message(db: Session, cfg: dict, st: dict, soc: dict, m: dict, created: dt.datetime, stats: dict,
@@ -210,10 +252,14 @@ def _handle_message(db: Session, cfg: dict, st: dict, soc: dict, m: dict, create
     if row.status != "processed":
         db.add(row)
         db.flush()
+        if cmds:  # lệnh bị bỏ qua (người lạ, tin đã sửa…) cũng chụp lại để điều tra
+            snapshot(db, cfg, row, m, text, cmds)
         return
     row.excerpt = text[:2000] if cmds else ""
     db.add(row)
     db.flush()
+    if cmds:
+        snapshot(db, cfg, row, m, text, cmds)
     for c in cmds:
         stats["commands"] += 1
         _handle_command(db, cfg, st, row, c, stats, auto_reqs, pending_reqs)
@@ -582,3 +628,31 @@ def _maybe_digest(db: Session, cfg: dict, st: dict) -> None:
           f"{sum(1 for r in rows if r.status == 'pending')} chờ duyệt",
           "Danh sách lệnh chặn SOC gửi trong ca ngoài giờ:\n\n" + "\n".join(lines)
           + f"\n\nRà soát, gỡ chặn nếu nhầm, duyệt mục còn chờ tại {_link()}.")
+
+
+# ------------------------------------------------------------------ bằng chứng
+def evidence_for(db: Session, request_id: int) -> dict:
+    r = db.get(AutoBlockRequest, request_id)
+    if r is None:
+        raise AppError(404, "Không tìm thấy lệnh")
+    msg = db.get(AutoBlockMessage, r.message_id)
+    ev = db.scalars(select(AutoBlockEvidence).where(AutoBlockEvidence.message_id == r.message_id)
+                    .order_by(AutoBlockEvidence.id)).first()
+    if ev is None or msg is None:
+        raise AppError(404, "Lệnh này chưa có bản chụp bằng chứng (tạo trước phiên bản có tính năng bằng chứng)")
+    iso = lambda t: _aware(t).isoformat() if t else None  # noqa: E731
+    intact = hashlib.sha256(ev.raw_json.encode()).hexdigest() == ev.sha256 and hashchain.digest(ev) == ev.row_hash
+    teams_state = ("deleted" if msg.deleted_at else "edited" if msg.edited_at else "intact")
+    return {
+        "request": to_dict(r),
+        "evidence": {
+            "id": ev.id, "captured_at": iso(ev.captured_at), "msg_id": ev.msg_id, "chat_id": ev.chat_id,
+            "sender_id": ev.sender_id, "sender_name": ev.sender_name, "sender_type": ev.sender_type,
+            "teams_created_at": iso(ev.teams_created_at), "teams_modified_at": iso(ev.teams_modified_at),
+            "status_at_capture": ev.status, "commands": json.loads(ev.commands or "[]"), "text": ev.text,
+            "sha256": ev.sha256, "row_hash": ev.row_hash, "prev_hash": ev.prev_hash, "intact": intact,
+        },
+        "teams_now": {"state": teams_state, "deleted_at": iso(msg.deleted_at), "deleted_seen_at": iso(msg.deleted_seen_at),
+                      "edited_at": iso(msg.edited_at), "edited_seen_at": iso(msg.edited_seen_at)},
+        "raw_json": ev.raw_json,
+    }

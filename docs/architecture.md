@@ -616,3 +616,27 @@ Các bảo đảm giữ nguyên:
 - Tin đã xử lý mà sau đó bị sửa hay thả cảm xúc cũng không bị xử lý lại (kiểm tra `msg_id`).
 
 Test (`tests/autoblock_test.py`): Graph được gọi với bộ lọc · chu kỳ không có tin mới trả 0 tin · tin bị "chạm" không xử lý lại · tenant từ chối `$filter` thì tự quay về cách cũ · lệnh trễ 45 phút thì chờ duyệt · khung giờ tính theo lúc SOC gửi.
+
+---
+
+## 20. Bằng chứng (snapshot) tin BLOCK IP — kể cả khi người gửi xóa tin
+
+**Yêu cầu:** SOC gửi lệnh, app đã chặn, sau đó người dùng xóa tin trên Teams. Cần bằng chứng về thời điểm và nội dung lệnh.
+
+**Bản chụp lúc nhận:** bảng `autoblock_evidence`.
+- Mọi tin có dòng lệnh đều được chụp, kể cả tin bị bỏ qua vì người lạ hay tin đã sửa.
+- Bản chụp được **commit trước khi chặn**.
+- Lưu: nguyên văn đối tượng `chatMessage` của Graph (`raw_json`, JSON chuẩn hóa) và **SHA-256** của nó; nội dung văn bản; các dòng lệnh; Message ID / Chat ID; người gửi (tên, Object ID, `userIdentityType`); `createdDateTime` / `lastModifiedDateTime` của Microsoft; giờ app chụp.
+- Các bản chụp **nối chuỗi băm** (kể cả nội dung văn bản): sửa trực tiếp trong DB → `GET /api/autoblock/verify` báo đứt.
+
+**Theo dõi sau xử lý:**
+- Graph trả lại tin đã xử lý khi `lastModifiedDateTime` đổi.
+- Tin bị xóa (`deletedDateTime`) hoặc bị sửa (`lastEditedDateTime`) → ghi `autoblock_messages.deleted_at` / `edited_at` (giờ Microsoft) và `*_seen_at` (lúc app phát hiện), kèm sự kiện chuỗi băm `msg_deleted_after` / `msg_edited_after`.
+- **Bản chụp gốc không đổi**, kết quả chặn không đổi.
+
+**API / giao diện:**
+- `GET /api/autoblock/requests/{id}/evidence` (viewer): bản chụp + trạng thái tin hiện tại trên Teams + kết quả kiểm tra toàn vẹn.
+- `GET …/evidence.json?token=`: file bằng chứng tải về, gồm `graph_message_raw` nguyên văn. Kiểm chứng độc lập: `SHA-256(graph_message_raw) = evidence.sha256`. Ghi audit `evidence_export`.
+- Tab Tự động chặn › Tất cả lệnh › nút **Bằng chứng**.
+
+Test: gửi → chặn → xóa → bản chụp còn nguyên, có mốc xóa · gửi → sửa · file JSON tự kiểm SHA-256 · lệnh của người lạ cũng được chụp · sửa nội dung bản chụp trong DB thì bị phát hiện.

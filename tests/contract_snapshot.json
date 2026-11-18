@@ -765,6 +765,8 @@
   "GET /api/auth/oidc/callback",
   "GET /api/auth/oidc/login",
   "GET /api/autoblock/requests",
+  "GET /api/autoblock/requests/{request_id}/evidence",
+  "GET /api/autoblock/requests/{request_id}/evidence.json",
   "GET /api/autoblock/settings",
   "GET /api/autoblock/status",
   "GET /api/autoblock/verify",

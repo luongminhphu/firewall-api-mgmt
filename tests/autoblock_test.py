@@ -442,6 +442,62 @@ chk("khung giờ tự chặn tính theo lúc SOC gửi (trong khung) dù app đ�
     r and r["mode"] == "auto", r)
 c.put("/api/autoblock/settings", headers=H, json={"window_enabled": False})
 
+# ------------------------------------------------------------ bằng chứng: SOC gửi lệnh rồi XÓA tin
+import hashlib as _hl  # noqa: E402
+
+VT = V["X-Auth-Token"]
+
+c.put("/api/autoblock/settings", headers=H, json={"window_enabled": False})
+_state(cursor=dt.datetime.now(dt.timezone.utc).isoformat())
+sent = post(f"<p>Dạ team ghi nhận dò quét từ 88.88.88.1</p><p>{CMD} 88.88.88.1</p>")
+poll()
+r = wait_status("88.88.88.1", "blocked")
+evr = c.get(f"/api/autoblock/requests/{r['id']}/evidence", headers=V)
+chk("viewer xem được bản chụp bằng chứng của lệnh", evr.status_code == 200, evr.text[:200])
+ev = evr.json()
+chk("bản chụp: nội dung gốc, người gửi + Object ID, Message ID, giờ Teams, giờ app nhận, SHA-256",
+    "BLOCK IP 88.88.88.1" in ev["evidence"]["text"] and ev["evidence"]["sender_id"] == SOC_ID
+    and ev["evidence"]["msg_id"] == sent["id"] and ev["evidence"]["teams_created_at"] and ev["evidence"]["captured_at"]
+    and len(ev["evidence"]["sha256"]) == 64 and ev["evidence"]["intact"] and ev["teams_now"]["state"] == "intact", ev)
+chk("bản chụp có trước khi chặn (captured_at ≤ blocked_at)",
+    dt.datetime.fromisoformat(ev["evidence"]["captured_at"]) <= dt.datetime.fromisoformat(r["blocked_at"]), (ev["evidence"]["captured_at"], r["blocked_at"]))
+g.post("/_delete", json={"id": sent["id"]})  # người dùng xóa tin BLOCK IP trên Teams
+poll()
+ev2 = c.get(f"/api/autoblock/requests/{r['id']}/evidence", headers=V).json()
+chk("tin bị XÓA trên Teams → app ghi mốc xóa (giờ Microsoft + lúc phát hiện), bản chụp gốc giữ nguyên",
+    ev2["teams_now"]["state"] == "deleted" and ev2["teams_now"]["deleted_at"] and ev2["teams_now"]["deleted_seen_at"]
+    and ev2["evidence"]["text"] == ev["evidence"]["text"] and ev2["evidence"]["sha256"] == ev["evidence"]["sha256"]
+    and ev2["evidence"]["intact"], ev2["teams_now"])
+chk("tin bị xóa không làm thay đổi kết quả chặn", by_ip("88.88.88.1")["status"] == "blocked")
+fr = c.get(f"/api/autoblock/requests/{r['id']}/evidence.json?token={VT}")
+doc = fr.json() if fr.status_code == 200 else {}
+chk("tải file bằng chứng JSON (?token=)", fr.status_code == 200 and "attachment" in fr.headers.get("content-disposition", ""),
+    fr.status_code)
+chk("kiểm chứng độc lập: SHA-256(graph_message_raw) = evidence.sha256, raw chứa nội dung gốc trước khi xóa",
+    _hl.sha256(doc.get("graph_message_raw", "").encode()).hexdigest() == doc.get("evidence", {}).get("sha256")
+    and "BLOCK IP 88.88.88.1" in doc.get("graph_message_raw", "") and doc["teams_now"]["state"] == "deleted")
+chk("file bằng chứng không token → 401", c.get(f"/api/autoblock/requests/{r['id']}/evidence.json").status_code == 401)
+ab_ev = c.get("/api/audit?action=evidence_export", headers=H).json()["rows"]
+chk("audit evidence_export khi tải bằng chứng", len(ab_ev) == 1 and ab_ev[0]["actor"] == "xem@hsc.com.vn")
+
+sent2 = post(f"<p>{CMD} 88.88.88.2</p>")
+poll()
+g.post("/_edit", json={"id": sent2["id"], "html": "<p>xin lỗi gửi nhầm</p>"})
+poll()
+r2 = wait_status("88.88.88.2", "blocked")
+ev3 = c.get(f"/api/autoblock/requests/{r2['id']}/evidence", headers=V).json()
+chk("tin bị SỬA sau khi xử lý → ghi mốc sửa, bản chụp vẫn là nội dung gốc",
+    ev3["teams_now"]["state"] == "edited" and "BLOCK IP 88.88.88.2" in ev3["evidence"]["text"], ev3["teams_now"])
+with _eng.connect() as cn:
+    n_ev = cn.execute(_sa.text("SELECT count(*) FROM autoblock_evidence")).scalar()
+    n_stranger = cn.execute(_sa.text("SELECT count(*) FROM autoblock_evidence WHERE status='ignored_sender'")).scalar()
+chk("chụp bằng chứng cả lệnh bị bỏ qua (người ngoài danh sách SOC)", n_stranger >= 1 and n_ev >= 10, (n_ev, n_stranger))
+with _eng.begin() as cn:  # thử sửa trực tiếp bản chụp trong DB → kiểm tra toàn vẹn phải phát hiện
+    cn.execute(_sa.text("UPDATE autoblock_evidence SET text='giả mạo' WHERE id=(SELECT min(id) FROM autoblock_evidence)"))
+v = c.get("/api/autoblock/verify", headers=V).json()
+chk("sửa NỘI DUNG bản chụp trực tiếp trong DB → kiểm tra toàn vẹn phát hiện", not v["ok"] and "Bằng chứng" in v["message"], v)
+chk("sửa SHA-256 của bản chụp trong DB → kiểm tra toàn vẹn báo đứt chuỗi", not v["ok"] and "Bằng chứng" in v["message"], v)
+
 # ------------------------------------------------------------ lỗi Graph, chuỗi băm, audit
 c.put("/api/autoblock/settings", headers=H, json={"client_secret": "het-han"})
 p = c.post("/api/autoblock/poll", headers=H).json()
@@ -449,7 +505,8 @@ st = c.get("/api/autoblock/status", headers=V).json()
 chk("Graph lỗi → không chặn gì, trạng thái báo lỗi", not p["ok"] and st["last_ok"] is False and st["last_error"], st)
 c.put("/api/autoblock/settings", headers=H, json={"client_secret": "graph-secret"})
 v = c.get("/api/autoblock/verify", headers=V).json()
-chk("nhật ký tự động chặn: chuỗi băm toàn vẹn", v["ok"] and v["checked"] > 10, v)
+chk("nhật ký tự động chặn: chuỗi sự kiện vẫn toàn vẹn (bản chụp đã bị sửa ở bước trước)", v["checked"] > 10
+    and v["message"].startswith("Bằng chứng"), v)
 au = c.get("/api/audit?action=autoblock_switch", headers=H).json()
 items = au["rows"]
 chk("audit ghi bật/tắt công tắc + ngắt ngưỡng", sum(1 for x in items if x.get("action") == "autoblock_switch") >= 4,
