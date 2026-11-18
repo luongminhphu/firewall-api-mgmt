@@ -361,6 +361,7 @@ chỉ là giá trị ban đầu; quản trị viên chỉnh lại trên giao di�
 | `PASSWORD_MIN_LENGTH` | Độ dài tối thiểu mật khẩu người dùng (mặc định 10, bắt buộc có chữ và số) |
 | `LOGIN_MAX_FAILS` / `LOGIN_LOCK_MINUTES` | Sai mật khẩu N lần thì khóa tạm M phút (mặc định 5 lần / 10 phút) |
 | `LOGO_MAX_KB` | Dung lượng tối đa của logo tải lên (mặc định 300) |
+| `AUTOBLOCK_OVERLAP_SECONDS` | Đọc chồng N giây trước mốc lần đọc trước, bù độ trễ của Microsoft Graph (mặc định 120); tin trùng tự bỏ qua |
 | `AUTOBLOCK_POLL_SECONDS` | Chu kỳ đọc group chat Teams **mặc định ban đầu** (giây, 300 = 5 phút); quản trị viên chỉnh lại trong tab Cài đặt (1–60 phút). `0` = tắt hẳn bộ đọc. Kết nối Graph, tài khoản SOC, whitelist, webhook trả lời: *tab Cài đặt* |
 | `LOG_FORMAT` / `LOG_LEVEL` | `text` (mặc định) hoặc `json` (một dòng, có `request_id`, không bao giờ ghi mật khẩu/token) / mức log |
 
@@ -555,6 +556,12 @@ App nhận lệnh theo các quy tắc sau:
 - **Chỉ IPv4 đơn.** CIDR, dải, IPv6 hay tên miền không được tự chặn; dòng đó bị ghi "Không hợp lệ".
 - **Sửa tin = bỏ qua.** Tin **đã sửa** không được xử lý. Gõ nhầm thì SOC gửi tin mới.
 - **Chỉ tài khoản SOC.** Tin của người ngoài danh sách tài khoản SOC bị bỏ qua và ghi vào nhật ký.
+- **Thời điểm lệnh = lúc SOC gửi tin** (`createdDateTime` của Teams). Lịch tự chặn và ca ngoài giờ tính theo thời điểm này,
+  không theo lúc app đọc. Lệnh gửi quá **30 phút** mới được đọc (app ngừng, mất mạng) thì không tự chặn mà chờ duyệt.
+- **Không đọc lại lịch sử.**
+  - Mỗi chu kỳ, app chỉ hỏi Microsoft Graph các tin mới hoặc vừa thay đổi sau mốc lần trước
+    (`$filter=lastModifiedDateTime gt …`); không có tin mới thì Graph trả 0 tin.
+  - Tin gửi trước lúc bật không bao giờ được xử lý.
 - **Chặn trên mọi firewall đích.** Sau khi chặn xong, app trả lời vào group chat:
   `INFRA ĐÃ BLOCK 195.178.110.102 THEO YÊU CẦU LÚC 18/11/2026 23:42:10`.
 

@@ -638,7 +638,7 @@ Ví dụ:
               </div>
               <div class="table-wrap">
                 <table class="table" id="ab-pending">
-                  <thead><tr><th class="w-check ab-op" hidden><input type="checkbox" id="ab-pending-all" aria-label="Chọn tất cả mục chờ duyệt" /></th><th>Thời gian</th><th>IP</th><th>SOC gửi</th><th>Lý do chờ</th><th class="ab-op" hidden><span class="sr-only">Thao tác</span></th></tr></thead>
+                  <thead><tr><th class="w-check ab-op" hidden><input type="checkbox" id="ab-pending-all" aria-label="Chọn tất cả mục chờ duyệt" /></th><th>SOC gửi lúc</th><th>IP</th><th>SOC gửi</th><th>Lý do chờ</th><th class="ab-op" hidden><span class="sr-only">Thao tác</span></th></tr></thead>
                   <tbody></tbody>
                 </table>
               </div>
@@ -654,7 +654,7 @@ Ví dụ:
               </div>
               <div class="table-wrap">
                 <table class="table" id="ab-night">
-                  <thead><tr><th>Thời gian</th><th>IP</th><th>SOC gửi</th><th>Trạng thái</th><th>Kết quả trên firewall</th><th class="ab-op" hidden><span class="sr-only">Thao tác</span></th></tr></thead>
+                  <thead><tr><th>SOC gửi lúc</th><th>IP</th><th>SOC gửi</th><th>Trạng thái</th><th>Kết quả trên firewall</th><th class="ab-op" hidden><span class="sr-only">Thao tác</span></th></tr></thead>
                   <tbody></tbody>
                 </table>
               </div>
@@ -676,7 +676,7 @@ Ví dụ:
               </div>
               <div class="table-wrap">
                 <table class="table" id="ab-all">
-                  <thead><tr><th>Thời gian</th><th>IP</th><th>SOC gửi</th><th>Cách xử lý</th><th>Trạng thái</th><th>Ghi chú</th><th class="ab-op" hidden><span class="sr-only">Thao tác</span></th></tr></thead>
+                  <thead><tr><th>SOC gửi lúc</th><th>IP</th><th>SOC gửi</th><th>Cách xử lý</th><th>Trạng thái</th><th>Ghi chú</th><th class="ab-op" hidden><span class="sr-only">Thao tác</span></th></tr></thead>
                   <tbody></tbody>
                 </table>
               </div>
@@ -758,6 +758,11 @@ Ví dụ:
                   <input id="abs-limit" type="number" min="1" max="200" /></label>
                 <label class="field"><span>Chu kỳ đọc Teams (phút, 1–60)</span>
                   <input id="abs-poll" type="number" min="1" max="60" /></label>
+              </div>
+              <div class="row row--2">
+                <label class="field"><span>Ngưỡng lệnh cũ (phút) — gửi quá lâu mới đọc thì chờ duyệt</span>
+                  <input id="abs-stale" type="number" min="5" max="1440" /></label>
+                <div></div>
               </div>
               <fieldset class="field">
                 <legend>Trả lời kết quả vào group chat</legend>

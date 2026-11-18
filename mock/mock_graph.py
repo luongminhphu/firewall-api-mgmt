@@ -20,7 +20,8 @@ from fastapi import FastAPI, Form, HTTPException, Request
 CHAT = "19:mockchat@thread.v2"
 app = FastAPI()
 MSGS: list[dict] = []
-CALLS = {"messages": 0}
+CALLS = {"messages": 0, "last_filter": "", "last_orderby": "", "returned": 0}
+FILTER = {"reject": False}  # giả lập tenant không nhận $filter (400)
 WORKFLOW: list[dict] = []   # tin Teams Workflows đã nhận (webhook trả lời vào group chat)
 WF = {"fail": False}
 
@@ -38,17 +39,51 @@ def token(tenant: str, client_id: str = Form(""), client_secret: str = Form(""),
 
 @app.get("/v1.0/chats/{chat_id}/messages")
 def messages(chat_id: str, request: Request, skip: int = 0):
+    """Hỗ trợ như Graph: $orderby=createdDateTime|lastModifiedDateTime desc, $filter=lastModifiedDateTime gt <ISO>."""
     if not request.headers.get("authorization", "").startswith("Bearer tok-"):
         raise HTTPException(401)
     if chat_id != CHAT:
         raise HTTPException(404)
+    q = request.query_params
+    flt, order = q.get("$filter", ""), q.get("$orderby", "createdDateTime desc")
+    if flt and FILTER["reject"]:
+        raise HTTPException(400, detail={"error": {"code": "BadRequest", "message": "Filter not supported"}})
     CALLS["messages"] += 1
-    rows = sorted(MSGS, key=lambda m: m["createdDateTime"], reverse=True)
+    CALLS["last_filter"], CALLS["last_orderby"] = flt, order
+    field = order.split()[0]
+    rows = list(MSGS)
+    if flt:
+        f, op, val = flt.split(" ", 2)
+        assert f == "lastModifiedDateTime" and op == "gt" and field == f, flt
+        cut = dt.datetime.fromisoformat(val.replace("Z", "+00:00"))
+        rows = [m for m in rows if dt.datetime.fromisoformat(m["lastModifiedDateTime"].replace("Z", "+00:00")) > cut]
+    rows.sort(key=lambda m: m[field], reverse=True)
     page = rows[skip: skip + 50]
+    CALLS["returned"] = len(page) if skip == 0 else CALLS["returned"] + len(page)
     out = {"value": page}
     if skip + 50 < len(rows):
-        out["@odata.nextLink"] = f"{str(request.base_url).rstrip('/')}/v1.0/chats/{chat_id}/messages?skip={skip + 50}"
+        from urllib.parse import urlencode
+
+        nxt = urlencode({**dict(q), "skip": skip + 50})
+        out["@odata.nextLink"] = f"{str(request.base_url).rstrip('/')}/v1.0/chats/{chat_id}/messages?{nxt}"
     return out
+
+
+@app.post("/_touch")
+async def touch(request: Request):
+    """Giả lập thả cảm xúc / sửa nhẹ: chỉ đổi lastModifiedDateTime (createdDateTime giữ nguyên)."""
+    d = await request.json()
+    for m in MSGS:
+        if m["id"] == d["id"]:
+            m["lastModifiedDateTime"] = _iso(dt.datetime.now(dt.timezone.utc))
+            return m
+    raise HTTPException(404)
+
+
+@app.post("/_filter")
+def set_filter(reject: bool = False):
+    FILTER["reject"] = reject
+    return FILTER
 
 
 @app.post("/_post")
@@ -94,6 +129,7 @@ def reset():
     MSGS.clear()
     WORKFLOW.clear()
     WF["fail"] = False
+    FILTER["reject"] = False
     CALLS["messages"] = 0
     return {"ok": True}
 

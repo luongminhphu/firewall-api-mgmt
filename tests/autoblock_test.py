@@ -3,6 +3,7 @@
 # chỉ tài khoản SOC, bỏ qua tin đã sửa, khung giờ, ngưỡng N IP/giờ (ngắt → chờ duyệt + cảnh báo Admin),
 # công tắc khẩn cấp, duyệt / từ chối / gỡ chặn, chu kỳ đọc chỉnh trên giao diện, chuỗi băm.
 import datetime as dt
+import os
 import json
 import re
 import sys
@@ -372,6 +373,74 @@ post(f"<p>{CMD} 195.178.110.102</p>")
 poll()
 chk("đã gỡ thì SOC đề xuất lại được chặn lại", [x["status"] for x in reqs() if x["ip"] == "195.178.110.102"][0]
     in ("blocking", "blocked"))
+
+# ------------------------------------------------------------ mốc đọc tin: lọc phía Graph, không đọc lại lịch sử
+import json as _json  # noqa: E402
+import sqlalchemy as _sa  # noqa: E402
+
+_eng = _sa.create_engine(os.environ["DATABASE_URL"])
+
+
+def _state(**kw):
+    with _eng.begin() as cn:
+        raw = cn.execute(_sa.text("SELECT value FROM app_settings WHERE key='autoblock.state'")).scalar()
+        st = _json.loads(raw)
+        st.update(kw)
+        cn.execute(_sa.text("UPDATE app_settings SET value=:v WHERE key='autoblock.state'"), {"v": _json.dumps(st)})
+    return st
+
+
+c.put("/api/autoblock/settings", headers=H, json={"window_enabled": False, "hourly_limit": 50, "stale_minutes": 30})
+poll()
+calls = g.get("/_calls").json()
+chk("đọc tin dùng bộ lọc phía Graph: $filter=lastModifiedDateTime gt <mốc> + $orderby cùng trường",
+    calls["last_filter"].startswith("lastModifiedDateTime gt ") and calls["last_orderby"].startswith("lastModifiedDateTime"),
+    calls)
+p2 = poll()
+chk("chu kỳ không có tin mới → Graph trả 0 tin, không đọc lại lịch sử", g.get("/_calls").json()["returned"] == 0
+    and p2["messages"] == 0, (g.get("/_calls").json(), p2))
+st = c.get("/api/autoblock/status", headers=V).json()
+chk("trạng thái: mốc đọc theo giờ Graph, số tin đọc lượt cuối = 0, đang lọc phía server",
+    st["cursor"] and st["last_fetched"] == 0 and st["server_filter"] is True and not st["last_truncated"], st)
+first = post(f"<p>{CMD} 77.77.77.1</p>")
+poll()
+g.post("/_touch", json={"id": first["id"]})  # SOC thả cảm xúc → lastModifiedDateTime đổi
+p3 = poll()
+chk("tin đã xử lý được thả cảm xúc / sửa nhẹ → Graph trả lại nhưng KHÔNG xử lý lại",
+    g.get("/_calls").json()["returned"] == 1 and p3["messages"] == 0
+    and [x["ip"] for x in reqs()].count("77.77.77.1") == 1, p3)
+g.post("/_filter?reject=true")
+post(f"<p>{CMD} 77.77.77.2</p>")
+p4 = poll()
+chk("tenant không nhận $filter → tự quay về đọc theo createdDateTime, vẫn chặn được",
+    p4["ok"] and by_ip("77.77.77.2") is not None and c.get("/api/autoblock/status", headers=V).json()["server_filter"] is False, p4)
+g.post("/_filter?reject=false")
+
+# lệnh cũ (app ngừng / mất mạng): gửi 45 phút trước, giờ mới đọc → không tự chặn
+now_utc = dt.datetime.now(dt.timezone.utc)
+_state(start_at=(now_utc - dt.timedelta(hours=2)).isoformat(), cursor=(now_utc - dt.timedelta(hours=2)).isoformat())
+post(f"<p>{CMD} 77.77.77.3</p>", minutes_ago=45)
+poll()
+r = by_ip("77.77.77.3")
+chk("lệnh SOC gửi quá ngưỡng (45 > 30 phút) mới được đọc → chờ duyệt, nêu độ trễ", r and r["status"] == "pending"
+    and "Lệnh cũ" in r["pending_reason"] and "trễ 4" in r["pending_reason"], r)
+chk("lưu thời điểm SOC gửi (createdDateTime của Graph), khác lúc app xử lý",
+    r and r["requested_at"] and (dt.datetime.fromisoformat(r["created_at"]) - dt.datetime.fromisoformat(r["requested_at"])).total_seconds() > 40 * 60, r)
+chk("ngưỡng lệnh cũ ngoài 5–1440 phút → 400",
+    c.put("/api/autoblock/settings", headers=H, json={"stale_minutes": 2}).status_code == 400)
+
+# khung giờ tính theo LÚC SOC GỬI: gửi 10 phút trước (trong khung), app đọc bây giờ (đã ra khỏi khung)
+now_vn = dt.datetime.now(VN)
+ws, we = (now_vn - dt.timedelta(minutes=60)).strftime("%H:%M"), (now_vn - dt.timedelta(minutes=3)).strftime("%H:%M")
+c.put("/api/autoblock/settings", headers=H, json={"window_enabled": True, "window_start": ws, "window_end": we,
+                                                   "weekend_full": False, "holidays": []})
+_state(cursor=(now_utc - dt.timedelta(hours=2)).isoformat())
+post(f"<p>{CMD} 77.77.77.4</p>", minutes_ago=10)
+poll()
+r = wait_status("77.77.77.4", "blocked")
+chk("khung giờ tự chặn tính theo lúc SOC gửi (trong khung) dù app đọc sau khi hết khung → tự chặn",
+    r and r["mode"] == "auto", r)
+c.put("/api/autoblock/settings", headers=H, json={"window_enabled": False})
 
 # ------------------------------------------------------------ lỗi Graph, chuỗi băm, audit
 c.put("/api/autoblock/settings", headers=H, json={"client_secret": "het-han"})

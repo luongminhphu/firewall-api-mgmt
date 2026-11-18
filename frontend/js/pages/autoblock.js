@@ -54,6 +54,8 @@ function renderStatus(s) {
     banner = `<p class="alert alert--warn" role="status"><strong>Tự động chặn đang TẮT (công tắc khẩn cấp).</strong> App vẫn đọc Teams, mọi lệnh chuyển sang chờ duyệt.</p>`;
   } else if (s.last_ok === false) {
     banner = `<p class="alert alert--error" role="alert">Đọc Teams lỗi: ${esc(s.last_error)}</p>`;
+  } else if (s.last_truncated) {
+    banner = `<p class="alert alert--warn" role="status">Lần đọc gần nhất có quá nhiều tin mới (trên 1.000) — app đọc tiếp ở chu kỳ sau; lệnh trễ quá ${s.stale_minutes} phút sẽ chờ duyệt.</p>`;
   }
   $("#ab-banner").innerHTML = banner;
   $("#ab-today").hidden = !(can("admin") && s.window_enabled && (s.holiday_today || !s.in_window));
@@ -68,7 +70,7 @@ function renderStatus(s) {
      s.in_window ? "ok" : "warn", s.window_enabled ? `Lịch tự chặn: ${s.schedule}` : ""],
     [String(s.pending), "Lệnh chờ duyệt", s.pending ? "warn" : ""],
     [s.last_poll_at ? fmtTime(s.last_poll_at).split(" ")[0] : "—",
-     s.enabled ? `Đọc Teams lần cuối · mỗi ${Math.round(s.poll_seconds / 60)} phút` : "Chưa bật đọc Teams",
+     s.enabled ? `Đọc Teams lần cuối · ${s.last_fetched} tin mới · mỗi ${Math.round(s.poll_seconds / 60)} phút` : "Chưa bật đọc Teams",
      s.last_ok === false ? "err" : ""],
   ];
   $("#ab-cards").innerHTML = cards.map(([v, label, tone, title]) =>
@@ -141,7 +143,7 @@ async function loadPending() {
     const op = can("operator");
     tb.innerHTML = items.map((r) => `<tr>
       ${op ? `<td><input type="checkbox" class="ab-pick" value="${r.id}" aria-label="Chọn ${esc(r.ip)}"${r.needs_admin && !can("admin") ? " disabled" : ""} /></td>` : ""}
-      <td class="mono" data-label="Thời gian">${esc(hhmm(r.created_at))}</td><td class="mono" data-label="IP"><strong>${esc(r.ip)}</strong></td>
+      <td class="mono" data-label="SOC gửi lúc">${esc(hhmm(r.requested_at || r.created_at))}</td><td class="mono" data-label="IP"><strong>${esc(r.ip)}</strong></td>
       <td data-label="SOC gửi">${esc(r.sender)}</td>
       <td class="tiny" data-label="Lý do chờ">${r.whitelist ? `<span class="chip chip--info">Whitelist · ${esc(r.whitelist)}</span> ` : ""}${esc(r.pending_reason)}</td>
       ${op ? `<td class="nowrap ab-act">${approveBtn(r)}
@@ -206,7 +208,7 @@ async function loadNight() {
     $("#ab-night-undo").disabled = !items.some((r) => r.status === "blocked");
     if (!items.length) return tableMessage(tb, cols, "empty", "Ca này app chưa tự chặn IP nào.");
     tb.innerHTML = items.map((r) => `<tr>
-      <td class="mono" data-label="Thời gian">${esc(hhmm(r.created_at))}</td><td class="mono" data-label="IP"><strong>${esc(r.ip)}</strong></td>
+      <td class="mono" data-label="SOC gửi lúc">${esc(hhmm(r.requested_at || r.created_at))}</td><td class="mono" data-label="IP"><strong>${esc(r.ip)}</strong></td>
       <td data-label="SOC gửi">${esc(r.sender)}</td><td data-label="Trạng thái">${chip(r.status)}</td>
       <td class="tiny" data-label="Firewall">${fwResults(r)}</td>
       ${can("operator") ? `<td class="ab-act">${unblockBtn(r)}</td>` : ""}</tr>`).join("");
@@ -261,7 +263,7 @@ function renderAll() {
     const note = [r.pending_reason, r.note, who, un].filter(Boolean).join(" · ");
     const rep = { sent: `<span class="chip chip--ok" title="${esc(fmtTime(r.replied_at))}">Đã báo Teams</span> `,
       failed: `<span class="chip chip--err">Chưa báo Teams (${r.reply_attempts} lần)</span> ` }[r.reply_status] || "";
-    return `<tr><td class="mono">${esc(hhmm(r.created_at))}</td><td class="mono">${esc(r.ip)}</td>
+    return `<tr><td class="mono">${esc(hhmm(r.requested_at || r.created_at))}</td><td class="mono">${esc(r.ip)}</td>
       <td>${esc(r.sender)}</td><td>${esc(MODE[r.mode] || r.mode)}</td><td>${chip(r.status)}</td>
       <td class="tiny">${rep}${esc(note)}${r.results?.length ? `<div>${fwResults(r)}</div>` : ""}</td>
       ${op ? `<td>${unblockBtn(r)}</td>` : ""}</tr>`;

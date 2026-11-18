@@ -53,6 +53,7 @@ class SettingsIn(_In):
     holidays: list[dict] | None = None   # [{"from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "name": "..."}]
     hourly_limit: int | None = None
     poll_seconds: int | None = None
+    stale_minutes: int | None = None
     admin_emails: Any = None
     firewall_ids: list[int] | None = None
     whitelists: list[WhitelistIn] | None = None

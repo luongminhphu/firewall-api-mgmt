@@ -37,6 +37,7 @@ function fill(s) {
   renderHolidays();
   $("#abs-limit").value = s.hourly_limit;
   $("#abs-poll").value = Math.round(s.poll_seconds / 60);
+  $("#abs-stale").value = s.stale_minutes;
   $("#abs-admins").value = (s.admin_emails || []).join("\n");
   $("#abs-reply").checked = s.reply_enabled;
   $("#abs-reply-url").value = "";
@@ -182,6 +183,7 @@ async function save(withEnabled = true) {
     weekend_full: $("#abs-weekend").checked,
     holidays: cfg.hol.filter((h) => h.from).map((h) => ({ from: h.from, to: h.to || h.from, name: h.name || "" })),
     hourly_limit: Number($("#abs-limit").value), poll_seconds: Number($("#abs-poll").value) * 60,
+    stale_minutes: Number($("#abs-stale").value),
     admin_emails: $("#abs-admins").value,
     firewall_ids: [...$("#abs-fws").querySelectorAll("input:checked")].map((x) => Number(x.value)),
     whitelists: cfg.wl.map((w) => ({ name: w.name.trim(), entries: w.text })),

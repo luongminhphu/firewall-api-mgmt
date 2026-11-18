@@ -110,6 +110,8 @@ class Settings:
     # chỉnh lại trong tab Cài đặt (60–3600 giây). 0 = tắt hẳn bộ lập lịch đọc tin (chỉ còn nút "Đọc ngay").
     # Kết nối Graph, tài khoản SOC, khung giờ, ngưỡng... cấu hình trên giao diện (tab Cài đặt).
     AUTOBLOCK_POLL_SECONDS: int = int(os.getenv("AUTOBLOCK_POLL_SECONDS", "300"))
+    # Đọc chồng N giây trước mốc lần đọc trước (độ trễ nhất quán của Graph); tin trùng bị bỏ qua nhờ msg_id UNIQUE
+    AUTOBLOCK_OVERLAP_SECONDS: int = int(os.getenv("AUTOBLOCK_OVERLAP_SECONDS", "120"))
     GRAPH_BASE_URL: str = os.getenv("GRAPH_BASE_URL", "https://graph.microsoft.com/v1.0").rstrip("/")
     GRAPH_LOGIN_URL: str = os.getenv("GRAPH_LOGIN_URL", "https://login.microsoftonline.com").rstrip("/")
     # Chỉ dùng cho kiểm thử với Graph giả lập (chứng chỉ tự ký); môi trường thật luôn kiểm tra TLS

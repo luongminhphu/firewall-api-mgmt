@@ -42,6 +42,7 @@ const HELP = {
   "abs-hol": "Ngày lễ / nghỉ bù rơi vào ngày thường: tự chặn cả ngày. Có thể nhập cả đợt (vd Tết 05/02–11/02). Nghỉ đột xuất: dùng nút \"Tự chặn cả ngày hôm nay\" ở tab Tự động chặn.",
   "abs-limit": "Tối đa số IP được TỰ chặn trong 60 phút. Vượt ngưỡng → ngắt: lệnh tiếp theo chờ duyệt, email cảnh báo nhóm Admin, quản trị viên bấm Mở lại. Mặc định 20.",
   "abs-poll": "App đọc group chat mỗi N phút (1–60). Ngắn hơn = phản ứng nhanh hơn nhưng gọi Microsoft Graph nhiều hơn. Mặc định 5.",
+  "abs-stale": "Lệnh SOC gửi quá N phút mới được app đọc (app ngừng, mất mạng, chu kỳ dài) sẽ KHÔNG tự chặn mà chuyển chờ duyệt — tình hình có thể đã khác. Mặc định 30; tự nâng lên tối thiểu gấp đôi chu kỳ đọc.",
   "abs-reply": "Sau mỗi IP chặn thành công, gửi vào group chat: \"INFRA ĐÃ BLOCK <ip> THEO YÊU CẦU LÚC <thời điểm>\".",
   "abs-reply-url": "Trong group chat chọn … › Workflows › \"Post to a chat when a webhook request is received\", chọn đúng chat rồi chép URL webhook vào đây. URL chứa chữ ký bí mật — lưu mã hóa.",
   "abs-admins": "Nhận email: vượt ngưỡng, lệnh chờ duyệt, báo cáo khi hết ca ngoài giờ. Mỗi dòng một địa chỉ. Để trống = mọi quản trị viên có email.",

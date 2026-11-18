@@ -60,14 +60,42 @@ def _parse_ts(v: str | None) -> dt.datetime | None:
     return dt.datetime.fromisoformat(v.replace("Z", "+00:00"))
 
 
-def list_messages(cfg: dict, since: dt.datetime, *, max_pages: int = 5) -> list[dict]:
-    """Tin của group chat tạo SAU `since` (cũ → mới). Graph trả mới → cũ; dừng khi gặp tin cũ hơn `since`."""
+def _iso_z(t: dt.datetime) -> str:
+    """Định dạng mốc thời gian như Graph trả về (UTC, mili giây): 2026-11-18T17:41:35.757Z."""
+    t = t.astimezone(dt.timezone.utc)
+    return t.strftime("%Y-%m-%dT%H:%M:%S.") + f"{t.microsecond // 1000:03d}Z"
+
+
+def changed_since(cfg: dict, since: dt.datetime, *, max_pages: int = 20) -> tuple[list[dict], bool, bool]:
+    """Tin mới / vừa thay đổi SAU mốc `since` — LỌC PHÍA MICROSOFT GRAPH, không đọc lại lịch sử chat.
+
+    GET /chats/{id}/messages?$filter=lastModifiedDateTime gt {since}&$orderby=lastModifiedDateTime desc&$top=50
+    (Graph chỉ hỗ trợ lọc theo lastModifiedDateTime với `gt`, và phải đi kèm orderby cùng trường.)
+    Chu kỳ không có tin mới → Graph trả 0 tin. Tenant không nhận bộ lọc (400) → quay về đọc theo createdDateTime.
+    Trả (tin cũ → mới theo createdDateTime, truncated = còn tin chưa đọc hết sau max_pages, filtered = đã lọc server).
+    """
+    base = f"{settings.GRAPH_BASE_URL}/chats/{quote(cfg['chat_id'], safe='')}/messages"
+    url = (f"{base}?$top=50&$orderby=lastModifiedDateTime%20desc"
+           f"&$filter=lastModifiedDateTime%20gt%20{_iso_z(since)}")
+    try:
+        msgs, truncated = _read(cfg, url, since, "lastModifiedDateTime", max_pages)
+        return msgs, truncated, True
+    except _FilterRejected:
+        msgs, truncated = _read(cfg, f"{base}?$top=50&$orderby=createdDateTime%20desc", since, "createdDateTime",
+                                max_pages)
+        return msgs, truncated, False
+
+
+class _FilterRejected(Exception):
+    pass
+
+
+def _read(cfg: dict, url: str, since: dt.datetime, field: str, max_pages: int) -> tuple[list[dict], bool]:
     tok = token(cfg)
-    url = (f"{settings.GRAPH_BASE_URL}/chats/{quote(cfg['chat_id'], safe='')}/messages"
-           f"?$top=50&$orderby=createdDateTime%20desc")
     out: list[dict] = []
+    truncated = False
     with _client() as c:
-        for _ in range(max_pages):
+        for page in range(max_pages):
             try:
                 r = c.get(url, headers={"Authorization": f"Bearer {tok}"})
             except httpx.HTTPError as exc:
@@ -77,18 +105,28 @@ def list_messages(cfg: dict, since: dt.datetime, *, max_pages: int = 5) -> list[
                                  "(ChatMessage.Read.Chat / Chat.Read.All)")
             if r.status_code == 404:
                 raise GraphError("Không tìm thấy group chat (404) — kiểm tra Chat ID")
+            if r.status_code == 400 and "$filter" in url and page == 0:
+                raise _FilterRejected()
             if r.status_code != 200:
                 raise GraphError(f"Graph lỗi {r.status_code}")
             j = r.json()
             stop = False
             for m in j.get("value", []):
-                created = _parse_ts(m.get("createdDateTime"))
-                if created is None or created <= since:
+                t = _parse_ts(m.get(field)) or _parse_ts(m.get("createdDateTime"))
+                if t is None or t <= since:  # phòng hờ: server đã lọc, app vẫn kiểm lại
                     stop = True
                     continue
                 out.append(m)
             url = j.get("@odata.nextLink")
             if stop or not url:
                 break
+        else:
+            truncated = bool(url)
     out.sort(key=lambda m: m.get("createdDateTime") or "")
-    return out
+    return out, truncated
+
+
+def list_messages(cfg: dict, since: dt.datetime, *, max_pages: int = 5) -> list[dict]:
+    """Tin TẠO sau `since` (dùng cho Kiểm tra kết nối — đọc thử, không xử lý)."""
+    base = f"{settings.GRAPH_BASE_URL}/chats/{quote(cfg['chat_id'], safe='')}/messages"
+    return _read(cfg, f"{base}?$top=50&$orderby=createdDateTime%20desc", since, "createdDateTime", max_pages)[0]

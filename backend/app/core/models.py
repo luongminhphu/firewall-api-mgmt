@@ -498,7 +498,9 @@ class AutoBlockRequest(Base):
     message_id: Mapped[int] = mapped_column(Integer, index=True)
     ip: Mapped[str] = mapped_column(String(64), index=True)
     sender_name: Mapped[str] = mapped_column(String(160), default="")
-    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)  # lúc app xử lý
+    # Thời điểm SOC gửi lệnh = createdDateTime của tin Teams (giờ máy chủ Microsoft) — dùng cho khung giờ, ca, báo cáo
+    requested_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     # auto = tự chặn · pending = chờ duyệt · rejected_invalid = IP không hợp lệ / thuộc safe-list
     mode: Mapped[str] = mapped_column(String(16), default="pending")
     # blocking | blocked | failed | pending | approved | rejected | invalid | unblocked | unblocking

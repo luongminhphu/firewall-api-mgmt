@@ -40,6 +40,9 @@ DEFAULTS = {
     "firewall_ids": [],        # rỗng = mọi firewall đang bật
     # chu kỳ đọc tin (giây) — quản trị viên chỉnh trên giao diện; mặc định ban đầu từ AUTOBLOCK_POLL_SECONDS
     "poll_seconds": min(3600, max(60, settings.AUTOBLOCK_POLL_SECONDS or 300)),
+    # Lệnh SOC gửi quá N phút mới được đọc (app ngừng / mất mạng) → không tự chặn, chuyển chờ duyệt.
+    # Hiệu lực = max(stale_minutes, 2 × chu kỳ đọc) để chu kỳ dài không biến mọi lệnh thành "cũ".
+    "stale_minutes": 30,
     # Whitelist: lệnh chặn IP thuộc các danh sách này KHÔNG tự chặn → chờ quản trị viên Approve
     # Trả lời "INFRA ĐÃ BLOCK <ip> THEO YÊU CẦU LÚC <thời điểm>" vào group chat qua Teams Workflows (webhook)
     "reply_enabled": False, "reply_url_enc": "",
@@ -166,6 +169,11 @@ def update(db: Session, data: dict, *, actor: str, client_ip: str) -> dict:
         raise AppError(400, "Cần nhập URL webhook của Teams Workflows trước khi bật trả lời vào group chat")
     if data.get("whitelists") is not None:
         cfg["whitelists"] = parse_whitelists(data["whitelists"])
+    if data.get("stale_minutes") is not None:
+        n = data["stale_minutes"]
+        if not isinstance(n, int) or not 5 <= n <= 1440:
+            raise AppError(400, "Ngưỡng lệnh cũ phải từ 5 đến 1440 phút")
+        cfg["stale_minutes"] = n
     if data.get("admin_emails") is not None:
         cfg["admin_emails"] = parse_emails(data["admin_emails"])
     if data.get("firewall_ids") is not None:
@@ -336,6 +344,10 @@ def window_reason(cfg: dict, now: dt.datetime | None = None) -> str:
     return ""
 
 
+def stale_after(cfg: dict) -> dt.timedelta:
+    return dt.timedelta(minutes=max(cfg.get("stale_minutes", 30), 2 * cfg["poll_seconds"] // 60))
+
+
 def in_window(cfg: dict, now: dt.datetime | None = None) -> bool:
     return bool(window_reason(cfg, now))
 
@@ -387,7 +399,7 @@ def night_shift(now: dt.datetime | None = None, cfg: dict | None = None) -> tupl
 
 
 # ------------------------------------------------------------------ trạng thái
-STATE_DEFAULTS = {"cursor": "", "start_at": "", "last_poll_at": "", "last_ok": None, "last_error": "", "breaker_tripped_at": "",
+STATE_DEFAULTS = {"cursor": "", "start_at": "", "last_fetched": 0, "last_truncated": False, "server_filter": None, "last_poll_at": "", "last_ok": None, "last_error": "", "breaker_tripped_at": "",
                   "breaker_reason": "", "seen_senders": {}, "digest_date": ""}
 
 

@@ -598,3 +598,21 @@ Giữ nguyên toàn bộ id / `data-*` mà JS và test dùng. Router vẫn dùng
 
 `notify/smtp.send` nhận thêm `attachments`. Thư viện mới: `openpyxl`, `reportlab`, `Pillow` (đã ghim phiên bản).
 Test: `tests/reports_test.py` kiểm tra số liệu, kỳ trên lịch, PDF (văn bản, logo, tiếng Việt), Excel (sheet, font, kiểu ngày), email đính kèm, phân quyền.
+
+---
+
+## 19. Rà soát cơ chế đọc tin Teams — thời điểm lệnh BLOCK IP, không đọc lại lịch sử
+
+| Trước | Sau |
+|---|---|
+| Graph `orderby=createdDateTime desc`, app tự lọc phía mình và dừng khi gặp tin cũ hơn mốc. Mỗi chu kỳ vẫn nhận ít nhất một trang 50 tin | **Lọc phía Graph**: `$filter=lastModifiedDateTime gt <mốc>` + `$orderby=lastModifiedDateTime desc`. Chu kỳ không có tin mới thì Graph **trả 0 tin**. Tenant không nhận bộ lọc (400) thì tự quay về cách cũ (`server_filter=false` trên trạng thái) |
+| Mốc đọc = `createdDateTime` lớn nhất, đọc chồng 10 phút | Mốc đọc = **`lastModifiedDateTime` lớn nhất do Graph trả** (giờ máy chủ Microsoft, định dạng mili giây), không dùng đồng hồ máy app. Đọc chồng `AUTOBLOCK_OVERLAP_SECONDS` (mặc định 120 giây) cho độ trễ nhất quán; `msg_id` UNIQUE chống xử lý lặp |
+| Khung giờ tự chặn tính theo lúc app đọc tin | **Thời điểm lệnh = `createdDateTime` của tin SOC**, lưu ở `autoblock_requests.requested_at`. Khung giờ / lịch và danh sách ca ngoài giờ tính theo lúc SOC gửi (vd lệnh gửi 07:58, đọc lúc 08:02 vẫn tự chặn) |
+| Lệnh gửi nhiều giờ trước (app ngừng, mất mạng) vẫn tự chặn khi app chạy lại | **Lệnh cũ** (trễ quá `stale_minutes`, mặc định 30, tối thiểu gấp đôi chu kỳ đọc) → **chờ duyệt**, lý do ghi rõ giờ gửi và số phút trễ |
+| Tối đa 5 trang (250 tin), đọc mới → cũ: vượt quá thì mất tin cũ **không báo** | Tối đa 20 trang (1.000 tin). Còn tin chưa đọc thì `last_truncated` + cảnh báo trên tab; lệnh trễ thì rơi vào nhánh "lệnh cũ" |
+
+Các bảo đảm giữ nguyên:
+- Tin gửi trước lúc bật hoặc đổi Chat ID (`start_at`) không bao giờ được xử lý, kể cả khi sau đó bị sửa hay thả cảm xúc. Thao tác đó làm đổi `lastModifiedDateTime` nên Graph trả lại tin, nhưng app bỏ qua theo `createdDateTime`.
+- Tin đã xử lý mà sau đó bị sửa hay thả cảm xúc cũng không bị xử lý lại (kiểm tra `msg_id`).
+
+Test (`tests/autoblock_test.py`): Graph được gọi với bộ lọc · chu kỳ không có tin mới trả 0 tin · tin bị "chạm" không xử lý lại · tenant từ chối `$filter` thì tự quay về cách cũ · lệnh trễ 45 phút thì chờ duyệt · khung giờ tính theo lúc SOC gửi.

@@ -38,7 +38,8 @@ log = logging.getLogger("autoblock")
 ACTOR = "autoblock"  # tác nhân ghi trong audit / lịch sử thay đổi khi app tự chặn
 WHO = {"user": ACTOR, "name": "Tự động chặn (Teams)", "method": "autoblock"}
 ACTIVE = ("blocking", "blocked", "pending", "approved")
-OVERLAP = dt.timedelta(minutes=10)  # đọc chồng lấn để không sót tin; msg_id UNIQUE chống xử lý lại
+# đọc chồng nhỏ (độ trễ nhất quán phía Graph); msg_id UNIQUE chống xử lý lại
+OVERLAP = dt.timedelta(seconds=max(0, settings.AUTOBLOCK_OVERLAP_SECONDS))
 
 
 def _now() -> dt.datetime:
@@ -126,7 +127,7 @@ def _poll(db: Session) -> dict:
     since = max(start_at, cursor - OVERLAP)
     st["last_poll_at"] = now.isoformat()
     try:
-        msgs = graph.list_messages(cfg, since)
+        msgs, truncated, filtered = graph.changed_since(cfg, since)
     except (graph.GraphError, ValueError, KeyError) as exc:
         st.update(last_ok=False, last_error=str(exc)[:300])
         cfgmod.save_state(db, st)
@@ -139,14 +140,20 @@ def _poll(db: Session) -> dict:
     pending_reqs: list[AutoBlockRequest] = []
     for m in msgs:
         created = graph._parse_ts(m.get("createdDateTime"))
+        # mốc đọc lần sau theo GIỜ CỦA GRAPH (lastModifiedDateTime lớn nhất), không theo đồng hồ máy app
+        modified = graph._parse_ts(m.get("lastModifiedDateTime")) or created
+        if modified:
+            cursor = max(cursor, modified)
         if created is None or created <= start_at:
-            continue
-        cursor = max(cursor, created)
+            continue  # tin gửi trước lúc bật / đổi Chat ID (kể cả vừa được sửa / thả cảm xúc) — không xử lý
         if db.scalar(select(AutoBlockMessage.id).where(AutoBlockMessage.msg_id == str(m.get("id"))[:64])):
             continue
         stats["messages"] += 1
         _handle_message(db, cfg, st, soc, m, created, stats, auto_reqs, pending_reqs)
-    st.update(cursor=cursor.isoformat(), last_ok=True, last_error="")
+    st.update(cursor=cursor.isoformat(), last_ok=True, last_error="", last_fetched=len(msgs),
+              last_truncated=truncated, server_filter=filtered)
+    if truncated:
+        log.warning("Đọc Teams: quá nhiều tin mới trong một chu kỳ — chưa đọc hết, sẽ đọc tiếp ở chu kỳ sau")
     cfgmod.save_state(db, st)
     db.commit()
     if auto_reqs:
@@ -216,7 +223,9 @@ def _handle_command(db: Session, cfg: dict, st: dict, msg: AutoBlockMessage, c: 
                     auto_reqs: list, pending_reqs: list) -> None:
     now = _now()
     req = AutoBlockRequest(message_id=msg.id, ip=(c["ip"] or c["value"])[:64], sender_name=msg.sender_name,
-                           created_at=now, status="pending", mode="pending")
+                           created_at=now, requested_at=msg.created_at, status="pending", mode="pending")
+    sent = _aware(msg.created_at) or now  # thời điểm SOC gửi lệnh (createdDateTime của Graph)
+    lag = now - sent
     if not c["ip"]:
         req.status, req.mode, req.note = "invalid", "invalid", c["error"]
     else:
@@ -244,7 +253,10 @@ def _handle_command(db: Session, cfg: dict, st: dict, msg: AutoBlockMessage, c: 
         reason = f"Thuộc whitelist {hit[0]} ({hit[1]}) — chờ quản trị viên Approve"
     elif not cfg["auto_enabled"]:
         reason = "Công tắc tự động chặn đang TẮT"
-    elif not cfgmod.in_window(cfg, now):
+    elif lag > cfgmod.stale_after(cfg):
+        reason = (f"Lệnh cũ: SOC gửi lúc {_vn(sent)}, app đọc trễ {int(lag.total_seconds() // 60)} phút "
+                  f"(> {int(cfgmod.stale_after(cfg).total_seconds() // 60)} phút) — chờ duyệt")
+    elif not cfgmod.in_window(cfg, sent):  # khung giờ theo LÚC SOC GỬI, không theo lúc app đọc
         reason = f"Ngoài khung giờ tự động — trong giờ hành chính ({cfgmod.schedule_text(cfg)})"
     elif st.get("breaker_tripped_at"):
         reason = f"Đã vượt ngưỡng {cfg['hourly_limit']} IP/giờ — chờ quản trị viên mở lại"
@@ -456,6 +468,7 @@ def to_dict(r: AutoBlockRequest) -> dict:
     except ValueError:
         res = []
     return {"id": r.id, "ip": r.ip, "sender": r.sender_name, "created_at": _aware(r.created_at).isoformat(),
+            "requested_at": _aware(r.requested_at).isoformat() if r.requested_at else None,
             "mode": r.mode, "status": r.status, "pending_reason": r.pending_reason, "note": r.note,
             "needs_admin": bool(r.needs_admin), "whitelist": r.whitelist,
             "reply_status": r.reply_status, "reply_attempts": r.reply_attempts,
@@ -473,7 +486,8 @@ def list_requests(db: Session, *, view: str = "all", status_: str = "", limit: i
     if view == "night":
         start, end = cfgmod.off_hours_span(cfgmod.raw(db))
         start, end = start.astimezone(dt.timezone.utc), end.astimezone(dt.timezone.utc)  # cột lưu UTC
-        stmt = stmt.where(AutoBlockRequest.created_at >= start, AutoBlockRequest.created_at < end,
+        stmt = stmt.where(func.coalesce(AutoBlockRequest.requested_at, AutoBlockRequest.created_at) >= start,
+                          func.coalesce(AutoBlockRequest.requested_at, AutoBlockRequest.created_at) < end,
                           AutoBlockRequest.mode == "auto")
     elif view == "pending":
         stmt = stmt.where(AutoBlockRequest.status == "pending")
@@ -503,7 +517,10 @@ def status(db: Session) -> dict:
         "scheduler": settings.AUTOBLOCK_POLL_SECONDS > 0,
         "breaker_tripped_at": st.get("breaker_tripped_at") or None, "breaker_reason": st.get("breaker_reason", ""),
         "last_poll_at": st.get("last_poll_at") or None, "last_ok": st.get("last_ok"),
-        "last_error": st.get("last_error", ""), "pending": pending, "soc_senders": len(cfg["soc_senders"]),
+        "last_error": st.get("last_error", ""), "pending": pending,
+        "cursor": st.get("cursor") or None, "last_fetched": st.get("last_fetched", 0),
+        "last_truncated": bool(st.get("last_truncated")), "server_filter": st.get("server_filter"),
+        "stale_minutes": int(cfgmod.stale_after(cfg).total_seconds() // 60), "soc_senders": len(cfg["soc_senders"]),
         "night": {"start": start.isoformat(), "end": end.isoformat()}, "syntax": f"{parser.PREFIX} <ip>",
         "reply_enabled": bool(cfg["reply_enabled"] and cfg["reply_url_enc"]),
         "reply_syntax": reply.TEMPLATE.format(ip="<ip>", ts="<thời điểm>"),
