@@ -104,6 +104,8 @@ class Settings:
     # Máy chủ SMTP / người nhận cấu hình trên giao diện (tab Cài đặt), không qua biến môi trường.
     NOTIFY_INTERVAL_SECONDS: int = int(os.getenv("NOTIFY_INTERVAL_SECONDS", "300"))
     SMTP_TIMEOUT: int = int(os.getenv("SMTP_TIMEOUT", "15"))
+    # Địa chỉ app người dùng mở (qua App Proxy), dùng cho link trong email, vd https://socblock-hsc.msappproxy.net
+    APP_BASE_URL: str = os.getenv("APP_BASE_URL", "").strip()
     LOGO_MAX_KB: int = int(os.getenv("LOGO_MAX_KB", "300"))
     OIDC_ALLOW_GUESTS: bool = _bool(os.getenv("OIDC_ALLOW_GUESTS"), False)
     # SSO một lần (v1.5.1):

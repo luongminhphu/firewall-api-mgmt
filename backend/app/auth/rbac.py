@@ -1,6 +1,8 @@
 """Vai trò và phân quyền: xếp hạng vai trò + dependency FastAPI (principal / require)."""
 from __future__ import annotations
 
+import re
+
 from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -8,7 +10,11 @@ from ..core.config import settings
 from ..core.db import get_session
 from ..core.security import verify_principal
 
-ROLE_RANK = {"viewer": 0, "operator": 1, "admin": 2}
+ROLE_RANK = {"reviewer": -1, "viewer": 0, "operator": 1, "admin": 2}
+
+# Vai trò reviewer (đại diện team, không phải người dùng app) CHỈ được gọi các đường dẫn này — chặn tập trung ở đây,
+# không phụ thuộc từng router. Mọi API khác → 403.
+REVIEWER_PATHS = re.compile(r"^/api/(config|review/my(/.*)?|review/items/\d+/decision)$")
 
 
 def csv_list(v: str) -> list[str]:
@@ -41,8 +47,17 @@ def principal(
                        auth_type=u.auth_type)
         elif p.get("s") == "db":
             raise HTTPException(401, "Tài khoản không còn tồn tại — liên hệ quản trị viên")
+        elif out["role"] == "reviewer":
+            pass  # kiểm tra còn là đại diện team ngay bên dưới
         elif settings.USERS_STRICT and out["method"].startswith("entra"):
             raise HTTPException(401, "Tài khoản chưa có trong danh sách người dùng của app")
+    if out["role"] == "reviewer":
+        from ..modules.review.service import is_contact
+
+        if not is_contact(db, out["user"]):  # bị gỡ khỏi danh sách đại diện → mất quyền ngay
+            raise HTTPException(401, "Bạn không còn là đại diện team nhận rà soát — liên hệ quản trị viên")
+        if request is None or not REVIEWER_PATHS.match(request.url.path):
+            raise HTTPException(403, "Vai trò Rà soát chỉ được dùng chức năng rà soát quyền VPN")
     if request is not None:
         request.state.actor = out["user"]  # dòng log truy cập (LOG_FORMAT=json) ghi kèm người dùng
     return out

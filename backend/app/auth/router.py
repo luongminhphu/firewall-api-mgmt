@@ -112,6 +112,11 @@ def resolve_sso(db: Session, p: dict) -> dict:
             raise sso.AuthError("Tài khoản đã bị khóa trong SOC Rapid Block — liên hệ quản trị viên")
         um.touch_login(db, u)
         return {**p, "user": u.username, "role": u.role, "name": u.display_name or p["name"], "src": "db"}
+    from ..modules.review.service import is_contact
+
+    if is_contact(db, p["user"]) and (settings.USERS_STRICT or not p.get("role")):
+        # Đại diện team (nhập tay trong tab Cài đặt) chưa là người dùng app → chỉ được rà soát quyền VPN của team mình
+        return {**p, "role": "reviewer", "src": ""}
     if settings.USERS_STRICT:
         raise sso.AuthError("Tài khoản chưa có trong danh sách người dùng của SOC Rapid Block")
     if not p.get("role"):

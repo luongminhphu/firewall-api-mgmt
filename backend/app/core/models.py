@@ -365,8 +365,8 @@ class VpnRuleChange(Base):
         ts = self.ts
         if ts is not None:
             ts = ts.replace(tzinfo=dt.timezone.utc) if ts.tzinfo is None else ts.astimezone(dt.timezone.utc)
-        return "\x1f".join([ts.isoformat() if ts else "", str(self.firewall_id or ""), self.firewall_name,
-                             self.rule_name, self.change_type, self.before_json or "", self.after_json or "",
+        return "\x1f".join([ts.isoformat() if ts else "", str(self.firewall_id or ""), self.firewall_name or "",
+                             self.rule_name or "", self.change_type or "", self.before_json or "", self.after_json or "",
                              self.actor or "", self.prev_hash or ""])
 
 
@@ -402,3 +402,70 @@ class VpnTeamContact(Base):
     note: Mapped[str] = mapped_column(Text, default="")
     updated_by: Mapped[str] = mapped_column(String(120), default="")
     updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ReviewCampaign(Base):
+    """Đợt rà soát quyền truy cập VPN (ISO 27001 A.5.18) — docs/architecture.md §15."""
+
+    __tablename__ = "review_campaigns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    period_key: Mapped[str] = mapped_column(String(32), unique=True)  # 2026-Q4 | manual-<thời điểm>
+    name: Mapped[str] = mapped_column(String(160))
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)  # open | closed
+    due_date: Mapped[dt.date] = mapped_column(Date)
+    created_by: Mapped[str] = mapped_column(String(160), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    closed_by: Mapped[str] = mapped_column(String(160), default="")
+    closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+
+
+class ReviewItem(Base):
+    """Một quyền cần xác nhận trong đợt — ẢNH CHỤP tại lúc mở đợt (không đổi theo các lần đồng bộ sau)."""
+
+    __tablename__ = "review_items"
+    __table_args__ = (UniqueConstraint("campaign_id", "kind", "firewall_id", "ref_key", name="uq_review_item"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # rule | orphan_account
+    firewall_id: Mapped[int] = mapped_column(Integer)
+    firewall_name: Mapped[str] = mapped_column(String(120), default="")
+    ref_key: Mapped[str] = mapped_column(String(255))  # tên rule / username (lowercase)
+    title: Mapped[str] = mapped_column(String(255))
+    team: Mapped[str] = mapped_column(String(160), default="")
+    scope: Mapped[str] = mapped_column(String(160), default="infra", index=True)  # team_key | infra
+    snapshot_json: Mapped[str] = mapped_column(Text, default="{}")
+    decision: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending|keep|revoke|change|no_response
+    comment: Mapped[str] = mapped_column(Text, default="")
+    decided_by: Mapped[str] = mapped_column(String(160), default="")
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    on_behalf: Mapped[bool] = mapped_column(Boolean, default=False)  # Infra quyết định thay đại diện team
+
+
+class ReviewDecision(Base):
+    """Nhật ký quyết định rà soát — nối chuỗi băm (core/hashchain), làm bằng chứng không sửa được."""
+
+    __tablename__ = "review_decisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)
+    campaign_id: Mapped[int] = mapped_column(Integer, index=True)
+    item_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    item_title: Mapped[str] = mapped_column(String(255), default="")
+    decision: Mapped[str] = mapped_column(String(16))  # keep|revoke|change|no_response|open|close
+    comment: Mapped[str] = mapped_column(Text, default="")
+    actor: Mapped[str] = mapped_column(String(160), default="")
+    on_behalf: Mapped[bool] = mapped_column(Boolean, default=False)
+    prev_hash: Mapped[str] = mapped_column(String(64), default="")
+    row_hash: Mapped[str] = mapped_column(String(64), default="")
+
+    def hash_payload(self) -> str:
+        ts = self.ts
+        if ts is not None:
+            ts = ts.replace(tzinfo=dt.timezone.utc) if ts.tzinfo is None else ts.astimezone(dt.timezone.utc)
+        # giá trị mặc định của cột chỉ có sau khi ghi DB, còn băm chạy TRƯỚC → mọi trường về chuỗi
+        return "\x1f".join([ts.isoformat() if ts else "", str(self.campaign_id), str(self.item_id or ""),
+                            self.item_title or "", self.decision or "", self.comment or "", self.actor or "",
+                            "1" if self.on_behalf else "0", self.prev_hash or ""])

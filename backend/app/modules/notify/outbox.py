@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ...core.config import settings
 from ...core.models import EmailOutbox
 from ..vpn import expiry
 from ..vpn import rules as vpn_rules
@@ -94,7 +95,7 @@ def plan_now(db: Session, today: dt.date | None = None) -> dict:
         return {"planned": 0, "queued": 0, "note": "Thông báo đang tắt"}
     today = today or expiry.today_vn()
     rules = vpn_rules.list_rules(db, today=today)["rules"]
-    msgs = planner.plan(rules, cfg, planner.contacts_map(db), today)
+    msgs = planner.plan(rules, cfg, planner.contacts_map(db), today, settings.APP_BASE_URL.rstrip("/"))
     return {"planned": len(msgs), "queued": enqueue(db, msgs)}
 
 

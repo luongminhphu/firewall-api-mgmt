@@ -53,7 +53,7 @@ def decrypt(token: str) -> str:
 # ---------------------------------------------------------------- session token
 # Token = base64url(JSON {u, r, m, n, exp}) + "." + HMAC-SHA256.
 #   u: định danh (UPN hoặc tên người trực), r: vai trò, m: phương thức đăng nhập, n: tên hiển thị
-ROLES = ("viewer", "operator", "admin")
+ROLES = ("reviewer", "viewer", "operator", "admin")  # reviewer: chỉ rà soát quyền VPN (§15)
 
 
 def _b64(b: bytes) -> str:

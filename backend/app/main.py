@@ -31,6 +31,8 @@ from .modules.ipblock.changes_router import router as changes_router
 from .modules.ipblock.router import router as ipblock_router
 from .modules.notify import outbox as notify_outbox
 from .modules.notify.router import router as notify_router
+from .modules.review import service as review_service
+from .modules.review.router import router as review_router
 from .modules.vpn import sync as vpn_sync
 from .modules.vpn.router import router as vpn_router
 
@@ -56,6 +58,8 @@ def _startup() -> None:
     # Thông báo email: lập kế hoạch nhắc hạn VPN (idempotent) + gửi hàng đợi; mỗi vòng chỉ một pod chạy
     if settings.NOTIFY_INTERVAL_SECONDS > 0:
         jobs.every("notify", settings.NOTIFY_INTERVAL_SECONDS, notify_outbox.run_cycle)
+    # Rà soát quyền VPN: tự mở đợt đầu quý, nhắc / báo quá hạn (một pod/vòng); kiểm tra mỗi giờ
+    jobs.every("review", 3600, review_service.tick)
 
 
 @asynccontextmanager
@@ -79,7 +83,7 @@ app_errors.install(app)
 app_logging.install(app)
 
 for _router in (auth_router, firewalls_router, users_router, ipblock_router, changes_router, audit_router,
-                branding_router, vpn_router, notify_router):
+                branding_router, vpn_router, notify_router, review_router):
     app.include_router(_router)
 
 
