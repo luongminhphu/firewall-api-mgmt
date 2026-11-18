@@ -7,7 +7,8 @@ if os.path.exists("/tmp/oidc_t.db"): os.remove("/tmp/oidc_t.db")
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
-from app import auth as sso, main
+from app import main
+from app.auth import oidc as sso
 from app.crypto import verify_principal
 key=rsa.generate_private_key(public_exponent=65537,key_size=2048)
 class K: pass

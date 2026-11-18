@@ -1,4 +1,4 @@
-"""Xác thực: Microsoft Entra ID (OIDC + PKCE) và header-based SSO qua Entra Application Proxy.
+"""Xác thực Microsoft Entra ID (OIDC + PKCE). Header SSO: auth/header_sso.py; vai trò: auth/rbac.py.
 
 Mô hình bảo vệ hai lớp khi truy cập từ Internet:
   1. Entra Application Proxy (pre-authentication = Microsoft Entra ID) + Conditional Access bắt MFA.
@@ -12,7 +12,6 @@ import base64
 import re
 import hashlib
 import hmac
-import ipaddress
 import json
 import secrets
 import time
@@ -22,24 +21,14 @@ import httpx
 import jwt
 from jwt import PyJWKClient
 
-from .core.config import settings
+from ..core.config import settings
+from .errors import AuthError  # noqa: F401 — test/mã cũ dùng oidc.AuthError
 
-ROLE_RANK = {"viewer": 0, "operator": 1, "admin": 2}
 
 _jwks_client: PyJWKClient | None = None
 
 
-class AuthError(Exception):
-    pass
-
-
 # ----------------------------------------------------------------- helpers
-def _csv(v: str) -> list[str]:
-    return [x.strip() for x in (v or "").split(",") if x.strip()]
-
-
-def role_at_least(role: str, needed: str) -> bool:
-    return ROLE_RANK.get(role, -1) >= ROLE_RANK[needed]
 
 
 def _tenant_base() -> str:
@@ -220,47 +209,5 @@ def exchange_code(code: str, flow: dict) -> dict:
 
 
 # ----------------------------------------------------------------- header
-def _trusted_networks() -> list:
-    nets = []
-    for c in _csv(settings.TRUSTED_PROXY_CIDRS):
-        try:
-            nets.append(ipaddress.ip_network(c, strict=False))
-        except ValueError:
-            continue
-    return nets
 
 
-def _utf8_header(v: str) -> str:
-    """HTTP header được đọc theo latin-1; tên tiếng Việt từ App Proxy thực chất là byte UTF-8."""
-    v = (v or "").strip()
-    try:
-        return v.encode("latin-1").decode("utf-8")
-    except (UnicodeEncodeError, UnicodeDecodeError):
-        return v
-
-
-def principal_from_headers(peer_ip: str, headers) -> dict:
-    """Header-based SSO: chỉ chấp nhận khi kết nối TCP đến từ IP connector đã khai báo.
-
-    Không dùng X-Forwarded-For để quyết định tin cậy (client có thể tự đặt header đó).
-    """
-    nets = _trusted_networks()
-    if not nets:
-        raise AuthError("Chưa khai báo TRUSTED_PROXY_CIDRS — từ chối header SSO")
-    try:
-        ip = ipaddress.ip_address(peer_ip)
-    except ValueError as exc:
-        raise AuthError("Không xác định được IP nguồn") from exc
-    if not any(ip in n for n in nets):
-        raise AuthError(f"IP nguồn {peer_ip} không phải Private Network Connector tin cậy")
-    upn = (headers.get(settings.HEADER_USER) or "").strip().lower()
-    if not upn:
-        raise AuthError(f"Thiếu header {settings.HEADER_USER} từ Application Proxy")
-    name = _utf8_header(headers.get(settings.HEADER_NAME) or "") or upn
-    if upn in [u.lower() for u in _csv(settings.HEADER_ADMINS)]:
-        role = "admin"
-    elif upn in [u.lower() for u in _csv(settings.HEADER_OPERATORS)]:
-        role = "operator"
-    else:
-        role = settings.HEADER_DEFAULT_ROLE if settings.HEADER_DEFAULT_ROLE in ROLE_RANK else "viewer"
-    return {"user": upn, "name": name, "role": role, "method": "entra-header"}

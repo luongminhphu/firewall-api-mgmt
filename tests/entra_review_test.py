@@ -14,7 +14,8 @@ os.environ.update(DATABASE_URL=f"sqlite:///{DB}", MASTER_KEY="0123456789abcdef01
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
-from app import auth as sso, main
+from app import main
+from app.auth import oidc as sso
 from app.db import SessionLocal, AppUser
 from app.crypto import verify_principal
 fails = 0

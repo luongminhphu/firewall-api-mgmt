@@ -7,7 +7,8 @@ os.environ.update(DATABASE_URL="sqlite:////tmp/sso1.db", MASTER_KEY="0123456789a
   OIDC_DOMAIN_HINT="hsc.com.vn", APP_PASSWORD="x")
 if os.path.exists("/tmp/sso1.db"): os.remove("/tmp/sso1.db")
 from fastapi.testclient import TestClient
-from app import auth as sso, main
+from app import main
+from app.auth import oidc as sso
 from app.config import settings
 fails = 0
 def chk(n, cond, extra=""):

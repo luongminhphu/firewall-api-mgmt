@@ -9,26 +9,26 @@ import io
 import os
 import re
 import threading
-import urllib.parse
-from typing import Any
 
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from . import auth as sso
 from . import changelog
 from . import group_cache as gc
 from . import jobs
-from . import users as um
 from .core.config import settings
-from .core.security import MasterKeyMissing, decrypt, encrypt, issue_token, verify_principal
+from .core.security import MasterKeyMissing, encrypt
 from .core.db import get_session, init_db
+from .auth.rbac import admin, current_user, operator, principal, role_at_least
+from .auth.router import resolve_sso  # noqa: F401 — tests/sso_once_test.py dùng main.resolve_sso
+from .auth.router import router as auth_router
+from .auth.users.router import router as users_router
 from .core.deps import client_ip_of, get_fw, selected_firewalls
-from .core.models import AppSetting, AppUser, AuditLog, Firewall, GroupChange
+from .core.models import AppSetting, AuditLog, Firewall
 from .ipparse import extract, host_object_name
 from .policy import BLOCK_GROUP, GroupPolicyError, enforce_group
 from .service import (
@@ -56,6 +56,10 @@ app.add_middleware(
 )
 
 
+app.include_router(auth_router)
+app.include_router(users_router)
+
+
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
@@ -79,48 +83,6 @@ def _startup() -> None:
 
 
 # ------------------------------------------------------------------- helpers
-def principal(
-    x_auth_token: str | None = Header(default=None, alias="X-Auth-Token"),
-    db: Session = Depends(get_session),
-) -> dict:
-    p = verify_principal(x_auth_token or "")
-    if not p:
-        raise HTTPException(status_code=401, detail="Chưa đăng nhập hoặc session đã hết hạn")
-    out = {"user": p["u"], "name": p.get("n") or p["u"], "role": p["r"], "method": p.get("m", "local"),
-           "managed": False}
-    # Quyền lấy lại từ DB ở MỌI request → khóa / hạ quyền / xóa user có hiệu lực ngay, không chờ token hết hạn.
-    if out["method"] != "shared":
-        u = um.find(db, out["user"])
-        if u:
-            if not u.enabled:
-                raise HTTPException(401, "Tài khoản đã bị khóa — liên hệ quản trị viên")
-            out.update(role=u.role, name=u.display_name or out["name"], managed=True,
-                       auth_type=u.auth_type)
-        elif p.get("s") == "db":
-            raise HTTPException(401, "Tài khoản không còn tồn tại — liên hệ quản trị viên")
-        elif settings.USERS_STRICT and out["method"].startswith("entra"):
-            raise HTTPException(401, "Tài khoản chưa có trong danh sách người dùng của app")
-    return out
-
-
-def current_user(p: dict = Depends(principal)) -> str:
-    return p["user"]
-
-
-def require(role: str):
-    def dep(p: dict = Depends(principal)) -> dict:
-        if not sso.role_at_least(p["role"], role):
-            raise HTTPException(403, f"Vai trò '{p['role']}' không đủ quyền (cần '{role}')")
-        return p
-    return dep
-
-
-def operator(p: dict = Depends(require("operator"))) -> dict:
-    return p
-
-
-def admin(p: dict = Depends(require("admin"))) -> dict:
-    return p
 
 
 def locked_group(db: Session, request: Request, requested, actor: str) -> str:
@@ -135,198 +97,6 @@ def locked_group(db: Session, request: Request, requested, actor: str) -> str:
 
 
 # ---------------------------------------------------------------------- auth
-@app.get("/api/auth/modes")
-def auth_modes():
-    modes = settings.auth_modes
-    ready, msg = sso.oidc_ready()
-    return {
-        "modes": modes,
-        "local": "local" in modes,
-        "oidc": "oidc" in modes,
-        "oidc_ready": ready,
-        "oidc_message": msg,
-        "header": "header" in modes,
-        "oidc_auto": settings.OIDC_AUTO_LOGIN and "oidc" in modes and ready,
-    }
-
-
-@app.post("/api/login")
-def login(request: Request, payload: dict = Body(...), db: Session = Depends(get_session)):
-    """Đăng nhập bằng mật khẩu: ưu tiên tài khoản riêng trong app; mật khẩu chung APP_PASSWORD là
-    đường dự phòng (break-glass) và có thể tắt bằng SHARED_PASSWORD_LOGIN=false."""
-    if "local" not in settings.auth_modes:
-        raise HTTPException(403, "Đăng nhập bằng mật khẩu đã bị tắt — dùng tài khoản Microsoft")
-    import hmac as _h
-
-    raw_user = (payload.get("user") or "soc").strip()[:120] or "soc"
-    pw = payload.get("password") or ""
-    key = raw_user.lower()
-    ip = client_ip_of(request)
-
-    def deny(msg: str, code: int = 401):
-        um.login_failed(key)
-        audit(db, action="login", fw=None, target="password", result="error", message=msg,
-              actor=raw_user, client_ip=ip)
-        db.commit()
-        raise HTTPException(code, msg)
-
-    wait = um.login_locked(key)
-    if wait:
-        raise HTTPException(429, f"Sai mật khẩu quá {settings.LOGIN_MAX_FAILS} lần — thử lại sau {wait // 60 + 1} phút")
-
-    u = um.find(db, raw_user)
-    if u:
-        # Tài khoản đã có trong app → chỉ chấp nhận mật khẩu riêng (không dùng mật khẩu chung để mạo danh)
-        if u.auth_type != "local" or not u.password_hash:
-            um.burn_time(pw)
-            deny("Tài khoản này đăng nhập bằng Microsoft, không dùng mật khẩu")
-        if not um.verify_password(pw, u.password_hash):
-            deny("Tên đăng nhập hoặc mật khẩu không đúng")
-        if not u.enabled:
-            deny("Tài khoản đã bị khóa — liên hệ quản trị viên", 403)
-        um.login_ok(key)
-        um.touch_login(db, u)
-        tok = issue_token(u.username, role=u.role, method="local", name=u.display_name, src="db")
-        audit(db, action="login", fw=None, target="password", result="ok",
-              message=f"{u.display_name or u.username} · vai trò {u.role}", actor=u.username, client_ip=ip)
-        db.commit()
-        return {"token": tok, "user": u.username, "ttl_hours": settings.SESSION_TTL_HOURS}
-
-    if not settings.SHARED_PASSWORD_LOGIN:
-        um.burn_time(pw)
-        deny("Tên đăng nhập hoặc mật khẩu không đúng")
-    if not _h.compare_digest(pw.encode(), settings.APP_PASSWORD.encode()):
-        deny("Tên đăng nhập hoặc mật khẩu không đúng")
-    um.login_ok(key)
-    tok = issue_token(raw_user[:60], role=settings.LOCAL_ROLE, method="shared")
-    audit(db, action="login", fw=None, target="shared-password", result="ok",
-          message=f"Mật khẩu chung · vai trò {settings.LOCAL_ROLE}", actor=raw_user[:60], client_ip=ip)
-    db.commit()
-    return {"token": tok, "user": raw_user[:60], "ttl_hours": settings.SESSION_TTL_HOURS}
-
-
-def resolve_sso(db: Session, p: dict) -> dict:
-    """Ghép danh tính Microsoft với danh sách người dùng của app.
-    Có trong danh sách → dùng quyền của app; không có → dùng App Role/header (trừ khi USERS_STRICT)."""
-    oid = p.get("oid") or ""
-    u = um.find_by_oid(db, oid) if oid else None
-    if u is None:
-        u = um.find(db, p["user"])
-        if u is not None:
-            if u.auth_type != "microsoft":
-                # Tài khoản mật khẩu trùng tên không được dùng cho đăng nhập Microsoft
-                raise sso.AuthError("Tên này là tài khoản mật khẩu trong app, không phải tài khoản Microsoft")
-            if u.entra_oid and u.entra_oid != oid:
-                raise sso.AuthError("UPN này đã gắn với một tài khoản Entra khác (UPN bị tái sử dụng) — "
-                                    "quản trị viên cần kiểm tra và tạo lại người dùng")
-            if oid and not u.entra_oid:
-                u.entra_oid = oid  # gắn oid ở lần đăng nhập đầu tiên
-    elif u.auth_type != "microsoft":
-        raise sso.AuthError("Liên kết Microsoft không hợp lệ cho tài khoản này")
-    if u:
-        if not u.enabled:
-            raise sso.AuthError("Tài khoản đã bị khóa trong SOC Rapid Block — liên hệ quản trị viên")
-        um.touch_login(db, u)
-        return {**p, "user": u.username, "role": u.role, "name": u.display_name or p["name"], "src": "db"}
-    if settings.USERS_STRICT:
-        raise sso.AuthError("Tài khoản chưa có trong danh sách người dùng của SOC Rapid Block")
-    if not p.get("role"):
-        raise sso.AuthError(
-            "Tài khoản chưa được cấp quyền: chưa có trong danh sách người dùng của app và chưa được gán App Role "
-            f"({settings.ROLE_ADMIN} / {settings.ROLE_OPERATOR} / {settings.ROLE_VIEWER})"
-        )
-    return {**p, "src": ""}
-
-
-_FLOW_COOKIE = "srb_oidc"
-
-
-@app.get("/api/auth/oidc/login")
-def oidc_login(hint: str = Query(default="")):
-    if "oidc" not in settings.auth_modes:
-        raise HTTPException(404, "Chưa bật đăng nhập Microsoft (AUTH_MODES)")
-    try:
-        url, cookie = sso.build_authorize_url(hint)
-    except sso.AuthError as exc:
-        raise HTTPException(500, str(exc)) from exc
-    resp = RedirectResponse(url, status_code=302)
-    resp.set_cookie(
-        _FLOW_COOKIE, cookie, max_age=600, httponly=True, samesite="lax",
-        secure=settings.OIDC_REDIRECT_URI.startswith("https://"), path="/api/auth/oidc",
-    )
-    return resp
-
-
-@app.get("/api/auth/oidc/callback")
-def oidc_callback(
-    request: Request,
-    code: str = Query(default=""),
-    state: str = Query(default=""),
-    error: str = Query(default=""),
-    error_description: str = Query(default=""),
-    db: Session = Depends(get_session),
-):
-    def fail(msg: str):
-        r = RedirectResponse("/#sso_error=" + urllib.parse.quote(msg[:300]), status_code=302)
-        r.delete_cookie(_FLOW_COOKIE, path="/api/auth/oidc")
-        audit(db, action="login", fw=None, target="entra-oidc", result="error", message=msg,
-              actor="?", client_ip=client_ip_of(request))
-        db.commit()
-        return r
-
-    if error:
-        return fail(f"{error}: {error_description}")
-    try:
-        flow = sso.unpack_flow(request.cookies.get(_FLOW_COOKIE, ""))
-        if not state or state != flow["s"]:
-            raise sso.AuthError("Sai tham số state — yêu cầu đăng nhập không hợp lệ")
-        p = resolve_sso(db, sso.exchange_code(code, flow))
-    except sso.AuthError as exc:
-        return fail(str(exc))
-    tok = issue_token(p["user"], role=p["role"], method=p["method"], name=p["name"], src=p["src"])
-    audit(db, action="login", fw=None, target="entra-oidc", result="ok",
-          message=f"{p['name']} · vai trò {p['role']}", actor=p["user"], client_ip=client_ip_of(request))
-    db.commit()
-    r = RedirectResponse("/#sso=" + urllib.parse.quote(tok), status_code=302)
-    r.delete_cookie(_FLOW_COOKIE, path="/api/auth/oidc")
-    return r
-
-
-@app.post("/api/auth/header")
-def header_login(request: Request, db: Session = Depends(get_session)):
-    if "header" not in settings.auth_modes:
-        raise HTTPException(404, "Chưa bật header SSO (AUTH_MODES)")
-    peer = request.client.host if request.client else ""
-    try:
-        p = resolve_sso(db, sso.principal_from_headers(peer, request.headers))
-    except sso.AuthError as exc:
-        raise HTTPException(401, str(exc)) from exc
-    tok = issue_token(p["user"], role=p["role"], method=p["method"], name=p["name"], src=p["src"])
-    audit(db, action="login", fw=None, target="entra-header", result="ok",
-          message=f"{p['name']} · vai trò {p['role']}", actor=p["user"], client_ip=client_ip_of(request))
-    db.commit()
-    return {"token": tok, "user": p["user"], "name": p["name"], "role": p["role"]}
-
-
-@app.get("/api/config")
-def config(p: dict = Depends(principal)):
-    return {
-        "app_name": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "block_group": BLOCK_GROUP,
-        "user": p["user"],
-        "name": p["name"],
-        "role": p["role"],
-        "auth_method": p["method"],
-        "managed_user": p.get("managed", False),
-        "can_change_password": p.get("managed", False) and p.get("auth_type") == "local",
-        "users_strict": settings.USERS_STRICT,
-        "shared_password_login": settings.SHARED_PASSWORD_LOGIN,
-        "host_prefix": settings.HOST_PREFIX,
-        "safe_list": [s.strip() for s in settings.SAFE_LIST.split(",") if s.strip()],
-        "allow_private": settings.ALLOW_PRIVATE,
-        "master_key_set": bool(settings.MASTER_KEY),
-    }
 
 
 # ----------------------------------------------------------------- firewalls
@@ -706,7 +476,7 @@ def unblock(
 def job_status(job_id: str, db: Session = Depends(get_session), p: dict = Depends(principal)):
     """Tiến độ / kết quả một lượt chặn hoặc bỏ chặn chạy nền. Chỉ người tạo hoặc quản trị viên xem được."""
     job = jobs.get(db, job_id[:32])
-    if job is None or (job.actor != p["user"] and not sso.role_at_least(p["role"], "admin")):
+    if job is None or (job.actor != p["user"] and not role_at_least(p["role"], "admin")):
         raise HTTPException(404, "Không tìm thấy công việc (đã hết hạn lưu hoặc không thuộc về bạn)")
     return jobs.to_dict(job)
 
@@ -959,119 +729,6 @@ def delete_logo(request: Request, db: Session = Depends(get_session), p: dict = 
 
 
 # --------------------------------------------------------------------- users
-def _get_user(db: Session, uid: int) -> AppUser:
-    u = db.get(AppUser, uid)
-    if not u:
-        raise HTTPException(404, f"Không tìm thấy người dùng id={uid}")
-    return u
-
-
-def _user_audit(db: Session, request: Request, actor: str, target: str, msg: str, result: str = "ok"):
-    audit(db, action="user_mgmt", fw=None, target=target[:120], result=result, message=msg[:500],
-          actor=actor, client_ip=client_ip_of(request))
-
-
-@app.get("/api/users")
-def list_users(db: Session = Depends(get_session), p: dict = Depends(admin)):
-    rows = db.scalars(select(AppUser).order_by(AppUser.username)).all()
-    return {"users": [u.to_dict() for u in rows], "users_strict": settings.USERS_STRICT,
-            "shared_password_login": settings.SHARED_PASSWORD_LOGIN,
-            "password_min_length": settings.PASSWORD_MIN_LENGTH}
-
-
-@app.post("/api/users")
-def create_user(request: Request, payload: dict = Body(...), db: Session = Depends(get_session),
-                p: dict = Depends(admin)):
-    try:
-        username = um.norm_username(payload.get("username") or "")
-        if um.find(db, username):
-            raise um.UserError(f"Tên đăng nhập '{username}' đã tồn tại")
-        u = AppUser(username=username, created_by=p["user"])
-        um.apply_fields(u, payload, creating=True)
-        if u.auth_type == "local":
-            pw = payload.get("password") or ""
-            um.check_password_strength(pw, username)
-            u.password_hash = um.hash_password(pw)
-    except um.UserError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    db.add(u)
-    db.commit()
-    _user_audit(db, request, p["user"], username,
-                f"Tạo người dùng · {u.auth_type} · quyền {u.permission}{' · quản trị' if u.is_admin else ''}"
-                f"{'' if u.enabled else ' · đang khóa'}")
-    db.commit()
-    return u.to_dict()
-
-
-@app.put("/api/users/{uid}")
-def update_user(uid: int, request: Request, payload: dict = Body(...), db: Session = Depends(get_session),
-                p: dict = Depends(admin)):
-    u = _get_user(db, uid)
-    before = u.to_dict()
-    is_self = u.username == p["user"]
-    try:
-        old_type = u.auth_type
-        um.apply_fields(u, {k: v for k, v in payload.items() if k != "username"}, creating=False)
-        if is_self and (not u.is_admin or not u.enabled):
-            raise um.UserError("Không thể tự bỏ quyền quản trị hoặc tự khóa tài khoản của chính mình")
-        if before["is_admin"] and before["enabled"] and not (u.is_admin and u.enabled) \
-                and um.count_admins(db, exclude_id=u.id) == 0:
-            raise um.UserError("Phải còn ít nhất một quản trị viên đang hoạt động")
-        pw = payload.get("password") or ""
-        if u.auth_type == "local" and (pw or (old_type != "local" and not u.password_hash)):
-            if not pw:
-                raise um.UserError("Chuyển sang tài khoản nội bộ cần đặt mật khẩu")
-            um.check_password_strength(pw, u.username)
-            u.password_hash = um.hash_password(pw)
-    except um.UserError as exc:
-        db.rollback()
-        raise HTTPException(400, str(exc)) from exc
-    u.updated_at = dt.datetime.now(dt.timezone.utc)
-    db.commit()
-    after = u.to_dict()
-    changes = [f"{k}: {before[k]} → {after[k]}" for k in ("display_name", "auth_type", "permission", "is_admin",
-                                                         "enabled", "note") if before[k] != after[k]]
-    if payload.get("password"):
-        changes.append("đặt lại mật khẩu")
-    _user_audit(db, request, p["user"], u.username, "Sửa người dùng · " + ("; ".join(changes) or "không đổi"))
-    db.commit()
-    return after
-
-
-@app.delete("/api/users/{uid}")
-def delete_user(uid: int, request: Request, db: Session = Depends(get_session), p: dict = Depends(admin)):
-    u = _get_user(db, uid)
-    if u.username == p["user"]:
-        raise HTTPException(400, "Không thể tự xóa tài khoản của chính mình")
-    if u.is_admin and u.enabled and um.count_admins(db, exclude_id=u.id) == 0:
-        raise HTTPException(400, "Phải còn ít nhất một quản trị viên đang hoạt động")
-    name = u.username
-    db.delete(u)
-    db.commit()
-    _user_audit(db, request, p["user"], name, "Xóa người dùng — các phiên đăng nhập của tài khoản này bị vô hiệu ngay")
-    db.commit()
-    return {"deleted": name}
-
-
-@app.post("/api/me/password")
-def change_my_password(request: Request, payload: dict = Body(...), db: Session = Depends(get_session),
-                       p: dict = Depends(principal)):
-    u = um.find(db, p["user"])
-    if not u or u.auth_type != "local":
-        raise HTTPException(400, "Chỉ tài khoản nội bộ của app mới đổi được mật khẩu tại đây")
-    if not um.verify_password(payload.get("current_password") or "", u.password_hash):
-        _user_audit(db, request, p["user"], u.username, "Đổi mật khẩu thất bại — sai mật khẩu hiện tại", "error")
-        db.commit()
-        raise HTTPException(400, "Mật khẩu hiện tại không đúng")
-    try:
-        um.check_password_strength(payload.get("new_password") or "", u.username)
-    except um.UserError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    u.password_hash = um.hash_password(payload["new_password"])
-    u.updated_at = dt.datetime.now(dt.timezone.utc)
-    _user_audit(db, request, p["user"], u.username, "Tự đổi mật khẩu")
-    db.commit()
-    return {"ok": True}
 
 
 @app.get("/api/health")
