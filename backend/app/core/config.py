@@ -100,6 +100,10 @@ class Settings:
     # VPN_RULE_GROUPS chỉ được chọn trong VPN_RULE_GROUPS_ALLOWED (integrations/sophos/policy.py).
     VPN_RULE_GROUPS: str = os.getenv("VPN_RULE_GROUPS", "VPN")
     VPN_EXPIRING_DAYS: int = int(os.getenv("VPN_EXPIRING_DAYS", "30"))
+    # Thông báo email (v2.0): chu kỳ lập kế hoạch + gửi outbox (giây), timeout kết nối SMTP (giây).
+    # Máy chủ SMTP / người nhận cấu hình trên giao diện (tab Cài đặt), không qua biến môi trường.
+    NOTIFY_INTERVAL_SECONDS: int = int(os.getenv("NOTIFY_INTERVAL_SECONDS", "300"))
+    SMTP_TIMEOUT: int = int(os.getenv("SMTP_TIMEOUT", "15"))
     LOGO_MAX_KB: int = int(os.getenv("LOGO_MAX_KB", "300"))
     OIDC_ALLOW_GUESTS: bool = _bool(os.getenv("OIDC_ALLOW_GUESTS"), False)
     # SSO một lần (v1.5.1):

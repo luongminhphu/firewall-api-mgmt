@@ -368,3 +368,37 @@ class VpnRuleChange(Base):
         return "\x1f".join([ts.isoformat() if ts else "", str(self.firewall_id or ""), self.firewall_name,
                              self.rule_name, self.change_type, self.before_json or "", self.after_json or "",
                              self.actor or "", self.prev_hash or ""])
+
+
+class EmailOutbox(Base):
+    """Hàng đợi email (outbox). dedupe_key UNIQUE → lập kế hoạch chạy lại nhiều lần không gửi trùng."""
+
+    __tablename__ = "email_outbox"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dedupe_key: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    kind: Mapped[str] = mapped_column(String(32), default="")  # vpn_expiring | vpn_expired_enabled | smtp_test
+    to_addrs: Mapped[str] = mapped_column(Text, default="")  # phân cách dấu phẩy
+    subject: Mapped[str] = mapped_column(String(255), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    ref_json: Mapped[str] = mapped_column(Text, default="{}")  # firewall / rule liên quan
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending | sent | failed
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+
+
+class VpnTeamContact(Base):
+    """Người đại diện của team (nhập tay — quyết định §9): nhận email báo trước hạn VPN của team."""
+
+    __tablename__ = "vpn_team_contacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    team: Mapped[str] = mapped_column(String(160))
+    team_key: Mapped[str] = mapped_column(String(160), unique=True, index=True)  # lowercase
+    emails: Mapped[str] = mapped_column(Text, default="")  # phân cách dấu phẩy
+    note: Mapped[str] = mapped_column(Text, default="")
+    updated_by: Mapped[str] = mapped_column(String(120), default="")
+    updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
