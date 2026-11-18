@@ -6,8 +6,9 @@ from .client import (  # noqa: F401
 )
 from .entities.iphost import IPHostMixin
 from .entities.iphostgroup import IPHostGroupMixin
+from .entities.vpn import VPNReadMixin
 from .xmlutil import HOST_NAME_MAX, IP_FAMILIES, build_iphostgroup_xml, pretty_xml, validate_group_name  # noqa: F401
 
 
-class SophosClient(IPHostMixin, IPHostGroupMixin, BaseClient):
-    """Client đầy đủ: kết nối (BaseClient) + thao tác IPHost / IPHostGroup."""
+class SophosClient(IPHostMixin, IPHostGroupMixin, VPNReadMixin, BaseClient):
+    """Client đầy đủ: kết nối (BaseClient) + IPHost / IPHostGroup (chặn IP) + đọc VPN (chỉ đọc)."""

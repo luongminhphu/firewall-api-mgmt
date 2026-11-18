@@ -42,6 +42,16 @@ ok_cases = {
                               '<IPHost transactionid="t1"><Name>1.2.3.5</Name></IPHost></Set>',
     "Set update SCANPORT GROUP": '<Set operation="update"><IPHostGroup><Name>SCANPORT GROUP</Name></IPHostGroup></Set>',
     "Remove IPHost": "<Remove><IPHost><Name>1.2.3.4</Name></IPHost></Remove>",
+    # Module VPN — chỉ đọc
+    "Get User": "<Get><User></User></Get>",
+    "Get UserGroup": "<Get><UserGroup></UserGroup></Get>",
+    "Get SSLVPNPolicy": "<Get><SSLVPNPolicy></SSLVPNPolicy></Get>",
+    "Get VPNIPSecConnection": "<Get><VPNIPSecConnection></VPNIPSecConnection></Get>",
+    "Get Schedule": "<Get><Schedule></Schedule></Get>",
+    "Get FirewallRule": "<Get><FirewallRule></FirewallRule></Get>",
+    "Get FirewallRuleGroup (tất cả)": "<Get><FirewallRuleGroup></FirewallRuleGroup></Get>",
+    "Get FirewallRuleGroup VPN": '<Get><FirewallRuleGroup><Filter><key name="Name" criteria="=">VPN</key>'
+                                 "</Filter></FirewallRuleGroup></Get>",
 }
 for name, xml in ok_cases.items():
     try:
@@ -66,7 +76,15 @@ deny_cases = {
     "Set update IPHost": '<Set operation="update"><IPHost><Name>1.2.3.4</Name></IPHost></Set>',
     "lẫn một entity cấm trong lệnh gộp": '<Set operation="add"><IPHost><Name>1.2.3.4</Name></IPHost>'
                                          "<FirewallRule><Name>X</Name></FirewallRule></Set>",
-    "Get FirewallRule (chưa mở ở phase 1)": "<Get><FirewallRule></FirewallRule></Get>",
+    "Get AdminSettings (cấu hình hệ thống, không mở)": "<Get><AdminSettings></AdminSettings></Get>",
+    "Get Rule Group ngoài whitelist": '<Get><FirewallRuleGroup><Filter><key name="Name" criteria="=">Default</key>'
+                                      "</Filter></FirewallRuleGroup></Get>",
+    "Set update FirewallRuleGroup VPN": '<Set operation="update"><FirewallRuleGroup><Name>VPN</Name>'
+                                        "</FirewallRuleGroup></Set>",
+    "Set update Schedule": '<Set operation="update"><Schedule><Name>VPN-THAM-2027</Name></Schedule></Set>',
+    "Remove UserGroup": "<Remove><UserGroup><Name>RMS RESEARCH</Name></UserGroup></Remove>",
+    "Set update SSLVPNPolicy": '<Set operation="update"><SSLVPNPolicy><TunnelPolicy><Name>X</Name></TunnelPolicy>'
+                               "</SSLVPNPolicy></Set>",
     "XML hỏng": "<Set operation='add'><IPHost>",
     "chèn Login thứ hai": "<Login><Username>x</Username></Login>",
 }

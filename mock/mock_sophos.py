@@ -56,6 +56,12 @@ def _save(state: dict) -> None:
 
 
 STATE = _load()
+
+import copy  # noqa: E402
+
+import vpn_data  # noqa: E402 — chạy bằng `python mock/mock_sophos.py` nên thư mục mock nằm trong sys.path
+
+VPN = {k: copy.deepcopy(v[0]) for k, v in vpn_data.ENTITIES.items()}
 # Mô phỏng firewall chậm: số giây trễ khi Get toàn bộ IPHost (không Filter)
 FULL_DELAY = float(os.getenv("MOCK_FULL_IPHOST_DELAY", "0"))
 # Mô phỏng firewall phản hồi chậm ở MỌI lệnh (giây/lệnh) — dùng để tái hiện lỗi 504 khi chặn nhiều IP
@@ -75,6 +81,26 @@ def set_delay(seconds: float = 0, per_request: float | None = None):
     if per_request is not None:
         REQ_DELAY = per_request
     return {"delay": FULL_DELAY, "per_request": REQ_DELAY}
+
+
+@app.post("/_vpn/reset")
+def vpn_reset():
+    for k, v in vpn_data.ENTITIES.items():
+        VPN[k] = copy.deepcopy(v[0])
+    return {"ok": True}
+
+
+@app.post("/_vpn/user")
+def vpn_user(username: str, action: str = "remove"):
+    """Test: action=remove xóa user; action=disable/enable đổi Status."""
+    users = VPN["User"]
+    if action == "remove":
+        VPN["User"] = [u for u in users if u["Username"] != username]
+    else:
+        for u in users:
+            if u["Username"] == username:
+                u["Status"] = "Deactive" if action == "disable" else "Active"
+    return {"users": [u["Username"] for u in VPN["User"]]}
 
 
 @app.post("/_reset_stats")
@@ -126,6 +152,24 @@ def controller(reqxml: str = Form(default="")):
     # ------------------------------------------------------------------ GET
     if "Get" in req:
         get = req["Get"] or {}
+        for ent, (_, key_fn) in vpn_data.ENTITIES.items():
+            if ent not in get:
+                continue
+            node = get.get(ent) or {}
+            name_filter = None
+            if isinstance(node, dict) and node.get("Filter"):
+                key = node["Filter"].get("key") or node["Filter"].get("Key")
+                if isinstance(key, dict):
+                    name_filter = key.get("#text")
+            items = [x for x in VPN[ent] if name_filter is None or key_fn(x) == name_filter]
+            if not items:
+                return _resp(_status(ent, "526", "Number of records Zero."))
+            body = "".join(
+                xmltodict.unparse({ent: {"@transactionid": "", **{k: v for k, v in x.items() if v is not None}}},
+                                  full_document=False)
+                for x in items
+            )
+            return _resp(body)
         if "IPHostGroup" in get:
             node = get.get("IPHostGroup") or {}
             name_filter = None

@@ -20,6 +20,10 @@ log = logging.getLogger("policy")
 BLOCK_GROUP: Final[str] = "SCANPORT GROUP"
 BLOCK_GROUP_FAMILY: Final[str] = "IPv4"
 
+# Rule Group được phép ĐỌC cho module VPN (B2). Cấu hình VPN_RULE_GROUPS chỉ được chọn trong danh sách này;
+# muốn thêm group phải sửa mã, review, build lại image (cùng nguyên tắc với BLOCK_GROUP).
+VPN_RULE_GROUPS_ALLOWED: Final[tuple[str, ...]] = ("VPN",)
+
 
 class GroupPolicyError(ValueError):
     """Yêu cầu thao tác trên group khác BLOCK_GROUP."""
@@ -46,6 +50,11 @@ def _only_block_group(name: str | None) -> bool:
     return name == BLOCK_GROUP
 
 
+def _vpn_rule_group(name: str | None) -> bool:
+    """Đọc Rule Group: không lọc tên (lấy danh sách rồi lọc trong mã) hoặc lọc đúng group được phép."""
+    return name is None or name in VPN_RULE_GROUPS_ALLOWED
+
+
 # (thao tác, entity) → điều kiện trên <Name> (None = không ràng buộc tên).
 # Thao tác: get | add | update | remove. Mọi cặp KHÔNG có ở đây đều bị chặn.
 ALLOWLIST: Final[dict[tuple[str, str], Callable[[str | None], bool] | None]] = {
@@ -54,6 +63,14 @@ ALLOWLIST: Final[dict[tuple[str, str], Callable[[str | None], bool] | None]] = {
     ("add", "IPHost"): None,                       # tạo object chặn (tên = IP/CIDR)
     ("remove", "IPHost"): None,                    # + kiểm tra object do app tạo: check_remove_iphost()
     ("update", "IPHostGroup"): _only_block_group,  # chỉ ghi HostList của SCANPORT GROUP
+    # Module VPN — CHỈ ĐỌC (docs/architecture.md §5). Không có thao tác ghi nào lên các entity này.
+    ("get", "User"): None,
+    ("get", "UserGroup"): None,
+    ("get", "SSLVPNPolicy"): None,
+    ("get", "VPNIPSecConnection"): None,
+    ("get", "Schedule"): None,
+    ("get", "FirewallRule"): None,
+    ("get", "FirewallRuleGroup"): _vpn_rule_group,
 }
 
 _OPS = {"Get": "get", "Remove": "remove"}
@@ -86,6 +103,9 @@ def check_request(inner_xml: str) -> list[tuple[str, str, str | None]]:
             _deny(op, "entity rỗng", None)
         for ent in op_el:
             name = ent.findtext("Name")
+            if name is None and op == "get":  # Get có Filter: <Filter><key name="Name" criteria="=">…</key>
+                key = ent.find("Filter/key")
+                name = key.text if key is not None and key.get("name") == "Name" else None
             name = name.strip() if isinstance(name, str) else None
             key = (op, ent.tag)
             if key not in ALLOWLIST:
