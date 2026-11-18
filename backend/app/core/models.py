@@ -469,3 +469,76 @@ class ReviewDecision(Base):
         return "\x1f".join([ts.isoformat() if ts else "", str(self.campaign_id), str(self.item_id or ""),
                             self.item_title or "", self.decision or "", self.comment or "", self.actor or "",
                             "1" if self.on_behalf else "0", self.prev_hash or ""])
+
+
+# ------------------------------------------------------- tự động chặn từ Teams (v2.2)
+class AutoBlockMessage(Base):
+    """Tin nhắn group chat Teams app đã đọc (mỗi tin một lần — msg_id UNIQUE, nhiều pod / đọc chồng lấn không xử lý lại)."""
+
+    __tablename__ = "autoblock_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    msg_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    sender_id: Mapped[str] = mapped_column(String(64), default="")
+    sender_name: Mapped[str] = mapped_column(String(160), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)  # thời điểm tin trên Teams
+    received_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    # processed | no_command | ignored_sender | ignored_edited | ignored_deleted | ignored_type
+    status: Mapped[str] = mapped_column(String(24), index=True)
+    excerpt: Mapped[str] = mapped_column(Text, default="")  # chỉ lưu nội dung tin của tài khoản SOC
+    body_hash: Mapped[str] = mapped_column(String(64), default="")
+
+
+class AutoBlockRequest(Base):
+    """Một lệnh 'ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>' và vòng đời của nó."""
+
+    __tablename__ = "autoblock_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    message_id: Mapped[int] = mapped_column(Integer, index=True)
+    ip: Mapped[str] = mapped_column(String(64), index=True)
+    sender_name: Mapped[str] = mapped_column(String(160), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)
+    # auto = tự chặn · pending = chờ duyệt · rejected_invalid = IP không hợp lệ / thuộc safe-list
+    mode: Mapped[str] = mapped_column(String(16), default="pending")
+    # blocking | blocked | failed | pending | approved | rejected | invalid | unblocked | unblocking
+    status: Mapped[str] = mapped_column(String(16), index=True)
+    pending_reason: Mapped[str] = mapped_column(String(255), default="")
+    # IP thuộc whitelist (HSC / Akamai / đối tác…) → chỉ quản trị viên được Approve
+    needs_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    whitelist: Mapped[str] = mapped_column(String(160), default="")  # "<tên danh sách>: <dòng khớp>"
+    # Trả lời kết quả vào group chat (qua Teams Workflows): "" | sent | failed | skipped
+    reply_status: Mapped[str] = mapped_column(String(16), default="")
+    reply_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    replied_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    blocked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    job_id: Mapped[str] = mapped_column(String(32), default="")
+    result_json: Mapped[str] = mapped_column(Text, default="")
+    decided_by: Mapped[str] = mapped_column(String(160), default="")
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    unblocked_by: Mapped[str] = mapped_column(String(160), default="")
+    unblocked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    note: Mapped[str] = mapped_column(Text, default="")
+
+
+class AutoBlockEvent(Base):
+    """Nhật ký tự động chặn (nối chuỗi băm): nhận lệnh, tự chặn, chờ duyệt, duyệt, gỡ, công tắc, ngắt ngưỡng."""
+
+    __tablename__ = "autoblock_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), index=True)
+    request_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    event: Mapped[str] = mapped_column(String(32))
+    actor: Mapped[str] = mapped_column(String(160), default="")
+    detail: Mapped[str] = mapped_column(Text, default="")
+    prev_hash: Mapped[str] = mapped_column(String(64), default="")
+    row_hash: Mapped[str] = mapped_column(String(64), default="")
+
+    def hash_payload(self) -> str:
+        ts = self.ts
+        if ts is not None:
+            ts = ts.replace(tzinfo=dt.timezone.utc) if ts.tzinfo is None else ts.astimezone(dt.timezone.utc)
+        return "\x1f".join([ts.isoformat() if ts else "", str(self.request_id or ""), self.ip or "",
+                            self.event or "", self.actor or "", self.detail or "", self.prev_hash or ""])

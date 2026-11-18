@@ -24,6 +24,8 @@ from .core.db import SessionLocal, init_db
 from .core.models import Firewall
 from .integrations.sophos.policy import BLOCK_GROUP
 from .modules.audit.router import router as audit_router
+from .modules.autoblock import service as autoblock_service
+from .modules.autoblock.router import router as autoblock_router
 from .modules.branding.router import router as branding_router
 from .modules.firewalls.router import router as firewalls_router
 from .modules.ipblock import group_cache as gc
@@ -60,6 +62,9 @@ def _startup() -> None:
         jobs.every("notify", settings.NOTIFY_INTERVAL_SECONDS, notify_outbox.run_cycle)
     # Rà soát quyền VPN: tự mở đợt đầu quý, nhắc / báo quá hạn (một pod/vòng); kiểm tra mỗi giờ
     jobs.every("review", 3600, review_service.tick)
+    # Tự động chặn từ Teams: kiểm tra mỗi 30 giây, chỉ đọc Graph khi đủ chu kỳ quản trị viên chọn (mặc định 5 phút)
+    if settings.AUTOBLOCK_POLL_SECONDS > 0:
+        jobs.every("autoblock", 30, autoblock_service.tick)
 
 
 @asynccontextmanager
@@ -83,7 +88,7 @@ app_errors.install(app)
 app_logging.install(app)
 
 for _router in (auth_router, firewalls_router, users_router, ipblock_router, changes_router, audit_router,
-                branding_router, vpn_router, notify_router, review_router):
+                branding_router, vpn_router, notify_router, review_router, autoblock_router):
     app.include_router(_router)
 
 

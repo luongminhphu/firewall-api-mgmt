@@ -106,6 +106,14 @@ class Settings:
     SMTP_TIMEOUT: int = int(os.getenv("SMTP_TIMEOUT", "15"))
     # Địa chỉ app người dùng mở (qua App Proxy), dùng cho link trong email, vd https://socblock-hsc.msappproxy.net
     APP_BASE_URL: str = os.getenv("APP_BASE_URL", "").strip()
+    # Tự động chặn từ group chat Teams (v2.2): chu kỳ đọc tin MẶC ĐỊNH BAN ĐẦU (giây, 300 = 5 phút) — quản trị viên
+    # chỉnh lại trong tab Cài đặt (60–3600 giây). 0 = tắt hẳn bộ lập lịch đọc tin (chỉ còn nút "Đọc ngay").
+    # Kết nối Graph, tài khoản SOC, khung giờ, ngưỡng... cấu hình trên giao diện (tab Cài đặt).
+    AUTOBLOCK_POLL_SECONDS: int = int(os.getenv("AUTOBLOCK_POLL_SECONDS", "300"))
+    GRAPH_BASE_URL: str = os.getenv("GRAPH_BASE_URL", "https://graph.microsoft.com/v1.0").rstrip("/")
+    GRAPH_LOGIN_URL: str = os.getenv("GRAPH_LOGIN_URL", "https://login.microsoftonline.com").rstrip("/")
+    # Chỉ dùng cho kiểm thử với Graph giả lập (chứng chỉ tự ký); môi trường thật luôn kiểm tra TLS
+    GRAPH_VERIFY_TLS: bool = _bool(os.getenv("GRAPH_VERIFY_TLS"), True)
     LOGO_MAX_KB: int = int(os.getenv("LOGO_MAX_KB", "300"))
     OIDC_ALLOW_GUESTS: bool = _bool(os.getenv("OIDC_ALLOW_GUESTS"), False)
     # SSO một lần (v1.5.1):
@@ -139,7 +147,7 @@ class Settings:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "").strip()
 
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "2.1.0"
+    APP_VERSION: str = "2.2.0"
 
     @property
     def auth_modes(self) -> list[str]:
