@@ -4,6 +4,7 @@
 import { API, api } from "./api.js";
 import { toast } from "./components/toast.js";
 import { loadAudit } from "./pages/audit.js";
+import { loadAutoblock } from "./pages/autoblock.js";
 import { loadBranding } from "./pages/branding.js";
 import { loadChanges } from "./pages/changes.js";
 import { loadFirewalls } from "./pages/firewalls.js";
@@ -67,6 +68,7 @@ initRouter((tab) => {
   if (tab === "vpn") loadVpn();
   if (tab === "settings") loadSettings();
   if (tab === "review") loadReview();
+  if (tab === "autoblock") loadAutoblock();
 });
 
 $("#theme-toggle").addEventListener("click", () => {

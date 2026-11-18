@@ -88,6 +88,7 @@
           <button type="button" role="tab" id="tab-audit" aria-controls="panel-audit" aria-selected="false" class="tab" data-tab="audit">Audit log</button>
           <button type="button" role="tab" id="tab-vpn" aria-controls="panel-vpn" aria-selected="false" class="tab" data-tab="vpn">VPN</button>
           <button type="button" role="tab" id="tab-review" aria-controls="panel-review" aria-selected="false" class="tab" data-tab="review">Rà soát</button>
+          <button type="button" role="tab" id="tab-autoblock" aria-controls="panel-autoblock" aria-selected="false" class="tab" data-tab="autoblock">Tự động chặn</button>
           <button type="button" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" class="tab hidden" data-tab="settings">Cài đặt</button>
           <button type="button" role="tab" aria-controls="panel-users" aria-selected="false" class="tab hidden" data-tab="users" id="tab-users">Người dùng</button>
         </nav>
@@ -500,8 +501,165 @@ Ví dụ:
           </div>
         </section>
 
+        <section class="panel" data-panel="autoblock" id="panel-autoblock" role="tabpanel" aria-labelledby="tab-autoblock">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h2>Tự động chặn từ Teams</h2>
+                <p class="muted tiny">App đọc group chat với SOC qua Microsoft Graph và tự chặn IP khi gặp đúng dòng
+                  <code class="ab-syntax">ĐỀ XUẤT CỦA SOC: BLOCK IP &lt;ip&gt;</code> (IN HOA) do tài khoản SOC gửi. Tin đã sửa bị bỏ qua.
+                  Chặn xong, app trả lời <code class="ab-syntax">INFRA ĐÃ BLOCK &lt;ip&gt; THEO YÊU CẦU LÚC &lt;thời điểm&gt;</code> vào group chat.</p>
+              </div>
+              <div class="row row--tight">
+                <button class="btn btn--danger" id="ab-off" type="button" hidden>Tắt khẩn cấp</button>
+                <button class="btn btn--primary" id="ab-on" type="button" hidden>Bật lại tự động chặn</button>
+                <button class="btn" id="ab-poll" type="button" hidden>Đọc Teams ngay</button>
+              </div>
+            </div>
+            <div id="ab-banner" aria-live="polite"></div>
+            <div id="ab-cards" class="status-cards ab-cards"></div>
+
+            <div class="ab-section">
+              <div class="card-head">
+                <div><h3>Chờ duyệt <span id="ab-pending-count" class="chip"></span></h3>
+                  <p class="muted tiny">Lệnh của SOC chưa được tự chặn (IP thuộc whitelist, ngoài khung giờ, công tắc tắt hoặc vượt ngưỡng). Approve để chặn ngay trên mọi firewall đích; IP thuộc whitelist chỉ quản trị viên Approve được.</p></div>
+                <div class="row row--tight ab-op" hidden>
+                  <button class="btn btn--primary btn--sm" id="ab-approve-sel" type="button" disabled>Approve các mục đã chọn</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="table" id="ab-pending">
+                  <thead><tr><th class="w-check ab-op" hidden><input type="checkbox" id="ab-pending-all" aria-label="Chọn tất cả mục chờ duyệt" /></th><th>Thời gian</th><th>IP</th><th>SOC gửi</th><th>Lý do chờ</th><th class="ab-op" hidden><span class="sr-only">Thao tác</span></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="ab-section">
+              <div class="card-head">
+                <div><h3 id="ab-night-title">Ca đêm</h3>
+                  <p class="muted tiny">IP app đã tự chặn từ 18:00 hôm trước đến 08:00 sáng hôm sau — rà soát buổi sáng, gỡ ngay nếu chặn nhầm.</p></div>
+                <div class="row row--tight ab-op" hidden>
+                  <button class="btn btn--danger-ghost btn--sm" id="ab-night-undo" type="button">Gỡ tất cả IP ca đêm</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="table" id="ab-night">
+                  <thead><tr><th>Thời gian</th><th>IP</th><th>SOC gửi</th><th>Trạng thái</th><th>Kết quả trên firewall</th><th class="ab-op" hidden><span class="sr-only">Thao tác</span></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="ab-section">
+              <div class="card-head">
+                <div><h3>Tất cả lệnh</h3><p class="muted tiny" id="ab-verify-msg"></p></div>
+                <div class="row row--tight">
+                  <select id="ab-status" class="select" aria-label="Lọc trạng thái lệnh">
+                    <option value="">Tất cả trạng thái</option>
+                    <option value="blocked">Đã chặn</option><option value="pending">Chờ duyệt</option>
+                    <option value="failed">Lỗi</option><option value="unblocked">Đã gỡ</option>
+                    <option value="rejected">Từ chối</option><option value="invalid">Không hợp lệ</option>
+                    <option value="duplicate">Trùng</option>
+                  </select>
+                  <button class="btn btn--ghost" id="ab-verify" type="button">Kiểm tra toàn vẹn nhật ký</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="table" id="ab-all">
+                  <thead><tr><th>Thời gian</th><th>IP</th><th>SOC gửi</th><th>Cách xử lý</th><th>Trạng thái</th><th>Ghi chú</th><th class="ab-op" hidden><span class="sr-only">Thao tác</span></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <div id="ab-pager" class="pager"></div>
+            </div>
+          </div>
+        </section>
+
         <section class="panel" data-panel="settings" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings">
           <div class="grid grid--settings">
+            <form class="card card--wide" id="ab-form" autocomplete="off">
+              <div class="card-head">
+                <div><h2>Tự động chặn từ Teams</h2>
+                  <p class="muted tiny">Đọc group chat với SOC qua Microsoft Graph (chỉ đọc). Cần App registration có quyền
+                    <code>ChatMessage.Read.Chat</code> (cấp riêng cho group chat, khuyến nghị) hoặc <code>Chat.Read.All</code>.</p></div>
+                <span id="ab-cfg-state" class="chip"></span>
+              </div>
+              <label class="check"><input type="checkbox" id="abs-enabled" /> <span>Bật đọc Teams và tự động chặn</span></label>
+              <div class="row row--2">
+                <label class="field"><span>Tenant ID</span><input id="abs-tenant" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" spellcheck="false" /></label>
+                <label class="field"><span>Client ID (App registration)</span><input id="abs-client" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" spellcheck="false" /></label>
+              </div>
+              <div class="row row--2">
+                <label class="field"><span>Client secret</span><input id="abs-secret" type="password" autocomplete="new-password" placeholder="Để trống = giữ secret đã lưu" /></label>
+                <label class="field"><span>Chat ID của group chat</span><input id="abs-chat" placeholder="19:…@thread.v2" spellcheck="false" /></label>
+              </div>
+              <p class="muted tiny">Chat ID: mở group chat trên Teams web, sao chép phần <code>19:…@thread.v2</code> trong địa chỉ. Đổi Chat ID hoặc bật lại → chỉ xử lý tin gửi sau thời điểm đó.</p>
+              <div class="row row--tight">
+                <button class="btn" id="abs-test" type="button">Kiểm tra kết nối</button>
+              </div>
+              <div id="abs-test-out" class="ab-test-out"></div>
+
+              <fieldset class="field">
+                <legend>Tài khoản SOC được phép gửi lệnh</legend>
+                <p class="muted tiny">Định danh bằng Object ID Entra (tên hiển thị có thể trùng). Tin của người khác bị bỏ qua — chọn từ danh sách người gửi gần đây hoặc nhập tay.</p>
+                <div class="table-wrap">
+                  <table class="table" id="abs-senders">
+                    <thead><tr><th>Tên</th><th>Object ID</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+                <div class="row">
+                  <label class="field"><span>Object ID</span><input id="abs-new-id" placeholder="xxxxxxxx-xxxx-…" spellcheck="false" /></label>
+                  <label class="field"><span>Tên (ghi chú)</span><input id="abs-new-name" placeholder="SOC ca đêm" /></label>
+                  <button class="btn btn--ghost" id="abs-add" type="button">Thêm</button>
+                </div>
+                <div id="abs-seen" class="ab-seen"></div>
+              </fieldset>
+
+              <fieldset class="field">
+                <legend>Whitelist — IP của HSC, Akamai, đối tác…</legend>
+                <p class="muted tiny">SOC đề xuất chặn IP thuộc các danh sách này → <strong>không tự chặn</strong>, chuyển sang chờ duyệt và chỉ quản trị viên bấm <strong>Approve</strong> được. Mỗi dòng một IPv4 hoặc CIDR (vd <code>23.32.0.0/11</code>); dán được cả danh sách, phần sau dấu <code>#</code> là ghi chú.</p>
+                <div id="abs-wl" class="ab-wl"></div>
+                <button class="btn btn--ghost btn--sm" id="abs-wl-add" type="button">+ Thêm danh sách</button>
+              </fieldset>
+
+              <div class="row row--2">
+                <label class="check check--field"><input type="checkbox" id="abs-window" /> <span>Chỉ tự chặn trong khung giờ (ngoài khung → chờ duyệt)</span></label>
+                <div class="row row--2 row--flush">
+                  <label class="field"><span>Từ</span><input id="abs-wstart" type="time" /></label>
+                  <label class="field"><span>Đến</span><input id="abs-wend" type="time" /></label>
+                </div>
+              </div>
+              <div class="row row--2">
+                <label class="field"><span>Tối đa IP tự chặn mỗi giờ (vượt → ngắt, chờ duyệt, báo Admin)</span>
+                  <input id="abs-limit" type="number" min="1" max="200" /></label>
+                <label class="field"><span>Chu kỳ đọc Teams (phút, 1–60)</span>
+                  <input id="abs-poll" type="number" min="1" max="60" /></label>
+              </div>
+              <fieldset class="field">
+                <legend>Trả lời kết quả vào group chat</legend>
+                <p class="muted tiny">Sau mỗi IP chặn thành công, app gửi vào group chat: <code class="ab-syntax">INFRA ĐÃ BLOCK &lt;ip&gt; THEO YÊU CẦU LÚC &lt;thời điểm&gt;</code>.
+                  Microsoft Graph không cho app gửi tin vào chat bằng quyền ứng dụng, nên dùng <strong>Teams Workflows</strong>: trong group chat chọn
+                  <em>… › Workflows › Post to a chat when a webhook request is received</em>, rồi dán URL webhook vào đây. URL chứa chữ ký bí mật — được mã hóa, không hiển thị lại.</p>
+                <label class="check"><input type="checkbox" id="abs-reply" /> <span>Bật trả lời vào group chat</span></label>
+                <div class="row">
+                  <label class="field ab-grow"><span>URL webhook Teams Workflows</span>
+                    <input id="abs-reply-url" type="password" autocomplete="off" spellcheck="false" placeholder="https://…logic.azure.com/…" /></label>
+                  <button class="btn" id="abs-reply-test" type="button">Gửi thử</button>
+                </div>
+              </fieldset>
+              <label class="field"><span>Email nhóm Admin (cảnh báo vượt ngưỡng, chờ duyệt, báo cáo ca đêm 08:00) — để trống = mọi quản trị viên có email</span>
+                <textarea id="abs-admins" rows="2" placeholder="infra-admin@hsc.com.vn"></textarea></label>
+              <fieldset class="field">
+                <legend>Firewall đích (không chọn = mọi firewall đang bật)</legend>
+                <div id="abs-fws" class="check-list"></div>
+              </fieldset>
+              <p id="abs-msg" class="alert hidden" role="status"></p>
+              <p class="muted tiny" id="abs-meta"></p>
+              <button class="btn btn--primary" type="submit">Lưu cấu hình tự động chặn</button>
+            </form>
+
             <form class="card" id="vs-form">
               <div class="card-head"><h2>VPN · thời hạn truy cập</h2></div>
               <label class="field"><span>Báo "Sắp hết hạn" khi còn ≤ (ngày)</span>

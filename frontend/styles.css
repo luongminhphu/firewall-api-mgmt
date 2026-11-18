@@ -659,3 +659,41 @@ fieldset.field legend { font-size: var(--text-xs); color: var(--text-muted); mar
 @media (max-width: 640px) {
   .rv-actions .btn { flex: 1 1 auto; }
 }
+
+/* ------------------------------------------------ v2.2: Tự động chặn từ Teams */
+.ab-syntax { font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--blue-a8); white-space: nowrap; }
+.ab-cards { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.ab-card { cursor: default; }
+.ab-card:hover { background: var(--surface); }
+.ab-section { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.ab-section h3 { margin: 0; font-size: var(--text-base); display: flex; align-items: center; gap: var(--space-2); }
+.ab-breaker { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.ab-breaker p { margin: var(--space-1) 0 0; }
+.ab-test-out:empty { display: none; }
+.ab-test-out { margin-top: var(--space-2); }
+.ab-seen { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-top: var(--space-2); }
+.ab-seen p { width: 100%; margin: 0; }
+.ab-wl { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: var(--space-3); margin: var(--space-2) 0; }
+.ab-wl__item { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2); display: grid; gap: var(--space-2); }
+.ab-wl__head { display: flex; gap: var(--space-2); align-items: center; }
+.ab-wl__head input { flex: 1; min-width: 0; font-weight: 600; }
+.ab-wl textarea { width: 100%; font-family: var(--font-code); font-size: var(--text-xs); resize: vertical; }
+#abs-admins { width: 100%; font: inherit; }
+.row--flush { margin-top: 0; }
+#ab-pending td, #ab-night td, #ab-all td { vertical-align: top; }
+.ab-grow { flex: 1 1 280px; }
+#ab-form fieldset { border: 0; border-top: 1px solid var(--border); padding: var(--space-3) 0 0; margin: var(--space-4) 0 0; min-width: 0; }
+#ab-form legend { font-weight: 600; padding: 0 var(--space-2) 0 0; }
+@media (max-width: 640px) {
+  /* Trực đêm trên điện thoại: chờ duyệt / ca đêm hiện dạng thẻ — nút Approve / Gỡ chặn luôn trong màn hình */
+  .ab-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #ab-pending, #ab-night { min-width: 0; }
+  #ab-pending thead, #ab-night thead { display: none; }
+  #ab-pending tr, #ab-night tr { display: grid; grid-template-columns: 1fr; gap: 2px; padding: var(--space-3); border-bottom: 1px solid var(--border); }
+  #ab-pending td, #ab-night td { display: block; border: 0; padding: 0; }
+  #ab-pending td[data-label]::before, #ab-night td[data-label]::before { content: attr(data-label) " · "; color: var(--text-muted); font-size: var(--text-xs); }
+  #ab-pending td:first-child:not([data-label]) { position: absolute; right: var(--space-3); }
+  #ab-pending tr { position: relative; }
+  .ab-act { display: flex !important; gap: var(--space-2); margin-top: var(--space-2) !important; }
+  .ab-act .btn { flex: 1 1 auto; min-height: 40px; }
+}

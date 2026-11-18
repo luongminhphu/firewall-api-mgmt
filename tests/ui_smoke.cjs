@@ -217,6 +217,76 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.waitForFunction(() => /nằm chờ|Xếp hàng/.test(document.querySelector("#ob-note").textContent));
     chk("Cài đặt: Chạy ngay → thư nằm chờ khi SMTP tắt", (await page.textContent("#ob-note")).includes("nằm chờ"));
 
+    // Tự động chặn từ Teams (admin): cấu hình Graph, chọn tài khoản SOC từ người gửi gần đây, whitelist, bật
+    const G = "http://127.0.0.1:4470";
+    const SOC = "11111111-2222-3333-4444-555555555555";
+    const say = (html) => fetch(`${G}/_post`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sender_id: SOC, name: "SOC Ca đêm", html }) });
+    await fetch(`${G}/_reset`, { method: "POST" });
+    await say("<p>Dạ chào các anh</p>");
+    await page.fill("#abs-tenant", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    await page.fill("#abs-client", "12345678-1234-1234-1234-123456789abc");
+    await page.fill("#abs-secret", "graph-secret");
+    await page.fill("#abs-chat", "19:mockchat@thread.v2");
+    await page.click("#abs-test");
+    await page.waitForSelector("#abs-test-out .alert--ok");
+    await page.waitForSelector(`#abs-seen [data-add="${SOC}"]`);
+    chk("Tự động chặn: Kiểm tra kết nối → liệt kê người gửi gần đây", true);
+    await page.click(`#abs-seen [data-add="${SOC}"]`);
+    chk("Tự động chặn: chọn tài khoản SOC từ người gửi", (await page.textContent("#abs-senders")).includes(SOC));
+    chk("Tự động chặn: mặc định có whitelist HSC / Akamai / Đối tác",
+      (await page.$$eval("#abs-wl [data-wl-name]", (xs) => xs.map((x) => x.value))).join(",") === "HSC,Akamai,Đối tác");
+    await page.fill('#abs-wl [data-wl-text="1"]', "23.32.0.0/11   # Akamai edge\n104.64.0.0/10");
+    chk("Tự động chặn: đếm số dòng whitelist khi nhập", (await page.textContent('[data-wl-count="1"]')) === "2 dòng");
+    await page.click("#abs-wl-add");
+    await page.fill('#abs-wl [data-wl-name="3"]', "Nhà cung cấp SOC");
+    await page.fill('#abs-wl [data-wl-text="3"]', "45.117.80.0/22");
+    await page.fill("#abs-reply-url", "http://127.0.0.1:4470/_workflow?sig=bi-mat");
+    await page.check("#abs-reply");
+    await page.click("#abs-reply-test");
+    await page.waitForSelector("#abs-msg.alert--ok");
+    chk("Tự động chặn: gửi thử trả lời vào group chat qua Workflows",
+      (await page.textContent("#abs-msg")).includes("INFRA ĐÃ BLOCK 192.0.2.1 THEO YÊU CẦU LÚC"));
+    chk("Tự động chặn: URL webhook không hiện lại, chỉ tên máy",
+      (await page.inputValue("#abs-reply-url")) === "" && (await page.getAttribute("#abs-reply-url", "placeholder")).includes("127.0.0.1"));
+    await page.uncheck("#abs-window");
+    await page.fill("#abs-poll", "5");
+    await page.check("#abs-enabled");
+    await page.click('#ab-form button[type="submit"]');
+    await page.waitForFunction(() => /Đã lưu/.test(document.querySelector("#abs-msg").textContent));
+    chk("Tự động chặn: lưu + bật, chu kỳ 5 phút", (await page.textContent("#abs-msg")).includes("5 phút")
+      && (await page.textContent("#ab-cfg-state")) === "Đang bật");
+    chk("Tự động chặn: secret không hiện lại", (await page.inputValue("#abs-secret")) === "");
+    await say("<p>ĐỀ XUẤT CỦA SOC: BLOCK IP 185.220.101.7</p><p>ĐỀ XUẤT CỦA SOC: BLOCK IP 23.33.1.1</p>");
+    await tab(page, "autoblock");
+    await page.waitForSelector("#panel-autoblock.is-active");
+    await page.waitForSelector("#ab-cards .ab-card");
+    await page.click("#ab-poll");
+    await page.waitForFunction(() => /23\.33\.1\.1/.test(document.querySelector("#ab-pending").textContent));
+    chk("Tự động chặn: IP thuộc whitelist Akamai → chờ duyệt, có nhãn whitelist",
+      (await page.textContent("#ab-pending")).includes("Whitelist · Akamai: 23.32.0.0/11"));
+    await page.waitForFunction(() => /185\.220\.101\.7[\s\S]*Đã chặn/.test(document.querySelector("#ab-all").textContent), null, { timeout: 15000 }).catch(() => {});
+    if (!/Đã chặn/.test(await page.textContent("#ab-all"))) {
+      await page.selectOption("#ab-status", "blocked");
+      await page.waitForFunction(() => /185\.220\.101\.7/.test(document.querySelector("#ab-all").textContent));
+      await page.selectOption("#ab-status", "");
+    }
+    chk("Tự động chặn: IP thường → tự chặn", true);
+    await page.waitForFunction(() => /Đã báo Teams/.test(document.querySelector("#ab-all").textContent), null, { timeout: 15000 }).catch(() => {});
+    if (!/Đã báo Teams/.test(await page.textContent("#ab-all"))) { await page.selectOption("#ab-status", ""); await page.waitForTimeout(800); }
+    chk("Tự động chặn: cột ghi chú hiện 'Đã báo Teams'", /Đã báo Teams/.test(await page.textContent("#ab-all")));
+    await page.click("#ab-pending [data-approve]");
+    await page.waitForFunction(() => !/23\.33\.1\.1/.test(document.querySelector("#ab-pending").textContent), null, { timeout: 20000 });
+    chk("Tự động chặn: quản trị viên Approve IP whitelist → rời danh sách chờ", true);
+    await page.click("#ab-off");
+    await page.waitForSelector("#ab-banner .alert--warn");
+    chk("Tự động chặn: Tắt khẩn cấp → banner cảnh báo, hiện nút Bật lại", await visible(page, "#ab-on"));
+    await page.click("#ab-on");
+    await page.waitForFunction(() => !document.querySelector("#ab-banner .alert--warn"));
+    await page.click("#ab-verify");
+    await page.waitForSelector("#ab-verify-msg .chip--ok");
+    chk("Tự động chặn: kiểm tra chuỗi băm nhật ký", true);
+
     // Rà soát định kỳ (admin): mở đợt, quyết định (thu hồi cần lý do), tiến độ theo team
     await tab(page, "review");
     await page.waitForSelector("#panel-review.is-active");
@@ -290,6 +360,10 @@ const visible = (page, sel) => page.isVisible(sel);
       await p2.waitForSelector("#panel-vpn.is-active");
       chk("viewer xem được tab VPN nhưng không có nút Đồng bộ", !(await visible(p2, "#v-sync")));
       chk("viewer không thấy tab Cài đặt", !(await visible(p2, "#tab-settings")));
+      await tab(p2, "autoblock");
+      await p2.waitForSelector("#ab-cards .ab-card");
+      chk("viewer xem tab Tự động chặn nhưng không có nút Tắt khẩn cấp / Approve / Gỡ chặn",
+        !(await visible(p2, "#ab-off")) && !(await p2.$("#ab-pending [data-approve]")) && !(await p2.$("[data-unblock]")));
       chk("viewer không thấy nút Kiểm tra tất cả / Đồng bộ lịch sử / form firewall",
         !(await visible(p2, "#test-all")) && !(await visible(p2, "#c-sync")) && !(await visible(p2, "#fw-form")));
       chk("không lỗi JS (viewer)", e2.length === 0, e2.join(" | "));
@@ -321,7 +395,7 @@ const visible = (page, sel) => page.isVisible(sel);
       const { ctx: c3, page: p3, errors: e3 } = await newPage(browser, { tok: admin, viewport: { width: 390, height: 844 } });
       await p3.goto(B + "/");
       await p3.waitForSelector("#app:not(.hidden)");
-      for (const t of ["block", "groups", "firewalls", "changes", "audit", "vpn", "review", "settings", "users"]) {
+      for (const t of ["block", "groups", "firewalls", "changes", "audit", "vpn", "review", "autoblock", "settings", "users"]) {
         await tab(p3, t);
         await p3.waitForTimeout(250);
         const overflow = await p3.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

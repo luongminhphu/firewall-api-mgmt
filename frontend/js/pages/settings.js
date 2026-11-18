@@ -1,9 +1,11 @@
 /* Tab Cài đặt (quản trị viên):
+   - Tự động chặn từ Teams (autoblock-settings.js): Graph, tài khoản SOC, whitelist, khung giờ, ngưỡng, chu kỳ đọc.
    - VPN: ngưỡng "sắp hết hạn", Rule Group được đọc (trong whitelist).
    - SMTP: máy chủ / bảo mật / tài khoản (mật khẩu không bao giờ hiển thị lại), người gửi, gửi thử.
    - Thông báo: bật/tắt, email Infra, mốc nhắc, báo hằng tuần rule hết hạn còn bật.
    - Đại diện team (nhập tay), hàng đợi email + Chạy ngay. */
 import { api } from "../api.js";
+import { loadAutoblockSettings } from "./autoblock-settings.js";
 import { setBusy } from "../components/progress.js";
 import { tableMessage } from "../components/table.js";
 import { toast } from "../components/toast.js";
@@ -15,7 +17,7 @@ const say = (el, text, kind) => {
 };
 
 export async function loadSettings() {
-  await Promise.all([loadVpnSettings(), loadReviewSettings(), loadNotify(), loadOutbox()]);
+  await Promise.all([loadAutoblockSettings(), loadVpnSettings(), loadReviewSettings(), loadNotify(), loadOutbox()]);
 }
 
 // ------------------------------------------------------------------ rà soát định kỳ
