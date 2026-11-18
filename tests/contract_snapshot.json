@@ -1,0 +1,901 @@
+{
+ "audit": {
+  "content_type": "application/json",
+  "shape": {
+   "count": "*",
+   "rows": [
+    {
+     "action": "*",
+     "actor": "*",
+     "client_ip": "*",
+     "firewall_name": "*",
+     "group_name": "*",
+     "id": "*",
+     "message": "*",
+     "reason": "*",
+     "result": "*",
+     "source": "*",
+     "status_code": "*",
+     "target": "*",
+     "ts": "*"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "audit_csv": {
+  "content_type": "text/csv",
+  "status": 200
+ },
+ "auth_modes": {
+  "content_type": "application/json",
+  "shape": {
+   "header": "*",
+   "local": "*",
+   "modes": [
+    "*"
+   ],
+   "oidc": "*",
+   "oidc_auto": "*",
+   "oidc_message": "*",
+   "oidc_ready": "*"
+  },
+  "status": 200
+ },
+ "bad_login": {
+  "content_type": "application/json",
+  "detail": "Tên đăng nhập hoặc mật khẩu không đúng",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 401
+ },
+ "block": {
+  "content_type": "application/json",
+  "shape": {
+   "cache_refresh": [
+    "*"
+   ],
+   "created_at": "*",
+   "done": "*",
+   "dry_run": "*",
+   "entries": [
+    {
+     "kind": "*",
+     "value": "*"
+    }
+   ],
+   "error": "*",
+   "finished_at": "*",
+   "firewalls": [
+    {
+     "id": "*",
+     "name": "*"
+    }
+   ],
+   "job_id": "*",
+   "kind": "*",
+   "rejected": [],
+   "results": [
+    {
+     "firewall": "*",
+     "firewall_id": "*",
+     "group": "*",
+     "group_operation": "*",
+     "group_result": {
+      "batch_id": "*",
+      "changed": "*",
+      "code": "*",
+      "message": "*"
+     },
+     "group_xml": "*",
+     "ip_family": "*",
+     "ok": "*",
+     "rows": [
+      {
+       "code": "*",
+       "message": "*",
+       "object": "*",
+       "result": "*",
+       "value": "*"
+      }
+     ],
+     "summary": {
+      "added": "*",
+      "dry_run": "*",
+      "error": "*",
+      "existed": "*"
+     }
+    }
+   ],
+   "status": "*",
+   "total": "*"
+  },
+  "status": 200
+ },
+ "block_dry": {
+  "content_type": "application/json",
+  "shape": {
+   "cache_refresh": [],
+   "created_at": "*",
+   "done": "*",
+   "dry_run": "*",
+   "entries": [
+    {
+     "kind": "*",
+     "value": "*"
+    }
+   ],
+   "error": "*",
+   "finished_at": "*",
+   "firewalls": [
+    {
+     "id": "*",
+     "name": "*"
+    }
+   ],
+   "job_id": "*",
+   "kind": "*",
+   "rejected": [],
+   "results": [
+    {
+     "firewall": "*",
+     "firewall_id": "*",
+     "group": "*",
+     "group_operation": "*",
+     "group_result": {
+      "changed": "*",
+      "code": "*",
+      "message": "*"
+     },
+     "group_xml": "*",
+     "ip_family": "*",
+     "ok": "*",
+     "rows": [
+      {
+       "code": "*",
+       "message": "*",
+       "object": "*",
+       "result": "*",
+       "value": "*"
+      }
+     ],
+     "summary": {
+      "added": "*",
+      "dry_run": "*",
+      "error": "*",
+      "existed": "*"
+     }
+    }
+   ],
+   "status": "*",
+   "total": "*"
+  },
+  "status": 200
+ },
+ "block_empty": {
+  "content_type": "application/json",
+  "detail": "Không có IP hợp lệ nào để chặn",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 400
+ },
+ "block_other_group": {
+  "content_type": "application/json",
+  "detail": "Bị từ chối theo chính sách bảo mật: ứng dụng chỉ được thao tác trên IP Host Group 'SCANPORT GROUP', không chấp nhận group 'KHAC'.",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 403
+ },
+ "block_viewer": {
+  "content_type": "application/json",
+  "detail": "Vai trò 'viewer' không đủ quyền (cần 'operator')",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 403
+ },
+ "branding": {
+  "content_type": "application/json",
+  "shape": {
+   "app_name": "*",
+   "has_logo": "*",
+   "logo_max_kb": "*",
+   "logo_url": "*"
+  },
+  "status": 200
+ },
+ "changes": {
+  "content_type": "application/json",
+  "shape": {
+   "batches": [
+    {
+     "actor": "*",
+     "actor_name": "*",
+     "added": [],
+     "auth_method": "*",
+     "batch_id": "*",
+     "client_ip": "*",
+     "count_after": "*",
+     "count_before": "*",
+     "firewall_id": "*",
+     "firewall_name": "*",
+     "group_name": "*",
+     "kind": "*",
+     "reason": "*",
+     "removed": [
+      {
+       "id": "*",
+       "object": "*",
+       "value": "*"
+      }
+     ],
+     "source": "*",
+     "ts": "*"
+    }
+   ],
+   "groups": [
+    "*"
+   ],
+   "locked_group": "*",
+   "totals": {
+    "added": "*",
+    "batches": "*",
+    "drift": "*",
+    "removed": "*"
+   }
+  },
+  "status": 200
+ },
+ "changes_csv": {
+  "content_type": "text/csv",
+  "status": 200
+ },
+ "changes_sync": {
+  "content_type": "application/json",
+  "shape": {
+   "results": [
+    {
+     "added": [],
+     "baseline": "*",
+     "exists": "*",
+     "firewall": "*",
+     "group": "*",
+     "ok": "*",
+     "removed": [],
+     "total": "*"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "changes_verify": {
+  "content_type": "application/json",
+  "shape": {
+   "broken_at": "*",
+   "checked": "*",
+   "message": "*",
+   "ok": "*"
+  },
+  "status": 200
+ },
+ "config": {
+  "content_type": "application/json",
+  "shape": {
+   "allow_private": "*",
+   "app_name": "*",
+   "auth_method": "*",
+   "block_group": "*",
+   "can_change_password": "*",
+   "host_prefix": "*",
+   "managed_user": "*",
+   "master_key_set": "*",
+   "name": "*",
+   "role": "*",
+   "safe_list": [
+    "*"
+   ],
+   "shared_password_login": "*",
+   "user": "*",
+   "users_strict": "*",
+   "version": "*"
+  },
+  "status": 200
+ },
+ "fw_404": {
+  "content_type": "application/json",
+  "detail": "Không tìm thấy firewall id=99999",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 404
+ },
+ "fw_create": {
+  "content_type": "application/json",
+  "shape": {
+   "default_group": "*",
+   "enabled": "*",
+   "host": "*",
+   "id": "*",
+   "last_checked": "*",
+   "last_message": "*",
+   "last_status": "*",
+   "name": "*",
+   "note": "*",
+   "port": "*",
+   "site": "*",
+   "username": "*",
+   "verify_ssl": "*"
+  },
+  "status": 200
+ },
+ "fw_create_dup": {
+  "content_type": "application/json",
+  "detail": "Tên firewall đã tồn tại",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 400
+ },
+ "fw_create_missing": {
+  "content_type": "application/json",
+  "detail": "Thiếu thông tin: host, username, password",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 400
+ },
+ "fw_create_other_group": {
+  "content_type": "application/json",
+  "detail": "Bị từ chối theo chính sách bảo mật: ứng dụng chỉ được thao tác trên IP Host Group 'SCANPORT GROUP', không chấp nhận group 'KHAC'.",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 403
+ },
+ "fw_create_viewer": {
+  "content_type": "application/json",
+  "detail": "Vai trò 'viewer' không đủ quyền (cần 'admin')",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 403
+ },
+ "fw_delete": {
+  "content_type": "application/json",
+  "shape": {
+   "deleted": "*",
+   "ok": "*"
+  },
+  "status": 200
+ },
+ "fw_groups": {
+  "content_type": "application/json",
+  "shape": {
+   "cache": {
+    "age_s": "*",
+    "cached": "*",
+    "details_mode": "*",
+    "dirty": "*",
+    "error": "*",
+    "full_age_s": "*",
+    "full_scanned_at": "*",
+    "next_full_scan_at": "*",
+    "note": "*",
+    "refreshing": "*",
+    "scan_ms": "*",
+    "scanned_at": "*",
+    "stale": "*",
+    "status": "*",
+    "ttl_minutes": "*"
+   },
+   "default_group": "*",
+   "firewall": "*",
+   "groups": [
+    {
+     "count": "*",
+     "description": "*",
+     "ip_family": "*",
+     "name": "*"
+    }
+   ],
+   "locked": "*"
+  },
+  "status": 200
+ },
+ "fw_list": {
+  "content_type": "application/json",
+  "shape": [
+   {
+    "default_group": "*",
+    "enabled": "*",
+    "host": "*",
+    "id": "*",
+    "last_checked": "*",
+    "last_message": "*",
+    "last_status": "*",
+    "name": "*",
+    "note": "*",
+    "port": "*",
+    "site": "*",
+    "username": "*",
+    "verify_ssl": "*"
+   }
+  ],
+  "status": 200
+ },
+ "fw_test": {
+  "content_type": "application/json",
+  "shape": {
+   "code": "*",
+   "firewall": "*",
+   "firewall_id": "*",
+   "message": "*",
+   "ok": "*"
+  },
+  "status": 200
+ },
+ "fw_test_all": {
+  "content_type": "application/json",
+  "shape": {
+   "results": [
+    {
+     "code": "*",
+     "firewall": "*",
+     "firewall_id": "*",
+     "message": "*",
+     "ok": "*"
+    }
+   ]
+  },
+  "status": 200
+ },
+ "fw_update": {
+  "content_type": "application/json",
+  "shape": {
+   "default_group": "*",
+   "enabled": "*",
+   "host": "*",
+   "id": "*",
+   "last_checked": "*",
+   "last_message": "*",
+   "last_status": "*",
+   "name": "*",
+   "note": "*",
+   "port": "*",
+   "site": "*",
+   "username": "*",
+   "verify_ssl": "*"
+  },
+  "status": 200
+ },
+ "group_cache_all": {
+  "content_type": "application/json",
+  "shape": {
+   "daily_at": "*",
+   "firewalls": [
+    {
+     "age_s": "*",
+     "cached": "*",
+     "details_mode": "*",
+     "dirty": "*",
+     "enabled": "*",
+     "error": "*",
+     "exists": "*",
+     "firewall": "*",
+     "firewall_id": "*",
+     "full_age_s": "*",
+     "full_scanned_at": "*",
+     "next_full_scan_at": "*",
+     "note": "*",
+     "refreshing": "*",
+     "scan_ms": "*",
+     "scanned_at": "*",
+     "site": "*",
+     "stale": "*",
+     "status": "*",
+     "total": "*",
+     "ttl_minutes": "*"
+    }
+   ],
+   "group": "*",
+   "ttl_minutes": "*"
+  },
+  "status": 200
+ },
+ "group_cache_one": {
+  "content_type": "application/json",
+  "shape": {
+   "age_s": "*",
+   "cached": "*",
+   "details_mode": "*",
+   "dirty": "*",
+   "error": "*",
+   "firewall": "*",
+   "firewall_id": "*",
+   "full_age_s": "*",
+   "full_scanned_at": "*",
+   "next_full_scan_at": "*",
+   "note": "*",
+   "refreshing": "*",
+   "scan_ms": "*",
+   "scanned_at": "*",
+   "stale": "*",
+   "status": "*",
+   "total": "*",
+   "ttl_minutes": "*"
+  },
+  "status": 200
+ },
+ "group_members": {
+  "content_type": "application/json",
+  "shape": {
+   "cache": {
+    "age_s": "*",
+    "cached": "*",
+    "details_mode": "*",
+    "dirty": "*",
+    "error": "*",
+    "full_age_s": "*",
+    "full_scanned_at": "*",
+    "next_full_scan_at": "*",
+    "note": "*",
+    "refreshing": "*",
+    "scan_ms": "*",
+    "scanned_at": "*",
+    "stale": "*",
+    "status": "*",
+    "ttl_minutes": "*"
+   },
+   "description": "*",
+   "firewall": "*",
+   "group": "*",
+   "ip_family": "*",
+   "members": [
+    {
+     "description": "*",
+     "host_type": "*",
+     "object": "*",
+     "value": "*"
+    }
+   ],
+   "source": "*",
+   "total": "*"
+  },
+  "status": 200
+ },
+ "group_members_other": {
+  "content_type": "application/json",
+  "detail": "Bị từ chối theo chính sách bảo mật: ứng dụng chỉ được thao tác trên IP Host Group 'SCANPORT GROUP', không chấp nhận group 'KHAC'.",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 403
+ },
+ "header_login": {
+  "content_type": "application/json",
+  "shape": {
+   "name": "*",
+   "role": "*",
+   "token": "*",
+   "user": "*"
+  },
+  "status": 200
+ },
+ "health": {
+  "content_type": "application/json",
+  "shape": {
+   "app": "*",
+   "status": "*",
+   "version": "*"
+  },
+  "status": 200
+ },
+ "job": {
+  "content_type": "application/json",
+  "shape": {
+   "cache_refresh": [
+    "*"
+   ],
+   "created_at": "*",
+   "done": "*",
+   "dry_run": "*",
+   "entries": [
+    {
+     "kind": "*",
+     "value": "*"
+    }
+   ],
+   "error": "*",
+   "finished_at": "*",
+   "firewalls": [
+    {
+     "id": "*",
+     "name": "*"
+    }
+   ],
+   "job_id": "*",
+   "kind": "*",
+   "rejected": [],
+   "results": [
+    {
+     "firewall": "*",
+     "firewall_id": "*",
+     "group": "*",
+     "group_operation": "*",
+     "group_result": {
+      "batch_id": "*",
+      "changed": "*",
+      "code": "*",
+      "message": "*"
+     },
+     "group_xml": "*",
+     "ip_family": "*",
+     "ok": "*",
+     "rows": [
+      {
+       "code": "*",
+       "message": "*",
+       "object": "*",
+       "result": "*",
+       "value": "*"
+      }
+     ],
+     "summary": {
+      "added": "*",
+      "dry_run": "*",
+      "error": "*",
+      "existed": "*"
+     }
+    }
+   ],
+   "status": "*",
+   "total": "*"
+  },
+  "status": 200
+ },
+ "job_other_user": {
+  "content_type": "application/json",
+  "detail": "Không tìm thấy công việc (đã hết hạn lưu hoặc không thuộc về bạn)",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 404
+ },
+ "logo_delete": {
+  "content_type": "application/json",
+  "shape": {
+   "app_name": "*",
+   "has_logo": "*",
+   "logo_max_kb": "*",
+   "logo_url": "*"
+  },
+  "status": 200
+ },
+ "logo_get_none": {
+  "content_type": "application/json",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 404
+ },
+ "me_password_shared": {
+  "content_type": "application/json",
+  "detail": "Chỉ tài khoản nội bộ của app mới đổi được mật khẩu tại đây",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 400
+ },
+ "no_token": {
+  "content_type": "application/json",
+  "detail": "Chưa đăng nhập hoặc session đã hết hạn",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 401
+ },
+ "parse": {
+  "content_type": "application/json",
+  "shape": {
+   "accepted": [
+    {
+     "excluded": "*",
+     "kind": "*",
+     "object": "*",
+     "reason": "*",
+     "valid": "*",
+     "value": "*"
+    }
+   ],
+   "count": "*",
+   "rejected": [
+    {
+     "excluded": "*",
+     "kind": "*",
+     "reason": "*",
+     "valid": "*",
+     "value": "*"
+    }
+   ],
+   "rejected_count": "*"
+  },
+  "status": 200
+ },
+ "routes": [
+  "DELETE /api/branding/logo",
+  "DELETE /api/firewalls/{fw_id}",
+  "DELETE /api/users/{uid}",
+  "GET /",
+  "GET /api/audit",
+  "GET /api/audit.csv",
+  "GET /api/auth/modes",
+  "GET /api/auth/oidc/callback",
+  "GET /api/auth/oidc/login",
+  "GET /api/branding",
+  "GET /api/branding/logo",
+  "GET /api/changes",
+  "GET /api/changes.csv",
+  "GET /api/changes/verify",
+  "GET /api/config",
+  "GET /api/docs",
+  "GET /api/firewalls",
+  "GET /api/firewalls/{fw_id}/group-cache",
+  "GET /api/firewalls/{fw_id}/group-members",
+  "GET /api/firewalls/{fw_id}/groups",
+  "GET /api/group-cache",
+  "GET /api/health",
+  "GET /api/jobs/{job_id}",
+  "GET /api/users",
+  "GET /docs/oauth2-redirect",
+  "GET /index.html",
+  "GET /openapi.json",
+  "GET /redoc",
+  "POST /api/auth/header",
+  "POST /api/block",
+  "POST /api/changes/sync",
+  "POST /api/firewalls",
+  "POST /api/firewalls/test-all",
+  "POST /api/firewalls/{fw_id}/test",
+  "POST /api/login",
+  "POST /api/me/password",
+  "POST /api/parse",
+  "POST /api/unblock",
+  "POST /api/users",
+  "PUT /api/branding/logo",
+  "PUT /api/firewalls/{fw_id}",
+  "PUT /api/users/{uid}"
+ ],
+ "unblock": {
+  "content_type": "application/json",
+  "shape": {
+   "cache_refresh": [
+    "*"
+   ],
+   "created_at": "*",
+   "done": "*",
+   "error": "*",
+   "finished_at": "*",
+   "firewalls": [
+    {
+     "id": "*",
+     "name": "*"
+    }
+   ],
+   "job_id": "*",
+   "kind": "*",
+   "results": [
+    {
+     "firewall": "*",
+     "firewall_id": "*",
+     "group": "*",
+     "ok": "*",
+     "rows": [
+      {
+       "message": "*",
+       "object": "*",
+       "result": "*",
+       "value": "*"
+      }
+     ],
+     "summary": {
+      "error": "*",
+      "not_found": "*",
+      "removed": "*"
+     }
+    }
+   ],
+   "status": "*",
+   "targets": [
+    "*"
+   ],
+   "total": "*"
+  },
+  "status": 200
+ },
+ "unblock_empty": {
+  "content_type": "application/json",
+  "detail": "Chưa chọn IP/object nào để bỏ chặn",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 400
+ },
+ "user_create": {
+  "content_type": "application/json",
+  "shape": {
+   "auth_type": "*",
+   "created_at": "*",
+   "created_by": "*",
+   "display_name": "*",
+   "enabled": "*",
+   "entra_linked": "*",
+   "has_password": "*",
+   "id": "*",
+   "is_admin": "*",
+   "last_login": "*",
+   "note": "*",
+   "permission": "*",
+   "role": "*",
+   "updated_at": "*",
+   "username": "*"
+  },
+  "status": 200
+ },
+ "user_create_weak": {
+  "content_type": "application/json",
+  "detail": "Mật khẩu tối thiểu 10 ký tự",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 400
+ },
+ "user_delete": {
+  "content_type": "application/json",
+  "shape": {
+   "deleted": "*"
+  },
+  "status": 200
+ },
+ "user_update": {
+  "content_type": "application/json",
+  "shape": {
+   "auth_type": "*",
+   "created_at": "*",
+   "created_by": "*",
+   "display_name": "*",
+   "enabled": "*",
+   "entra_linked": "*",
+   "has_password": "*",
+   "id": "*",
+   "is_admin": "*",
+   "last_login": "*",
+   "note": "*",
+   "permission": "*",
+   "role": "*",
+   "updated_at": "*",
+   "username": "*"
+  },
+  "status": 200
+ },
+ "users": {
+  "content_type": "application/json",
+  "shape": {
+   "password_min_length": "*",
+   "shared_password_login": "*",
+   "users": [],
+   "users_strict": "*"
+  },
+  "status": 200
+ },
+ "users_viewer": {
+  "content_type": "application/json",
+  "detail": "Vai trò 'viewer' không đủ quyền (cần 'admin')",
+  "shape": {
+   "detail": "*"
+  },
+  "status": 403
+ }
+}
