@@ -165,3 +165,27 @@ def group_members(cfg: dict, group_id: str, *, max_pages: int = 20) -> tuple[str
         except httpx.HTTPError as exc:
             raise GraphError(f"Không kết nối được Microsoft Graph ({type(exc).__name__})") from exc
     return name, members
+
+
+def chat_members(cfg: dict) -> list[dict]:
+    """Thành viên hiện tại của group chat → [{"id","name","tenant","email"}] — để quản trị viên chọn người được gửi
+    lệnh. Quyền: ChatMember.Read.Chat (RSC) hoặc ChatMember.Read.All."""
+    tok = token(cfg)
+    url = f"{settings.GRAPH_BASE_URL}/chats/{quote(cfg['chat_id'], safe='')}/members"
+    try:
+        with _client() as c:
+            r = c.get(url, headers={"Authorization": f"Bearer {tok}"})
+    except httpx.HTTPError as exc:
+        raise GraphError(f"Không kết nối được Microsoft Graph ({type(exc).__name__})") from exc
+    if r.status_code == 403:
+        raise GraphError("Graph từ chối đọc thành viên group chat (403): app chưa được cấp ChatMember.Read.Chat "
+                         "hoặc ChatMember.Read.All")
+    if r.status_code != 200:
+        raise GraphError(f"Graph lỗi {r.status_code} khi đọc thành viên group chat")
+    out = []
+    for m in r.json().get("value", []):
+        uid = str(m.get("userId") or "").lower()
+        if uid:
+            out.append({"id": uid[:64], "name": str(m.get("displayName") or "")[:160],
+                        "tenant": str(m.get("tenantId") or "").lower()[:64], "email": str(m.get("email") or "")[:200]})
+    return out

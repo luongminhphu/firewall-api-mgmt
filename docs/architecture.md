@@ -654,7 +654,7 @@ Test: gửi → chặn → xóa → bản chụp còn nguyên, có mốc xóa ·
 
 | Cách | Cấu hình | Cơ chế |
 |---|---|---|
-| Tenant của đơn vị SOC | `soc_tenants` | So `from.user.tenantId` của tin (Graph). Kết hợp việc HSC kiểm soát thành viên group chat thành allowlist hiệu quả: thêm hay gỡ người khỏi chat là đủ. **Tenant HSC (trùng Tenant ID của App registration) bị từ chối** ở bước lưu và cả bước kiểm tra, để nhân viên HSC trong chat không kích hoạt được lệnh |
+| ~~Tenant của đơn vị SOC~~ *(đã bỏ — xem cập nhật cuối mục)* | `soc_tenants` | So `from.user.tenantId` của tin (Graph). Kết hợp việc HSC kiểm soát thành viên group chat thành allowlist hiệu quả: thêm hay gỡ người khỏi chat là đủ. **Tenant HSC (trùng Tenant ID của App registration) bị từ chối** ở bước lưu và cả bước kiểm tra, để nhân viên HSC trong chat không kích hoạt được lệnh |
 | Nhóm Entra | `soc_groups` | `GET /groups/{id}/transitiveMembers/microsoft.graph.user` (`GroupMember.Read.All`). Cache trong state (dùng chung các pod), đọc lại mỗi 30 phút, và đọc lại ngay khi gặp người gửi lạ nếu cache cũ hơn 5 phút. Đọc lỗi thì giữ danh sách cũ và báo `group_error`. Không áp dụng được cho tài khoản external (không có trong danh bạ HSC) |
 | Tài khoản riêng lẻ | `soc_senders` | Object ID |
 
@@ -674,3 +674,19 @@ Không cần cơ chế mới: thứ tự kiểm tra là tài khoản riêng lẻ
 
 - Giao diện ghi rõ cách khai báo, và có nút "+ Cho phép tài khoản HSC này".
 - Test khóa hành vi: thành viên IT Security (tài khoản hoặc nhóm) được tự chặn; nhân viên HSC khác bị bỏ qua.
+
+**Cập nhật (18/11/2026), bỏ tin cậy theo cả tenant.** Đối tác SOC (vd HPT) có thể có người khác trong group chat
+(account manager, kỹ thuật…), nên tin cậy cả tenant là quá rộng. Thay đổi:
+
+- `soc_tenants` bị bỏ. Chỉ còn hai cách: **tài khoản được ủy quyền** (`soc_senders`, mỗi mục `{id, name, tenant}`) và
+  **nhóm Entra**. Mục có `tenant` thì `from.user.tenantId` của tin phải khớp.
+- API nhận `soc_tenants` → 400. Cấu hình cũ có `soc_tenants` được đọc thành `legacy_tenants` (không còn hiệu lực) để giao
+  diện hiện cảnh báo; `dismiss_legacy_tenants` xóa cảnh báo.
+- *Kiểm tra kết nối* đọc thêm `GET /chats/{id}/members` (`ChatMember.Read.Chat` / `ChatMember.Read.All`, tùy chọn) để
+  liệt kê thành viên chat kèm tenant và email, nút **+ Ủy quyền** cạnh từng người. Thiếu quyền → `members_error`, quay về
+  danh sách người gửi gần đây.
+- Sự kiện `ignored_sender` ghi "chưa được ủy quyền (… hoặc sai tenant)".
+
+Test: người khác của cùng tenant đối tác bị bỏ qua · đúng Object ID nhưng sai tenant bị bỏ qua · danh sách thành viên chat
+đánh dấu ai đã được ủy quyền · thiếu quyền đọc thành viên vẫn kiểm tra kết nối được · cấu hình cũ `soc_tenants` không còn
+hiệu lực và hiện cảnh báo.

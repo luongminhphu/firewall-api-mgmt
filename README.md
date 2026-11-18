@@ -45,7 +45,7 @@ Phiên bản: **v2.2.0** · Thiết kế chi tiết: [`docs/architecture.md`](do
 | Tính năng | Mô tả |
 |---|---|
 | **Lệnh của SOC** | Dòng riêng, viết IN HOA, khớp chính xác `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>` (chỉ IPv4 đơn); **tin đã sửa bị bỏ qua** |
-| **Team SOC trực 24/7** | SOC là dịch vụ Managed Service, thành viên là **tài khoản external** trong group chat của HSC. App tin cậy theo **tenant của đơn vị SOC**: đổi ca hay người mới chỉ cần được thêm vào chat. **Thành viên HSC được ủy quyền** (vd team IT Security) khai báo qua **nhóm Entra** (tự cập nhật thành viên) hoặc **tài khoản riêng lẻ**. Nhân viên HSC khác trong cùng chat **không** gửi được lệnh |
+| **Team SOC trực 24/7** | SOC là dịch vụ Managed Service của đối tác (vd HPT), thành viên là **tài khoản external** trong group chat của HSC. Chỉ **những người được ủy quyền đích danh** mới ra lệnh được — app **không** tin cậy cả tenant của đối tác (đối tác có thể có người khác trong chat). Ủy quyền từng **tài khoản** (gắn tenant, chọn nhanh từ danh sách thành viên group chat) hoặc qua **nhóm Entra**; thành viên HSC được ủy quyền (vd team IT Security) khai báo cùng cách. Người khác trong chat **không** gửi được lệnh |
 | **Đọc tin hiệu quả** | Microsoft Graph, chu kỳ chỉnh trên giao diện (mặc định 5 phút). **Lọc phía Graph** theo `lastModifiedDateTime`, nên không đọc lại lịch sử; chu kỳ không có tin mới thì Graph trả 0 tin. Tin gửi trước lúc bật không bao giờ được xử lý |
 | **Thời điểm lệnh** | Lấy theo giờ SOC gửi tin (`createdDateTime` của Microsoft), không theo lúc app đọc. Lệnh trễ quá ngưỡng (mặc định 30 phút) thì **chờ duyệt** |
 | **Lịch tự chặn** | Ngày thường ngoài giờ (mặc định 18:00–08:00) · **cả ngày thứ 7, Chủ nhật** · **ngày lễ** (một ngày hoặc cả đợt) · nút "tự chặn cả ngày hôm nay" · hoặc 24/7. Giờ hành chính thì lệnh chờ duyệt |
@@ -159,7 +159,6 @@ Mã lỗi hay gặp: `502` object trùng tên · `526` không tồn tại · `53
 |---|---|---|
 | **App đăng nhập (OIDC)** | Đăng nhập bằng tài khoản công ty + MFA | App registration kiểu Web, Redirect URI `<URL ngoài>/api/auth/oidc/callback`, App Role `SRB.Admin` / `SRB.Operator` / `SRB.Viewer`. Chi tiết, kèm Entra Application Proxy: [`docs/entra-app-proxy.md`](docs/entra-app-proxy.md) |
 | **App đọc group chat** | Tự động chặn | App registration **riêng**, tạo *client secret*. Cấp quyền đọc chat theo **một** trong hai cách (bảng dưới). Ghi lại Tenant ID, Client ID, secret |
-| **Tenant ID của đơn vị SOC** | Tự động chặn (SOC external) | Hỏi nhà cung cấp dịch vụ SOC Directory (tenant) ID của họ; hoặc sau khi cài, dùng nút **Kiểm tra kết nối** để app tự hiện tenant của người gửi |
 | **Nhóm Entra** *(tùy chọn)* | Thành viên HSC được ủy quyền (vd team IT Security), SOC nội bộ / khách B2B | Security group chứa những người được gửi lệnh (vd `IT-Security`); app đọc chat cần thêm quyền ứng dụng `GroupMember.Read.All`. Không dùng nhóm thì khai báo từng tài khoản |
 | **Chat ID** | Tự động chặn | Mở group chat trên Teams web, sao chép phần `19:…@thread.v2` trên thanh địa chỉ |
 | **Teams Workflows** | Trả lời `INFRA ĐÃ BLOCK …` vào chat | Trong group chat chọn **… › Workflows › "Post to a chat when a webhook request is received"**, chọn đúng chat, sao chép **URL webhook** |
@@ -170,6 +169,9 @@ Quyền đọc group chat cho app đọc chat (Microsoft Graph, quyền ứng d�
 |---|---|---|
 | **`ChatMessage.Read.Chat`** (resource-specific consent) — *khuyến nghị* | Chỉ đúng group chat đã cài app | Cần đóng gói app thành Teams app có khai báo quyền RSC và cài vào group chat ([hướng dẫn RSC](https://learn.microsoft.com/microsoftteams/platform/graph-api/rsc/resource-specific-consent)) |
 | **`Chat.Read.All`** (Application) | Mọi chat trong tenant | Cần admin consent; đơn giản hơn nhưng phạm vi rộng — app vẫn chỉ đọc đúng Chat ID đã cấu hình |
+
+*Tùy chọn:* thêm **`ChatMember.Read.Chat`** (RSC) hoặc **`ChatMember.Read.All`** để nút *Kiểm tra kết nối* liệt kê toàn bộ
+thành viên group chat (kèm tenant, email) khi ủy quyền. Không có quyền này, app chỉ liệt kê người đã gửi tin gần đây.
 
 ### 3.3 Mạng & tài nguyên
 
@@ -415,10 +417,9 @@ chạm vào để xem hướng dẫn (điền gì, lấy ở đâu, ví dụ).
    Sau đó vào tab **VPN** › **Đồng bộ ngay**.
 5. **Tự động chặn từ Teams** (*Cài đặt › Tự động chặn từ Teams*):
    1. Nhập Tenant ID, Client ID, Client secret của **app đọc chat**, và Chat ID ([mục 3.2](#32-microsoft-entra-id--teams)).
-   2. **Người được gửi lệnh.** Bấm **Kiểm tra kết nối**: app liệt kê người gửi gần đây trong group chat, kèm tenant và nhãn
-      *External* / *HSC*. Với dịch vụ SOC Managed Service, bấm **"+ Tin cậy tenant này"** cạnh một thành viên SOC (External)
-      để tin cậy cả team trực. Thành viên HSC được ủy quyền (vd IT Security): khai báo nhóm Entra, hoặc bấm
-      **"+ Cho phép tài khoản HSC này"** cạnh từng người. App không cho tin cậy cả tenant HSC.
+   2. **Người được gửi lệnh.** Bấm **Kiểm tra kết nối**: app liệt kê thành viên group chat kèm tenant, email và nhãn
+      *External* / *HSC*. Bấm **"+ Ủy quyền"** cạnh **từng** thành viên SOC của đối tác và từng thành viên IT Security
+      của HSC. Tài khoản được gắn tenant. Có thể dùng thêm nhóm Entra cho thành viên HSC.
    3. **Whitelist:** dải public HSC, dải Akamai (SiteShield / Origin IP ACL), IP đối tác; mỗi dòng một IP/CIDR.
    4. **Lịch tự chặn:** ngoài giờ ngày thường, cuối tuần, ngày lễ. Đặt thêm ngưỡng IP/giờ, chu kỳ đọc, ngưỡng lệnh cũ.
    5. **Trả lời vào group chat:** dán URL webhook Workflows, bấm **Gửi thử** và kiểm tra tin trong Teams.
@@ -468,16 +469,16 @@ App tạo IP Host trước (gộp tối đa `SOPHOS_BATCH_SIZE` object trong m�
 - **Khớp chính xác.**
   - Chữ thường (`Đề xuất của SOC: block ip …`), hoặc lệnh lẫn trong một câu dài, đều **không** được nhận.
   - Một tin có thể chứa nhiều dòng lệnh. Chỉ nhận IPv4 đơn; CIDR, dải, IPv6 hay tên miền bị ghi "Không hợp lệ".
-- **Ai được gửi lệnh:** người gửi phải khớp **một** trong ba cách:
-  - **Tenant của đơn vị SOC** (khuyến nghị cho SOC external): mọi thành viên của team trực trong group chat, kể cả người
-    mới vào ca, gửi được lệnh ngay;
-  - **Nhóm Entra của HSC**: dùng cho **thành viên HSC được ủy quyền** như team IT Security (vd nhóm `IT-Security`), hoặc SOC
-    nội bộ / khách B2B. App đọc thành viên mỗi 30 phút, và đọc lại ngay khi gặp người gửi lạ;
-  - **Tài khoản riêng lẻ** (Object ID): vd 2–3 thành viên IT Security khi chưa có nhóm.
+- **Ai được gửi lệnh:** chỉ những người được **ủy quyền đích danh**, theo một trong hai cách:
+  - **Tài khoản được ủy quyền** (Object ID, gắn tenant): từng thành viên SOC của đối tác (vd HPT) và từng thành viên
+    HSC được ủy quyền (vd IT Security). Tin phải đến đúng từ tenant đã gắn;
+  - **Nhóm Entra của HSC** (vd `IT-Security`, SOC nội bộ, khách B2B): app đọc thành viên mỗi 30 phút, và đọc lại ngay khi
+    gặp người gửi lạ.
 
-  Nhân viên HSC **không** thuộc nhóm hay danh sách trên thì không gửi được lệnh, vì app không bao giờ tin cậy cả tenant HSC.
-  Mỗi lệnh và bản chụp bằng chứng ghi rõ *tin cậy theo* cách nào (vd "Tenant Nhà cung cấp SOC", "Nhóm IT-Security",
-  "Tài khoản Nguyễn A (IT Security)").
+  App **không** tin cậy cả tenant, kể cả tenant của đối tác SOC: người khác của đối tác (vd account manager) hay nhân viên
+  HSC trong cùng chat đều không gửi được lệnh. Lệnh của họ bị bỏ qua và ghi sự kiện. Khi đối tác **đổi người trực**, quản
+  trị viên ủy quyền người mới (bấm *Kiểm tra kết nối* › **+ Ủy quyền**) và xóa người đã rời team. Mỗi lệnh và bản chụp
+  bằng chứng ghi rõ *tin cậy theo* cách nào (vd "Tài khoản Phạm C (HPT SOC)", "Nhóm IT-Security").
 - **Tin đã sửa bị bỏ qua.** Gõ nhầm thì gửi tin mới.
 - **Thời điểm lệnh** là lúc SOC gửi tin, theo giờ của Microsoft.
 - Chặn xong, app trả lời vào chat: `INFRA ĐÃ BLOCK 195.178.110.102 THEO YÊU CẦU LÚC 18/11/2026 23:42:10`.
@@ -644,8 +645,8 @@ Thay đổi có hiệu lực ngay ở request kế tiếp. Có thẻ **Logo hi�
 **Tự động chặn:**
 - Bốn lớp kiểm soát rủi ro: whitelist, lịch tự chặn, ngưỡng IP/giờ, công tắc khẩn cấp.
 - Safe-list / IP nội bộ không bao giờ bị chặn. Chỉ chặn `/32` vào `SCANPORT GROUP`, nên chặn nhầm chỉ ảnh hưởng chiều vào từ IP đó.
-- Chỉ nhận lệnh từ người đã khai báo: tenant đơn vị SOC, nhóm Entra (vd IT Security) hoặc tài khoản riêng lẻ. Tenant HSC
-  không bao giờ được tin cậy *cả tenant*; thành viên HSC chỉ gửi được lệnh khi được khai báo đích danh hoặc qua nhóm. Tin đã sửa và lệnh quá cũ không tự chặn.
+- Chỉ nhận lệnh từ người được ủy quyền đích danh (tài khoản gắn tenant, hoặc nhóm Entra) — không tin cậy cả tenant,
+  kể cả tenant của đối tác SOC. Tin đã sửa và lệnh quá cũ không tự chặn.
 
 **Toàn vẹn dữ liệu:**
 - Mật khẩu firewall / SMTP, client secret Graph và URL webhook được mã hóa AES-256-GCM; không bao giờ trả về client.
@@ -667,8 +668,9 @@ Thay đổi có hiệu lực ngay ở request kế tiếp. Có thẻ **Logo hi�
 | Không nhận được email | *Cài đặt › Hàng đợi email*: xem lỗi từng thư · **Gửi thử** · egress tới SMTP |
 | Tự động chặn: "Đọc Teams lỗi … 403" | App đọc chat chưa có `ChatMessage.Read.Chat` (RSC) cho group chat, hoặc `Chat.Read.All` chưa được admin consent |
 | Tự động chặn: "… 404" | Sai Chat ID (phải có dạng `19:…@thread.v2`) |
-| Thành viên SOC mới vào ca gửi lệnh nhưng bị "bỏ qua (người gửi)" | Tin cậy theo tenant: người đó có đúng là tài khoản của tenant đơn vị SOC không (xem *Kiểm tra kết nối*)? Theo nhóm Entra: đã được thêm vào nhóm chưa; tab hiện lỗi "GroupMember.Read.All" nếu app chưa được cấp quyền đọc nhóm |
-| Không thêm được tenant ("tenant của chính HSC") | Cố ý chặn: tin cậy tenant HSC đồng nghĩa mọi nhân viên HSC trong chat gửi được lệnh. Thành viên HSC được ủy quyền (vd IT Security) khai báo qua **nhóm Entra** hoặc **tài khoản riêng lẻ** |
+| Thành viên SOC mới vào ca gửi lệnh nhưng bị "bỏ qua (người gửi)" | Người đó chưa được ủy quyền: *Kiểm tra kết nối* › **+ Ủy quyền**. Đã ủy quyền mà vẫn bị bỏ qua: tenant gắn với tài khoản không khớp (xem cột *Đơn vị*). Theo nhóm Entra: đã được thêm vào nhóm chưa; tab hiện lỗi "GroupMember.Read.All" nếu app chưa được cấp quyền đọc nhóm |
+| Cảnh báo "Bản trước tin cậy cả tenant…" | Nâng cấp từ bản tin cậy theo tenant: cấu hình cũ **không còn hiệu lực**. Ủy quyền từng thành viên SOC rồi bấm *Đã hiểu* |
+| *Kiểm tra kết nối* báo "ChatMember.Read…" | App chưa có quyền đọc thành viên chat (tùy chọn); vẫn ủy quyền được từ danh sách người gửi gần đây |
 | SOC gửi lệnh nhưng app không chặn | Đúng cú pháp IN HOA, đứng riêng một dòng? Người gửi có trong danh sách SOC? Tin bị sửa? Xem lý do ở *Tất cả lệnh* (whitelist, giờ hành chính, lệnh cũ, ngắt ngưỡng) |
 | Cảnh báo "quá nhiều tin mới" | Hơn 1.000 tin trong một chu kỳ; app đọc tiếp ở chu kỳ sau. Cân nhắc rút ngắn chu kỳ đọc |
 | "Chưa báo Teams" | URL webhook sai hoặc workflow bị tắt; egress tới `*.logic.azure.com`. App tự thử lại tối đa 5 lần |
@@ -704,7 +706,7 @@ E2E_DATABASE_URL=postgresql+psycopg2://u:p@127.0.0.1:5432/srb bash tests/run_e2e
 
 | Bộ test | Bảo vệ |
 |---|---|
-| `autoblock_test.py` | Cú pháp, team SOC (tenant MSSP external, nhóm Entra tự cập nhật, chặn tenant HSC, thành viên IT Security của HSC được ủy quyền), tin đã sửa, whitelist, lịch (cuối tuần / ngày lễ), ngưỡng, công tắc, lọc phía Graph, lệnh cũ, **bằng chứng khi tin bị xóa / sửa** |
+| `autoblock_test.py` | Cú pháp, team SOC (chỉ thành viên được ủy quyền, không cả tenant đối tác; sai tenant bị từ chối; danh sách thành viên chat; nhóm Entra tự cập nhật; thành viên IT Security của HSC; nâng cấp cấu hình cũ), tin đã sửa, whitelist, lịch (cuối tuần / ngày lễ), ngưỡng, công tắc, lọc phía Graph, lệnh cũ, **bằng chứng khi tin bị xóa / sửa** |
 | `reports_test.py` | Số liệu báo cáo, khoảng ngày trên lịch, PDF (Executive Summary, logo, tiếng Việt), Excel, gửi email đính kèm |
 | `contract_test.py` | Khóa danh sách API và hình dạng response (ghi lại bằng `CONTRACT_RECORD=1` khi cố ý thêm API) |
 | `policy_guard_test.py` | Không lệnh ghi nào lọt lên firewall ngoài allowlist |
@@ -719,7 +721,7 @@ Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che d
 
 | Phiên bản | Nội dung chính |
 |---|---|
-| **2.2.0** | **Tự động chặn từ group chat Teams:** cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, team SOC trực 24/7 (tenant MSSP external / nhóm Entra / tài khoản), bỏ qua tin đã sửa, whitelist + Approve, lịch tự chặn (ngoài giờ / cuối tuần / ngày lễ), ngưỡng IP/giờ, công tắc khẩn cấp, trả lời qua Teams Workflows, lọc phía Graph (không đọc lại lịch sử), thời điểm lệnh theo Teams, lệnh cũ chờ duyệt, **bằng chứng khi tin bị xóa**. **Báo cáo PDF / Excel** (Executive Summary, HSC Design System, logo, chọn kỳ trên lịch, gửi email). **Giao diện mới** (menu trái, bảng cân đối, tooltip hướng dẫn) |
+| **2.2.0** | **Tự động chặn từ group chat Teams:** cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, team SOC trực 24/7 (ủy quyền từng tài khoản gắn tenant / nhóm Entra), bỏ qua tin đã sửa, whitelist + Approve, lịch tự chặn (ngoài giờ / cuối tuần / ngày lễ), ngưỡng IP/giờ, công tắc khẩn cấp, trả lời qua Teams Workflows, lọc phía Graph (không đọc lại lịch sử), thời điểm lệnh theo Teams, lệnh cũ chờ duyệt, **bằng chứng khi tin bị xóa**. **Báo cáo PDF / Excel** (Executive Summary, HSC Design System, logo, chọn kỳ trên lịch, gửi email). **Giao diện mới** (menu trái, bảng cân đối, tooltip hướng dẫn) |
 | **2.1.0** | Rà soát quyền VPN định kỳ theo ISO 27001 · overlay Rancher |
 | **2.0.0** | Thông báo email: SMTP trên giao diện, nhắc trước hạn, outbox chống gửi trùng |
 | **1.9.0** | VPN giai đoạn 2: thời hạn qua firewall rule, dashboard, lịch sử rule, CSV cần xử lý |

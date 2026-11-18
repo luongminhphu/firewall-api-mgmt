@@ -442,50 +442,97 @@ chk("khung giờ tự chặn tính theo lúc SOC gửi (trong khung) dù app đ�
     r and r["mode"] == "auto", r)
 c.put("/api/autoblock/settings", headers=H, json={"window_enabled": False})
 
-# ------------------------------------------------------------ team SOC 24/7 nhiều người: tenant MSSP / nhóm Entra
-MSSP = "5ec5ec5e-0000-4000-8000-00000000550c"          # tenant của đơn vị cung cấp dịch vụ SOC (external)
+# ------------------------------------------------------------ team SOC 24/7: chỉ thành viên được ủy quyền, KHÔNG cả tenant
+MSSP = "5ec5ec5e-0000-4000-8000-00000000550c"          # tenant của đối tác cung cấp dịch vụ SOC (vd HPT, external)
 SOC_A, SOC_B = "aaaa0001-0000-4000-8000-000000000001", "aaaa0002-0000-4000-8000-000000000002"
+HPT_SALES = "aaaa0003-0000-4000-8000-000000000003"     # người khác của đối tác trong cùng group chat (không phải SOC)
 HSC_STAFF = "bbbb0001-0000-4000-8000-000000000001"     # nhân viên HSC trong cùng group chat (tenant HSC)
 c.put("/api/autoblock/settings", headers=H, json={"window_enabled": False})
-r = c.put("/api/autoblock/settings", headers=H, json={"soc_tenants": [{"id": TENANT.upper(), "name": "HSC"}]})
-chk("KHÔNG cho khai báo tenant HSC (trùng Tenant ID của app) làm tenant SOC", r.status_code == 400
-    and "tenant của chính HSC" in r.json()["detail"], r.text[:200])
+r = c.put("/api/autoblock/settings", headers=H, json={"soc_tenants": [{"id": MSSP, "name": "HPT"}]})
+chk("không còn tin cậy theo cả tenant: API từ chối soc_tenants", r.status_code == 400
+    and "từng tài khoản" in r.json()["detail"], r.text[:200])
+g.post("/_members", json={"members": [
+    {"userId": SOC_A, "displayName": "HPT SOC Trực ca 1", "tenantId": MSSP, "email": "soc1@hpt.example"},
+    {"userId": SOC_B, "displayName": "HPT SOC Trực ca 2", "tenantId": MSSP, "email": "soc2@hpt.example"},
+    {"userId": HPT_SALES, "displayName": "HPT Account Manager", "tenantId": MSSP, "email": "am@hpt.example"},
+    {"userId": HSC_STAFF, "displayName": "Nhân viên HSC", "tenantId": TENANT, "email": "staff@hsc.example"}]})
 _state(cursor=dt.datetime.now(dt.timezone.utc).isoformat())
-post(f"<p>{CMD} 99.0.0.1</p>", sender=SOC_A, name="MSSP Trực ca 1", tenant_id=MSSP, identity_type="federatedUser")
+post(f"<p>{CMD} 99.0.0.1</p>", sender=SOC_A, name="HPT SOC Trực ca 1", tenant_id=MSSP, identity_type="federatedUser")
 t = c.post("/api/autoblock/test", headers=H).json()
 ext = next((x for x in t["senders"] if x["id"] == SOC_A), {})
-chk("Kiểm tra kết nối: người gửi external hiện kèm tenant, chưa được tin cậy", ext.get("tenant") == MSSP
+chk("Kiểm tra kết nối: người gửi external hiện kèm tenant, chưa được ủy quyền", ext.get("tenant") == MSSP
     and not ext.get("is_soc"), ext)
+mem = {x["id"]: x for x in t["members"]}
+chk("Kiểm tra kết nối: liệt kê thành viên group chat kèm tenant + email", len(mem) == 4 and not t["members_error"]
+    and mem[SOC_B]["tenant"] == MSSP and mem[SOC_B]["email"] == "soc2@hpt.example"
+    and not any(x["is_soc"] for x in t["members"]), t["members"])
 poll()
-chk("thành viên MSSP chưa khai báo → không chặn", by_ip("99.0.0.1") is None)
-r = c.put("/api/autoblock/settings", headers=H, json={"soc_tenants": [{"id": MSSP, "name": "MSSP SOC"}]})
-chk("khai báo tenant của đơn vị SOC (MSSP)", r.status_code == 200 and r.json()["soc_tenants"][0]["id"] == MSSP, r.text[:200])
-post(f"<p>{CMD} 99.0.0.2</p>", sender=SOC_B, name="MSSP Trực ca 2 (người mới vào ca)", tenant_id=MSSP,
-     identity_type="federatedUser")
+chk("thành viên đối tác chưa được ủy quyền → không chặn", by_ip("99.0.0.1") is None)
+orig = c.get("/api/autoblock/settings", headers=H).json()["soc_senders"]
+r = c.put("/api/autoblock/settings", headers=H, json={"soc_senders": orig + [
+    {"id": SOC_A, "name": "HPT SOC Trực ca 1", "tenant": MSSP}, {"id": SOC_B, "name": "HPT SOC Trực ca 2", "tenant": MSSP}]})
+chk("ủy quyền từng thành viên SOC của đối tác, gắn tenant", r.status_code == 200
+    and r.json()["soc_senders"][-1]["tenant"] == MSSP, r.text[:200])
+chk("Tenant ID của tài khoản sai dạng → 400", c.put("/api/autoblock/settings", headers=H, json={"soc_senders": [
+    {"id": SOC_A, "name": "x", "tenant": "hpt"}]}).status_code == 400)
+post(f"<p>{CMD} 99.0.0.2</p>", sender=SOC_B, name="HPT SOC Trực ca 2", tenant_id=MSSP, identity_type="federatedUser")
 post(f"<p>{CMD} 99.0.0.3</p>", sender=HSC_STAFF, name="Nhân viên HSC", tenant_id=TENANT)
+post(f"<p>{CMD} 99.0.0.7</p>", sender=HPT_SALES, name="HPT Account Manager", tenant_id=MSSP, identity_type="federatedUser")
+post(f"<p>{CMD} 99.0.0.11</p>", sender=SOC_A, name="Giả mạo", tenant_id="7777aaaa-0000-4000-8000-000000000777",
+     identity_type="federatedUser")
 poll()
 r = wait_status("99.0.0.2", "blocked")
-chk("thành viên MSSP bất kỳ (kể cả người mới vào ca) gửi lệnh → tự chặn, ghi rõ tin cậy theo tenant",
-    r and r["mode"] == "auto" and "Tenant MSSP SOC" in r["note"], r)
-chk("nhân viên HSC trong cùng group chat gửi lệnh → không chặn (tenant HSC không được tin cậy)",
-    by_ip("99.0.0.3") is None)
-# team IT Security của HSC được ủy quyền: khai báo tài khoản riêng lẻ (cùng tenant HSC)
+chk("thành viên SOC được ủy quyền gửi lệnh → tự chặn, ghi 'Tài khoản HPT SOC Trực ca 2'",
+    r and r["mode"] == "auto" and "Tài khoản HPT SOC Trực ca 2" in r["note"], r)
+chk("người KHÁC của cùng tenant đối tác (không được ủy quyền) → không chặn", by_ip("99.0.0.7") is None)
+chk("nhân viên HSC trong cùng group chat → không chặn", by_ip("99.0.0.3") is None)
+chk("đúng Object ID nhưng SAI tenant đã gắn → không chặn", by_ip("99.0.0.11") is None)
+with _eng.begin() as cn:
+    _ign = cn.execute(_sa.text("SELECT detail FROM autoblock_events WHERE event='ignored_sender' AND ip='99.0.0.7'")).scalars().all()
+chk("lệnh của người chưa được ủy quyền được ghi sự kiện để điều tra",
+    any("HPT Account Manager" in d and "chưa được ủy quyền" in d for d in _ign), _ign)
+t = c.post("/api/autoblock/test", headers=H).json()
+mem = {x["id"]: x for x in t["members"]}
+chk("danh sách thành viên đánh dấu ai đã được ủy quyền", mem[SOC_A]["is_soc"] and mem[SOC_B]["is_soc"]
+    and not mem[HPT_SALES]["is_soc"] and not mem[HSC_STAFF]["is_soc"], t["members"])
+g.post("/_members", json={"members": [], "deny": True})
+t = c.post("/api/autoblock/test", headers=H).json()
+chk("thiếu quyền đọc thành viên chat → báo ChatMember.Read, kiểm tra kết nối vẫn OK",
+    t["ok"] and "ChatMember.Read" in t["members_error"] and t["members"] == [], t.get("members_error"))
+# team IT Security của HSC được ủy quyền: khai báo tài khoản (cùng tenant HSC)
 SECOPS = "bbbb0002-0000-4000-8000-000000000002"
 cur = c.get("/api/autoblock/settings", headers=H).json()["soc_senders"]
-r_sec = c.put("/api/autoblock/settings", headers=H, json={"soc_senders": cur + [{"id": SECOPS, "name": "Nguyễn A (IT Security)"}]})
-chk("khai báo thành viên HSC được ủy quyền (IT Security) dạng tài khoản riêng lẻ", r_sec.status_code == 200, r_sec.text[:200])
+r_sec = c.put("/api/autoblock/settings", headers=H, json={"soc_senders": cur + [
+    {"id": SECOPS, "name": "Nguyễn A (IT Security)", "tenant": TENANT}]})
+chk("ủy quyền thành viên HSC (IT Security) dạng tài khoản", r_sec.status_code == 200, r_sec.text[:200])
 post(f"<p>{CMD} 99.0.0.8</p>", sender=SECOPS, name="Nguyễn A", tenant_id=TENANT)
 post(f"<p>{CMD} 99.0.0.9</p>", sender=HSC_STAFF, name="Nhân viên HSC", tenant_id=TENANT)
 poll()
 r_sec = wait_status("99.0.0.8", "blocked")
 chk("thành viên IT Security của HSC gửi lệnh → tự chặn, ghi 'Tài khoản Nguyễn A (IT Security)'",
     r_sec and r_sec["mode"] == "auto" and "Tài khoản Nguyễn A (IT Security)" in r_sec["note"], r_sec)
-r = by_ip("99.0.0.2")  # lệnh của thành viên MSSP — dùng cho kiểm tra bằng chứng bên dưới
 chk("nhân viên HSC KHÁC (chưa được ủy quyền) vẫn không chặn được", by_ip("99.0.0.9") is None)
-c.put("/api/autoblock/settings", headers=H, json={"soc_senders": cur})
+c.put("/api/autoblock/settings", headers=H, json={"soc_senders": orig})
+r = by_ip("99.0.0.2")
 ev5 = c.get(f"/api/autoblock/requests/{r['id']}/evidence", headers=V).json()["evidence"]
 chk("bằng chứng ghi tenant người gửi + cách tin cậy", ev5["sender_tenant"] == MSSP
-    and ev5["trusted_by"] == "Tenant MSSP SOC" and ev5["intact"], ev5)
+    and ev5["trusted_by"] == "Tài khoản HPT SOC Trực ca 2" and ev5["intact"], ev5)
+# nâng cấp từ bản cũ tin cậy theo tenant: cấu hình soc_tenants cũ không còn hiệu lực, giao diện được nhắc
+with _eng.begin() as cn:
+    _raw = _json.loads(cn.execute(_sa.text("SELECT value FROM app_settings WHERE key='autoblock.settings'")).scalar())
+    _raw.pop("legacy_tenants", None)
+    _raw["soc_tenants"] = [{"id": MSSP, "name": "HPT"}]
+    cn.execute(_sa.text("UPDATE app_settings SET value=:v WHERE key='autoblock.settings'"), {"v": _json.dumps(_raw)})
+sg = c.get("/api/autoblock/settings", headers=H).json()
+chk("cấu hình cũ soc_tenants → hiện cảnh báo legacy_tenants", sg["legacy_tenants"][0]["id"] == MSSP
+    and "soc_tenants" not in sg, sg.get("legacy_tenants"))
+post(f"<p>{CMD} 99.0.0.12</p>", sender=HPT_SALES, name="HPT Account Manager", tenant_id=MSSP, identity_type="federatedUser")
+poll()
+chk("cấu hình cũ tin cậy tenant KHÔNG còn hiệu lực → người không được ủy quyền không chặn được",
+    by_ip("99.0.0.12") is None)
+sg = c.put("/api/autoblock/settings", headers=H, json={"dismiss_legacy_tenants": True}).json()
+chk("bấm Đã hiểu → ẩn cảnh báo", sg["legacy_tenants"] == []
+    and c.get("/api/autoblock/settings", headers=H).json()["legacy_tenants"] == [])
 
 # nhóm Entra (SOC nội bộ / khách B2B): thành viên tự cập nhật
 GRP = "9999aaaa-0000-4000-8000-0000000000f1"
@@ -509,7 +556,7 @@ r = wait_status("99.0.0.4", "blocked")
 chk("thành viên nhóm Entra → tự chặn, ghi 'Nhóm SOC-24x7'", r and "Nhóm SOC-24x7" in r["note"], r)
 st = c.get("/api/autoblock/status", headers=V).json()
 chk("trạng thái: số thành viên nhóm + thời điểm đọc", st["soc_groups"][0]["members"] == 1
-    and st["soc_groups"][0]["fetched_at"] and st["soc_tenants"] == 1, st["soc_groups"])
+    and st["soc_groups"][0]["fetched_at"] and st["legacy_tenants"] == 0, st["soc_groups"])
 NEWBIE = "cccc0002-0000-4000-8000-000000000002"
 g.post("/_group", json={"id": GRP, "name": "SOC-24x7", "members": [{"id": GUEST, "displayName": "Guest SOC"},
                                                                    {"id": NEWBIE, "displayName": "Người mới"}]})

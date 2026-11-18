@@ -31,6 +31,7 @@ class _In(BaseModel):
 class SenderIn(_In):
     id: str
     name: str | None = None
+    tenant: str | None = None  # chỉ dùng cho soc_senders: tin phải đến từ đúng tenant này
 
 
 class WhitelistIn(_In):
@@ -47,7 +48,8 @@ class SettingsIn(_In):
     chat_id: str | None = None
     soc_senders: list[SenderIn] | None = None
     soc_groups: list[SenderIn] | None = None
-    soc_tenants: list[SenderIn] | None = None
+    dismiss_legacy_tenants: bool | None = None
+    soc_tenants: Any = None  # đã bỏ (tin cậy cả tenant) — gửi lên thì báo lỗi rõ ràng
     window_enabled: bool | None = None
     window_start: str | None = None
     window_end: str | None = None
@@ -161,7 +163,7 @@ def ab_settings_get(db: Session = Depends(get_session), p: dict = Depends(admin)
 def ab_settings_put(request: Request, payload: SettingsIn = Body(...), db: Session = Depends(get_session),
                     p: dict = Depends(admin)):
     data = payload.model_dump(exclude_none=True)
-    for key in ("soc_senders", "soc_groups", "soc_tenants"):
+    for key in ("soc_senders", "soc_groups"):
         if getattr(payload, key) is not None:
             data[key] = [s.model_dump() for s in getattr(payload, key)]
     if payload.whitelists is not None:

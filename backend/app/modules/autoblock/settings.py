@@ -30,10 +30,13 @@ DEFAULTS = {
     "enabled": False,          # bộ đọc tin Teams
     "auto_enabled": True,      # công tắc khẩn cấp: False = mọi lệnh chuyển sang chờ duyệt
     "tenant_id": "", "client_id": "", "secret_enc": "", "chat_id": "",
-    # Ai được gửi lệnh (team SOC trực 24/7, nhiều người, xoay ca) — tin cậy nếu khớp MỘT trong ba:
+    # Ai được gửi lệnh — CHỈ những người được khai báo cụ thể (không tin cậy cả tenant của đối tác SOC):
     "soc_groups": [],          # nhóm Entra (security group) [{"id","name"}] — thành viên đọc qua Graph, tự cập nhật
-    "soc_tenants": [],         # tenant của đơn vị SOC bên ngoài (MSSP) [{"id","name"}] — mọi người thuộc tenant đó
-    "soc_senders": [],         # tài khoản riêng lẻ [{"id": "<object id>", "name": "..."}]
+    # tài khoản được ủy quyền [{"id": "<object id>", "name": "...", "tenant": "<tenant id>"}] — thành viên SOC của
+    # đối tác (external) hoặc thành viên HSC (vd IT Security). Có tenant → tin phải đến từ đúng tenant đó.
+    "soc_senders": [],
+    # bản cũ tin cậy cả tenant (soc_tenants) — đã bỏ; giữ lại để giao diện nhắc quản trị viên khai báo từng người
+    "legacy_tenants": [],
     "window_enabled": True,    # chỉ tự chặn trong lịch ngoài giờ; trong giờ hành chính → chờ duyệt
     "window_start": "18:00", "window_end": "08:00",   # ngoài giờ ngày thường (qua đêm)
     "weekend_full": True,      # thứ 7 + Chủ nhật: tự chặn cả ngày
@@ -61,9 +64,12 @@ def _load(db: Session, key: str, defaults: dict) -> dict:
     row = db.get(AppSetting, key)
     if row and row.value:
         try:
-            cfg.update({k: v for k, v in json.loads(row.value).items() if k in defaults})
+            stored = json.loads(row.value)
         except ValueError:
-            pass
+            stored = {}
+        cfg.update({k: v for k, v in stored.items() if k in defaults})
+        if key == KEY and stored.get("soc_tenants") and "legacy_tenants" not in stored:
+            cfg["legacy_tenants"] = stored["soc_tenants"]  # nâng cấp từ bản tin cậy theo tenant
     return cfg
 
 
@@ -125,8 +131,10 @@ def update(db: Session, data: dict, *, actor: str, client_ip: str) -> dict:
             cfg["secret_enc"] = encrypt(str(data["client_secret"]))
         except MasterKeyMissing as exc:
             raise AppError(400, str(exc)) from exc
-    for key, label, limit in (("soc_senders", "Object ID tài khoản SOC", 200), ("soc_groups", "Object ID nhóm Entra", 20),
-                              ("soc_tenants", "Tenant ID của đơn vị SOC", 10)):
+    if data.get("soc_tenants"):
+        raise AppError(400, "Không còn hỗ trợ tin cậy theo cả tenant của đối tác SOC — ủy quyền từng tài khoản "
+                            "(soc_senders, kèm tenant) hoặc nhóm Entra")
+    for key, label, limit in (("soc_senders", "Object ID tài khoản", 200), ("soc_groups", "Object ID nhóm Entra", 20)):
         if data.get(key) is None:
             continue
         items, seen = [], set()
@@ -135,7 +143,10 @@ def update(db: Session, data: dict, *, actor: str, client_ip: str) -> dict:
             if not sid or sid in seen:
                 continue
             seen.add(sid)
-            items.append({"id": sid, "name": str(s.get("name") or "").strip()[:120]})
+            item = {"id": sid, "name": str(s.get("name") or "").strip()[:120]}
+            if key == "soc_senders":
+                item["tenant"] = _guid(s.get("tenant"), "Tenant ID của tài khoản")
+            items.append(item)
         if len(items) > limit:
             raise AppError(400, f"Tối đa {limit} mục cho {label}")
         cfg[key] = items
@@ -194,23 +205,20 @@ def update(db: Session, data: dict, *, actor: str, client_ip: str) -> dict:
     if data.get("enabled") is not None:
         first_enable = bool(data["enabled"]) and not cfg["enabled"]
         cfg["enabled"] = bool(data["enabled"])
-    own = (cfg.get("tenant_id") or "").lower()
-    if own and any(t["id"] == own for t in cfg["soc_tenants"]):
-        # Group chat nằm trong tenant HSC: tin cậy tenant HSC = mọi nhân viên HSC trong chat gửi được lệnh chặn
-        raise AppError(400, "Không được khai báo tenant của chính HSC (trùng Tenant ID của App registration) làm tenant SOC "
-                            "— chỉ khai báo tenant của đơn vị cung cấp dịch vụ SOC (tài khoản external)")
+    if data.get("dismiss_legacy_tenants"):
+        cfg["legacy_tenants"] = []
     if cfg["enabled"]:
         if not configured(cfg):
             raise AppError(400, "Cần nhập đủ Tenant ID, Client ID, Client secret và Chat ID trước khi bật")
-        if not (cfg["soc_senders"] or cfg["soc_groups"] or cfg["soc_tenants"]):
-            raise AppError(400, "Cần khai báo người được gửi lệnh: nhóm Entra của team SOC, tenant của đơn vị SOC "
-                                "hoặc tài khoản riêng lẻ")
+        if not (cfg["soc_senders"] or cfg["soc_groups"]):
+            raise AppError(400, "Cần khai báo người được gửi lệnh: tài khoản được ủy quyền (thành viên SOC của đối tác, "
+                                "IT Security…) hoặc nhóm Entra")
     if first_enable:
         reset_cursor(db)  # bật lần đầu / bật lại: chỉ xử lý tin gửi SAU thời điểm này
     _save(db, KEY, cfg, actor)
     audit(db, action="settings_cud", fw=None, target="autoblock", result="ok", actor=actor, client_ip=client_ip,
-          message=(f"Tự động chặn: bộ đọc {'bật' if cfg['enabled'] else 'tắt'} · SOC: {len(cfg['soc_groups'])} nhóm, "
-                   f"{len(cfg['soc_tenants'])} tenant, {len(cfg['soc_senders'])} tài khoản"
+          message=(f"Tự động chặn: bộ đọc {'bật' if cfg['enabled'] else 'tắt'} · SOC: {len(cfg['soc_senders'])} tài khoản, "
+                   f"{len(cfg['soc_groups'])} nhóm"
                    f" · lịch {schedule_text(cfg)}"
                    f" · tối đa {cfg['hourly_limit']} IP/giờ · đọc mỗi {cfg['poll_seconds']} giây"
                    f" · whitelist {', '.join('%s (%d)' % (w['name'], len(w['entries'])) for w in cfg['whitelists'])}"))

@@ -179,13 +179,13 @@ GROUP_RETRY = dt.timedelta(minutes=5)      # gặp người gửi lạ: đọc l
 
 
 class Trust:
-    """Người gửi có phải SOC không: nhóm Entra (thành viên tự cập nhật) · tenant của đơn vị SOC · tài khoản riêng lẻ.
+    """Người gửi có được ra lệnh không: tài khoản được ủy quyền (khai báo từng người, kèm tenant) · nhóm Entra.
+    KHÔNG tin cậy theo tenant — đối tác SOC (vd HPT) có thể có nhiều người khác trong group chat.
     Danh sách thành viên nhóm lưu trong state (dùng chung mọi pod). Đọc nhóm lỗi → giữ danh sách đọc được lần trước."""
 
     def __init__(self, db: Session, cfg: dict, st: dict):
         self.db, self.cfg, self.st = db, cfg, st
-        self.senders = {s["id"]: s["name"] for s in cfg["soc_senders"]}
-        self.tenants = {s["id"]: s["name"] for s in cfg["soc_tenants"]}
+        self.senders = {s["id"]: s for s in cfg["soc_senders"]}
         self.refreshed = False
         if cfg["soc_groups"] and self._age() > GROUP_TTL:
             self.refresh()
@@ -211,15 +211,13 @@ class Trust:
 
     def check(self, sid: str, tenant: str) -> str:
         """'' = không tin cậy; ngược lại là nhãn cách tin cậy (ghi vào lệnh + bằng chứng)."""
-        if sid in self.senders:
-            return f"Tài khoản {self.senders[sid] or sid}"
+        s = self.senders.get(sid)
+        if s and (not s.get("tenant") or s["tenant"] == tenant):  # khai báo kèm tenant → phải đúng tenant đó
+            return f"Tài khoản {s.get('name') or sid}"
         for g in self.cfg["soc_groups"]:
             ent = (self.st.get("group_cache") or {}).get(g["id"]) or {}
             if sid in ent.get("members", {}):
                 return f"Nhóm {ent.get('name') or g['name']}"
-        own = (self.cfg.get("tenant_id") or "").lower()
-        if tenant and tenant != own and tenant in self.tenants:  # tenant HSC không bao giờ được tin cậy theo tenant
-            return f"Tenant {self.tenants[tenant] or tenant}"
         if self.cfg["soc_groups"] and not self.refreshed and self._age() > GROUP_RETRY:
             self.refresh()  # có thể là người vừa vào ca / vừa được thêm vào nhóm
             return self.check(sid, tenant)
@@ -288,7 +286,7 @@ def _handle_message(db: Session, cfg: dict, st: dict, soc: Trust, m: dict, creat
         if len(seen) > 30:  # chỉ giữ 30 người gửi gần nhất (để quản trị viên chọn tài khoản SOC)
             for k in sorted(seen, key=lambda k: seen[k].get("last", ""))[: len(seen) - 30]:
                 seen.pop(k)
-    # người gửi có thuộc team SOC không (nhóm Entra / tenant / tài khoản) — chỉ kiểm khi tin có thể chứa lệnh
+    # người gửi có được ủy quyền không (tài khoản / nhóm Entra) — chỉ kiểm khi tin có thể chứa lệnh
     via = soc.check(sid, tenant) if sid and m.get("messageType") in (None, "message") else ""
     row.trusted_by = via[:200]
     if m.get("messageType") not in (None, "message") or not sid:
@@ -297,9 +295,10 @@ def _handle_message(db: Session, cfg: dict, st: dict, soc: Trust, m: dict, creat
         row.status = "ignored_deleted"
     elif not via:
         row.status = "ignored_sender"
-        if cmds:  # có người ngoài nhóm / tenant / danh sách SOC gửi lệnh — ghi lại để điều tra
+        if cmds:  # có người chưa được ủy quyền gửi lệnh — ghi lại để điều tra
             event(db, "ignored_sender", ip=",".join(c["value"] for c in cmds)[:64],
-                  detail=f"{name} ({sid}, tenant {tenant or '?'}) gửi lệnh nhưng không thuộc nhóm / tenant / tài khoản SOC")
+                  detail=f"{name} ({sid}, tenant {tenant or '?'}) gửi lệnh nhưng chưa được ủy quyền "
+                         "(không có trong danh sách tài khoản / nhóm Entra, hoặc sai tenant)")
     elif m.get("lastEditedDateTime"):
         row.status = "ignored_edited"
         if cmds:
@@ -630,7 +629,7 @@ def status(db: Session) -> dict:
                         "members": len((st.get("group_cache") or {}).get(g["id"], {}).get("members", {})),
                         "fetched_at": (st.get("group_cache") or {}).get(g["id"], {}).get("fetched_at")}
                        for g in cfg["soc_groups"]],
-        "soc_tenants": len(cfg["soc_tenants"]), "group_error": st.get("group_error", ""),
+        "legacy_tenants": len(cfg["legacy_tenants"]), "group_error": st.get("group_error", ""),
         "night": {"start": start.isoformat(), "end": end.isoformat()}, "syntax": f"{parser.PREFIX} <ip>",
         "reply_enabled": bool(cfg["reply_enabled"] and cfg["reply_url_enc"]),
         "reply_syntax": reply.TEMPLATE.format(ip="<ip>", ts="<thời điểm>"),
@@ -641,8 +640,7 @@ def seen_senders(db: Session) -> list[dict]:
     st, cfg = cfgmod.state(db), cfgmod.raw(db)
     trust = Trust.__new__(Trust)  # chỉ tra cứu danh sách đã lưu — không gọi Graph
     trust.db, trust.cfg, trust.st, trust.refreshed = db, cfg, st, True
-    trust.senders = {s["id"]: s["name"] for s in cfg["soc_senders"]}
-    trust.tenants = {s["id"]: s["name"] for s in cfg["soc_tenants"]}
+    trust.senders = {s["id"]: s for s in cfg["soc_senders"]}
     out = []
     for k, v in (st.get("seen_senders") or {}).items():
         via = trust.check(k, v.get("tenant", ""))
@@ -683,7 +681,15 @@ def test_connection(db: Session) -> dict:
     for s_ in senders.values():
         via = trust.check(s_["id"], s_.get("tenant", ""))
         out.append({**s_, "is_soc": bool(via), "trusted_by": via})
-    return {"ok": True, "messages": len(msgs), "senders": out, "group_error": st.get("group_error", ""),
+    members, members_error = [], ""
+    try:  # thành viên hiện tại của group chat — chọn từng người được ra lệnh (không bắt buộc quyền này)
+        for mb in graph.chat_members(cfg):
+            via = trust.check(mb["id"], mb["tenant"])
+            members.append({**mb, "is_soc": bool(via), "trusted_by": via})
+    except graph.GraphError as exc:
+        members_error = str(exc)
+    return {"ok": True, "messages": len(msgs), "senders": out, "members": members, "members_error": members_error,
+            "group_error": st.get("group_error", ""),
             "groups": [{"id": g, "name": v.get("name"), "members": len(v.get("members", {}))}
                        for g, v in (st.get("group_cache") or {}).items()]}
 

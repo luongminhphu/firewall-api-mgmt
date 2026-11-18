@@ -6,6 +6,7 @@ Chạy: python mock/mock_graph.py --port 4470
 - POST /_post   {"sender_id","name","html","edited","deleted","type","minutes_ago"}  thêm tin vào chat
 - POST /_workflow  webhook Teams Workflows giả lập (trả lời vào group chat) · GET /_workflow danh sách đã nhận ·
   POST /_workflow/fail?on=true  làm webhook lỗi 500 (kiểm thử thử lại)
+- GET  /v1.0/chats/{chat_id}/members  thành viên group chat · POST /_members đặt danh sách (deny=true → 403)
 - POST /_reset  xóa toàn bộ tin · GET /_calls  số lần gọi messages (kiểm tra chu kỳ đọc)
 """
 from __future__ import annotations
@@ -24,6 +25,7 @@ CALLS = {"messages": 0, "last_filter": "", "last_orderby": "", "returned": 0}
 FILTER = {"reject": False}  # giả lập tenant không nhận $filter (400)
 TENANT_DEFAULT = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 GROUPS: dict[str, dict] = {}  # id → {"name", "members": [{"id","displayName"}], "deny": bool}
+MEMBERS = {"value": [], "deny": False}  # thành viên group chat (GET /chats/{id}/members)
 WORKFLOW: list[dict] = []   # tin Teams Workflows đã nhận (webhook trả lời vào group chat)
 WF = {"fail": False}
 
@@ -138,6 +140,26 @@ async def set_group(request: Request):
     return GROUPS[d["id"]]
 
 
+@app.get("/v1.0/chats/{chat_id}/members")
+def chat_members(chat_id: str, request: Request):
+    if not request.headers.get("authorization", "").startswith("Bearer tok-"):
+        raise HTTPException(401)
+    if chat_id != CHAT:
+        raise HTTPException(404)
+    if MEMBERS["deny"]:
+        raise HTTPException(403)
+    return {"value": [{"@odata.type": "#microsoft.graph.aadUserConversationMember", "id": "m-" + m["userId"][:8],
+                       "roles": [], **m} for m in MEMBERS["value"]]}
+
+
+@app.post("/_members")
+async def set_members(request: Request):
+    """{"members":[{"userId","displayName","tenantId","email"}],"deny":false} — thành viên group chat giả lập."""
+    d = await request.json()
+    MEMBERS.update(value=d.get("members", []), deny=bool(d.get("deny")))
+    return MEMBERS
+
+
 @app.post("/_filter")
 def set_filter(reject: bool = False):
     FILTER["reject"] = reject
@@ -190,6 +212,7 @@ def reset():
     WF["fail"] = False
     FILTER["reject"] = False
     GROUPS.clear()
+    MEMBERS.update(value=[], deny=False)
     CALLS["messages"] = 0
     return {"ok": True}
 
