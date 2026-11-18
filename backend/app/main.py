@@ -29,6 +29,8 @@ from .modules.firewalls.router import router as firewalls_router
 from .modules.ipblock import group_cache as gc
 from .modules.ipblock.changes_router import router as changes_router
 from .modules.ipblock.router import router as ipblock_router
+from .modules.vpn import accounts as vpn_accounts
+from .modules.vpn.router import router as vpn_router
 
 
 def _startup() -> None:
@@ -46,6 +48,9 @@ def _startup() -> None:
     # Bộ lập lịch cache: quét ngay firewall chưa có cache/quá hạn, sau đó kiểm tra định kỳ (TTL / GROUP_CACHE_DAILY_AT)
     if settings.GROUP_CACHE_WARMUP:
         gc.start_scheduler()
+    # Đồng bộ tài khoản VPN định kỳ (chỉ đọc); mỗi vòng chỉ một pod chạy
+    if settings.VPN_SYNC_MINUTES > 0:
+        jobs.every("vpn-accounts", settings.VPN_SYNC_MINUTES * 60, vpn_accounts.sync_all)
 
 
 @asynccontextmanager
@@ -69,7 +74,7 @@ app_errors.install(app)
 app_logging.install(app)
 
 for _router in (auth_router, firewalls_router, users_router, ipblock_router, changes_router, audit_router,
-                branding_router):
+                branding_router, vpn_router):
     app.include_router(_router)
 
 

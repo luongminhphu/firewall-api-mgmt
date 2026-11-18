@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from . import jobs
+from .config import settings
 from .models import Firewall
 
 
@@ -30,3 +33,12 @@ def selected_firewalls(db: Session, ids: list[int] | None) -> list[Firewall]:
     if not fws:
         raise HTTPException(400, "Chưa chọn firewall nào (hoặc firewall đang bị tắt)")
     return fws
+
+
+def job_response(db: Session, job_id: str) -> JSONResponse:
+    """Chờ công việc nền tối đa JOB_SYNC_WAIT giây. Xong → 200 + kết quả; chưa xong → 202 + tiến độ
+    (giao diện hỏi /api/jobs/{id}) — tránh request treo tới timeout App Proxy / ingress (504)."""
+    finished = jobs.wait(job_id, settings.JOB_SYNC_WAIT)
+    db.expire_all()
+    body = jobs.to_dict(jobs.get(db, job_id))
+    return JSONResponse(body, status_code=200 if finished and body["status"] != "running" else 202)

@@ -5,7 +5,6 @@ import datetime as dt
 import threading
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Request
-from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -13,7 +12,7 @@ from ...core import jobs
 from ...auth.rbac import current_user, operator, principal, role_at_least
 from ...core.config import settings
 from ...core.db import get_session
-from ...core.deps import client_ip_of, get_fw, selected_firewalls
+from ...core.deps import job_response, client_ip_of, get_fw, selected_firewalls
 from ...core.models import Firewall
 from ...integrations.sophos.policy import BLOCK_GROUP
 from ..shared import enforce_group_audited
@@ -185,14 +184,6 @@ def _after_write(changed: list[int], hints: dict[int, dict] | None = None) -> No
                          name=f"refresh-{fid}", daemon=True).start()
 
 
-def _job_response(db: Session, job_id: str) -> JSONResponse:
-    """Chờ tối đa JOB_SYNC_WAIT giây. Xong → 200 + kết quả đầy đủ; chưa xong → 202 + tiến độ (hỏi /api/jobs/{id})."""
-    finished = jobs.wait(job_id, settings.JOB_SYNC_WAIT)
-    db.expire_all()
-    body = jobs.to_dict(jobs.get(db, job_id))
-    return JSONResponse(body, status_code=200 if finished and body["status"] != "running" else 202)
-
-
 @router.post("/api/block")
 def block(
     request: Request,
@@ -231,7 +222,7 @@ def block(
     job_id = jobs.submit("block", user, [fw.id for fw in fws], work, on_done=on_done,
                          meta={"entries": entries, "rejected": rejected, "dry_run": dry,
                                "firewalls": [{"id": fw.id, "name": fw.name} for fw in fws]})
-    return _job_response(db, job_id)
+    return job_response(db, job_id)
 
 
 @router.post("/api/unblock")
@@ -263,7 +254,7 @@ def unblock(
     job_id = jobs.submit("unblock", user, [fw.id for fw in fws], work, on_done=on_done,
                          meta={"targets": targets,
                                "firewalls": [{"id": fw.id, "name": fw.name} for fw in fws]})
-    return _job_response(db, job_id)
+    return job_response(db, job_id)
 
 
 @router.get("/api/jobs/{job_id}")

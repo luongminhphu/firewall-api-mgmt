@@ -779,6 +779,7 @@
   "GET /api/health",
   "GET /api/jobs/{job_id}",
   "GET /api/users",
+  "GET /api/vpn/accounts",
   "GET /docs/oauth2-redirect",
   "GET /index.html",
   "GET /openapi.json",
@@ -794,6 +795,7 @@
   "POST /api/parse",
   "POST /api/unblock",
   "POST /api/users",
+  "POST /api/vpn/sync",
   "PUT /api/branding/logo",
   "PUT /api/firewalls/{fw_id}",
   "PUT /api/users/{uid}"

@@ -92,6 +92,10 @@ class Settings:
     GROUP_CACHE_REFRESH_WAIT: int = int(os.getenv("GROUP_CACHE_REFRESH_WAIT", "8"))
     GROUP_CACHE_MIN_REFRESH_SECONDS: int = int(os.getenv("GROUP_CACHE_MIN_REFRESH_SECONDS", "5"))
     GROUP_CACHE_WARMUP: bool = _bool(os.getenv("GROUP_CACHE_WARMUP"), True)
+    # Module VPN (v1.8): đồng bộ CHỈ ĐỌC tài khoản/chính sách VPN mỗi N phút (0 = tắt, chỉ đồng bộ tay);
+    # timeout đọc riêng vì firewall có nhiều user/rule trả về chậm.
+    VPN_SYNC_MINUTES: int = int(os.getenv("VPN_SYNC_MINUTES", "360"))
+    VPN_SCAN_TIMEOUT: int = int(os.getenv("VPN_SCAN_TIMEOUT", "180"))
     LOGO_MAX_KB: int = int(os.getenv("LOGO_MAX_KB", "300"))
     OIDC_ALLOW_GUESTS: bool = _bool(os.getenv("OIDC_ALLOW_GUESTS"), False)
     # SSO một lần (v1.5.1):
@@ -125,7 +129,7 @@ class Settings:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "").strip()
 
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "1.7.1"
+    APP_VERSION: str = "1.8.0"
 
     @property
     def auth_modes(self) -> list[str]:

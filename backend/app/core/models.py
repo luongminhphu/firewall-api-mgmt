@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..integrations.sophos.policy import BLOCK_GROUP
@@ -261,3 +261,45 @@ class AppUser(Base):
         }
 
 
+class VpnAccount(Base):
+    """Tài khoản trên firewall (CHỈ ĐỌC, đã lọc theo allowlist trường — không có mật khẩu/hash/khóa).
+
+    Không xóa khi tài khoản biến mất khỏi firewall: đánh dấu removed_at (giữ dấu vết rà soát ISO 27001);
+    xuất hiện lại thì removed_at = NULL.
+    """
+
+    __tablename__ = "vpn_accounts"
+    __table_args__ = (UniqueConstraint("firewall_id", "username_key", name="uq_vpn_accounts_fw_user"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    firewall_id: Mapped[int] = mapped_column(Integer, index=True)
+    username: Mapped[str] = mapped_column(String(255))
+    username_key: Mapped[str] = mapped_column(String(255), index=True)  # lowercase để so khớp
+    display_name: Mapped[str] = mapped_column(String(255), default="")
+    user_type: Mapped[str] = mapped_column(String(32), default="")
+    email: Mapped[str] = mapped_column(String(255), default="")
+    groups_json: Mapped[str] = mapped_column(Text, default="[]")
+    sslvpn_policy: Mapped[str] = mapped_column(String(160), default="")
+    status: Mapped[str] = mapped_column(String(32), default="")
+    has_sslvpn: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_ipsec: Mapped[bool] = mapped_column(Boolean, default=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    first_seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    removed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class VpnSync(Base):
+    """Lần đồng bộ VPN gần nhất theo firewall + loại (accounts | rules)."""
+
+    __tablename__ = "vpn_sync"
+    __table_args__ = (UniqueConstraint("firewall_id", "kind", name="uq_vpn_sync_fw_kind"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    firewall_id: Mapped[int] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    synced_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="")  # ok | error
+    error: Mapped[str] = mapped_column(Text, default="")
+    summary_json: Mapped[str] = mapped_column(Text, default="{}")
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
