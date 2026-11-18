@@ -121,7 +121,7 @@ def _render_index() -> HTMLResponse:
     v = settings.APP_VERSION
     html = html.replace('src="js/main.js"', f'src="js/main.js?v={v}"').replace(
         'href="styles.css"', f'href="styles.css?v={v}"'
-    ).replace('href="hsc-tokens.css"', f'href="hsc-tokens.css?v={v}"').replace(
+    ).replace('href="theme.css"', f'href="theme.css?v={v}"').replace(
         'href="fonts.css"', f'href="fonts.css?v={v}"'
     )
     return HTMLResponse(html, headers={"Cache-Control": "no-store"})

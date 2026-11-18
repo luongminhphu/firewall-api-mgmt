@@ -2,6 +2,7 @@
    khởi động sau đăng nhập (boot), điều hướng tab, phân quyền giao diện, sáng/tối, trình tự đăng nhập lúc mở trang.
    Nghiệp vụ từng màn hình nằm ở pages/*, dùng chung ở api.js / store.js / components/*. */
 import { API, api } from "./api.js";
+import { initTips } from "./components/tips.js";
 import { toast } from "./components/toast.js";
 import { loadAudit } from "./pages/audit.js";
 import { loadAutoblock } from "./pages/autoblock.js";
@@ -33,9 +34,12 @@ async function boot() {
   $$(".js-block-group").forEach((el) => (el.textContent = state.blockGroup));
   $("#login-screen").classList.add("hidden");
   $("#app").classList.remove("hidden");
-  $("#who").innerHTML = `${esc(state.config.name || state.config.user)} <span class="role-chip">· ${esc(
-    ROLE_LABEL[state.role] || state.role
-  )}</span>`;
+  const display = state.config.name || state.config.user;
+  const initials = display.split(/[\s.@_-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+  $("#who").innerHTML = `<span class="avatar" aria-hidden="true">${esc(initials || "?")}</span>
+    <span class="who__text"><span class="who__name">${esc(display)}</span>
+    <span class="role-chip">${esc(ROLE_LABEL[state.role] || state.role)}</span></span>`;
+  $("#app-version").textContent = `v${state.config.version}`;
   $("#who").title = `${state.config.user} · ${state.config.auth_method} · v${state.config.version}`;
   // Vai trò Rà soát (đại diện team, không là người dùng app): chỉ tab Rà soát, không gọi API nào khác
   const reviewerOnly = state.role === "reviewer";
@@ -58,9 +62,30 @@ async function boot() {
   showInitial(); // deep link #tab (tab không được phép → Chặn nhanh)
 }
 setAfterLogin(boot);
+initTips(); // nút ⓘ hướng dẫn cạnh các mục cấu hình
 
 // ------------------------------------------------------------------- tabs
+// Menu trái: trên màn hình hẹp là ngăn kéo (nút ☰), chọn mục xong tự đóng.
+function setNav(open) {
+  $("#app").classList.toggle("nav-open", open);
+  $("#nav-scrim").hidden = !open;
+  $("#nav-toggle").setAttribute("aria-expanded", String(open));
+  if (open) $(".tab.is-active")?.focus();
+}
+$("#nav-toggle").addEventListener("click", () => setNav(!$("#app").classList.contains("nav-open")));
+$("#nav-scrim").addEventListener("click", () => setNav(false));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("#app").classList.contains("nav-open")) {
+    setNav(false);
+    $("#nav-toggle").focus();
+  }
+});
+
 initRouter((tab) => {
+  const btn = $(`.tab[data-tab="${tab}"]`);
+  $("#page-title").textContent = btn?.textContent.trim() || "";
+  document.title = `${$("#page-title").textContent} · SOC Rapid Block`;
+  setNav(false);
   if (tab === "audit") loadAudit();
   if (tab === "changes") loadChanges();
   if (tab === "groups") loadGroupsForSelectedFw();

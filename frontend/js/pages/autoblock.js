@@ -64,15 +64,16 @@ function renderStatus(s) {
     [s.auto_enabled ? "BẬT" : "TẮT", "Công tắc tự động chặn", s.auto_enabled ? "ok" : "err"],
     [`${s.auto_last_hour}/${s.hourly_limit}`, "IP tự chặn trong 60 phút",
      s.breaker_tripped_at ? "err" : s.auto_last_hour >= s.hourly_limit * 0.8 ? "warn" : ""],
-    [win, s.window_enabled ? `${s.in_window ? s.window_reason : "Lệnh chờ duyệt"} · lịch: ${s.schedule}` : "Tự chặn mọi lúc",
-     s.in_window ? "ok" : "warn"],
+    [win, s.window_enabled ? (s.in_window ? s.window_reason : "Lệnh SOC chờ duyệt") : "Tự chặn mọi lúc",
+     s.in_window ? "ok" : "warn", s.window_enabled ? `Lịch tự chặn: ${s.schedule}` : ""],
     [String(s.pending), "Lệnh chờ duyệt", s.pending ? "warn" : ""],
     [s.last_poll_at ? fmtTime(s.last_poll_at).split(" ")[0] : "—",
      s.enabled ? `Đọc Teams lần cuối · mỗi ${Math.round(s.poll_seconds / 60)} phút` : "Chưa bật đọc Teams",
      s.last_ok === false ? "err" : ""],
   ];
-  $("#ab-cards").innerHTML = cards.map(([v, label, tone]) =>
-    `<div class="status-card ab-card${tone ? " status-card--" + tone : ""}"><b>${esc(v)}</b><span>${esc(label)}</span></div>`).join("");
+  $("#ab-cards").innerHTML = cards.map(([v, label, tone, title]) =>
+    `<div class="status-card ab-card${tone ? " status-card--" + tone : ""}"${title ? ` title="${esc(title)}"` : ""}>
+      <b>${esc(v)}</b><span>${esc(label)}</span></div>`).join("");
   const d = (iso) => new Date(iso).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit",
     month: "2-digit", weekday: "short", hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
   $("#ab-night-title").textContent = `Ca ngoài giờ: ${d(s.night.start)} → ${d(s.night.end)}`;

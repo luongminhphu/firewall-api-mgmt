@@ -554,3 +554,21 @@ Cấu hình nằm trong `app_settings['autoblock.settings']`; client secret và 
 Lỗi phát hiện khi tự kiểm tra:
 - Lưu lần đầu vừa đổi Chat ID vừa bật → trạng thái ghi hai lần trong một phiên DB, gây INSERT trùng khóa. Sửa: `flush` sau mỗi lần lưu.
 - Danh sách ca đêm so giờ VN với cột UTC → trống trên SQLite. Sửa: đổi mốc sang UTC trước khi truy vấn.
+
+---
+
+## 17. Giao diện v2.2 (thiết kế lại theo UI UX Pro Max)
+
+Anh yêu cầu thiết kế lại tự do, không ràng buộc HSC Design System.
+
+| Hạng mục | Quyết định |
+|---|---|
+| Phong cách | *Data-Dense Dashboard* (gợi ý của skill cho dashboard vận hành): bảng, thẻ KPI, lưới gọn, tối là mặc định |
+| Màu | `frontend/theme.css`. Xanh dương cho thao tác chính (`--primary` #2563eb, chữ trắng 5.2:1), hổ phách cho cảnh báo. Mọi cặp chữ/nền ≥ 4.5:1 ở cả hai chế độ (đã đo) |
+| Chữ | Fira Sans (giao diện, đủ dấu tiếng Việt) + Fira Code (IP, CIDR, XML), tự host woff2, giấy phép OFL. Bỏ Inter và `hsc-tokens.css` |
+| Bố cục | Menu trái theo nhóm (Vận hành · Giám sát · VPN & tuân thủ · Quản trị). Dưới 960px là ngăn kéo (nút ☰, Esc, bấm nền để đóng). Thanh trên hiện tiêu đề trang |
+| Cân đối | Lưới cột bằng nhau, thẻ cùng hàng cao bằng nhau (`align-items: stretch`). Thẻ trạng thái chia đều (VPN 4 × 2; điện thoại 2 cột, thẻ lẻ cuối trải hết hàng). Bảng cùng padding / chiều cao dòng, tiêu đề dính, cột thao tác căn phải, chữ số `tabular-nums` |
+| Tooltip | `js/components/tips.js` gắn nút ⓘ cạnh nhãn của khoảng 60 mục cấu hình. Nội dung tập trung trong `HELP`. Một popup `role="tooltip"` dùng chung, mở khi rê chuột / focus / chạm, Esc để đóng, tự căn trong màn hình |
+| Truy cập | Vùng chạm ≥ 40px trên điện thoại, font 16px cho ô nhập (iOS không zoom), focus luôn nhìn thấy, `prefers-reduced-motion` |
+
+Giữ nguyên toàn bộ id / `data-*` mà JS và test dùng. Router vẫn dùng `.tab[data-tab]`. Smoke test chỉ đổi helper mở menu trên điện thoại và thêm kiểm tra tooltip.

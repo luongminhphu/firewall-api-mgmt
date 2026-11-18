@@ -40,7 +40,8 @@ Phiên bản hiện tại: **v2.2.0**. Lịch sử thay đổi ở [mục 9](#9-
 | **Thông báo email** | Cấu hình **SMTP trên giao diện** (STARTTLS / SSL / relay) · Nhắc trước hạn (mặc định 30/14/7/1 ngày) tới đại diện team + Infra · Báo Infra hằng tuần các rule đã hết hạn mà vẫn bật · Outbox chống gửi trùng, tự thử lại khi gửi lỗi |
 | **Rà soát ISO 27001** | Đợt rà soát **hằng quý** (tự mở hoặc mở tay) gồm rule VPN và tài khoản mồ côi · **Đại diện team** quyết định *Còn cần / Thu hồi / Cần điều chỉnh* · Nhật ký quyết định nối chuỗi băm · **CSV bằng chứng** cho auditor + **CSV cần thu hồi** cho Infra |
 | **Đăng nhập & quyền** | Microsoft Entra ID (OIDC + PKCE, MFA qua Conditional Access, SSO một lần qua App Proxy) · Header SSO · Tài khoản riêng · Vai trò *Rà soát / Readonly / Write / Quản trị viên* |
-| **Vận hành** | Audit log đầy đủ · Log JSON có `request_id` · Khóa phân tán `pg_advisory_lock` (nhiều pod không chạy trùng) · Logo tùy chỉnh · Giao diện sáng/tối theo HSC Design System |
+| **Giao diện** | Console vận hành kiểu Data-Dense Dashboard: menu trái theo nhóm (ngăn kéo trên điện thoại) · bảng / thẻ cân cột, chữ số đều độ rộng · tối / sáng · Fira Sans + Fira Code tự host · **tooltip ⓘ hướng dẫn** ở mọi mục cấu hình · logo tùy chỉnh |
+| **Vận hành** | Audit log đầy đủ · Log JSON có `request_id` · Khóa phân tán `pg_advisory_lock` (nhiều pod không chạy trùng) |
 
 ---
 
@@ -85,6 +86,7 @@ backend/app/
     review/     đợt rà soát, quyết định, CSV bằng chứng
     autoblock/  đọc group chat Teams (graph), parser cú pháp, quyết định tự chặn / chờ duyệt, reply (Teams Workflows)
 frontend/                 ES module thuần, không build: js/main.js + js/pages/* (từng tab) + js/components/*
+                          (tips.js: nội dung tooltip hướng dẫn) · theme.css (token màu) · styles.css · fonts.css
 deploy/k8s/               base/ · overlays/prod/ · overlays/rancher/ · kubesphere/
 mock/                     firewall Sophos giả lập (kèm dữ liệu VPN) + SMTP giả lập + Microsoft Graph / Workflows giả lập
 tools/sophos_sample.py    lấy mẫu cấu hình VPN thật (chỉ đọc, che dữ liệu)
@@ -365,6 +367,8 @@ chỉ là giá trị ban đầu; quản trị viên chỉnh lại trên giao di�
 ## 5. Hướng dẫn sử dụng
 
 ### 5.1 Bắt đầu nhanh (quản trị viên)
+
+> Mỗi mục cấu hình có nút **ⓘ** cạnh tên. Rê chuột, bấm Tab hoặc chạm vào để xem hướng dẫn: điền gì, lấy ở đâu, ví dụ.
 
 1. Đăng nhập lần đầu bằng `APP_PASSWORD`, hoặc bằng Microsoft nếu đã cấu hình Entra.
 2. Tab **Người dùng**:
@@ -693,7 +697,7 @@ Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che d
 
 | Phiên bản | Nội dung chính |
 |---|---|
-| **2.2.0** | Tự động chặn từ group chat Teams: cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, tài khoản SOC, bỏ qua tin đã sửa, whitelist + Approve, lịch tự chặn (ngoài giờ ngày thường, cả ngày cuối tuần, ngày lễ, "cả ngày hôm nay"), ngưỡng 20 IP/giờ, công tắc khẩn cấp, danh sách ca đêm, trả lời `INFRA ĐÃ BLOCK …` qua Teams Workflows |
+| **2.2.0** | **Giao diện mới** (menu trái, bảng/thẻ cân đối, Fira Sans/Code, tooltip hướng dẫn cấu hình). Tự động chặn từ group chat Teams: cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, tài khoản SOC, bỏ qua tin đã sửa, whitelist + Approve, lịch tự chặn (ngoài giờ ngày thường, cả ngày cuối tuần, ngày lễ, "cả ngày hôm nay"), ngưỡng 20 IP/giờ, công tắc khẩn cấp, danh sách ca đêm, trả lời `INFRA ĐÃ BLOCK …` qua Teams Workflows |
 | **2.1.0** | Rà soát quyền VPN định kỳ theo ISO 27001 (tab Rà soát, vai trò Rà soát, CSV bằng chứng / cần thu hồi, chuỗi băm quyết định). Overlay Rancher |
 | **2.0.0** | Thông báo email: cấu hình SMTP trên giao diện, nhắc trước hạn, báo hết hạn hằng tuần, outbox idempotent |
 | **1.9.0** | VPN giai đoạn 2: thời hạn qua firewall rule (Schedule / tên rule), dashboard trạng thái, lịch sử rule, CSV cần xử lý |

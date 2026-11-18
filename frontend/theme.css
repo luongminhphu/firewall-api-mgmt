@@ -1,0 +1,137 @@
+/* =============================================================================
+   SOC Rapid Block — design tokens (v2.2, thiết kế lại theo UI UX Pro Max).
+   Phong cách: Data-Dense Dashboard / console vận hành SOC. Tối là mặc định, sáng tùy chọn.
+   Màu: xanh dương (dữ liệu, thao tác chính) + hổ phách (cảnh báo / điểm nhấn). Chữ: Fira Sans + Fira Code.
+   Tương phản: chữ thường ≥ 4.5:1 trên mọi nền surface ở cả hai chế độ.
+   ========================================================================== */
+:root {
+  color-scheme: dark;
+
+  /* nền & bề mặt */
+  --bg: #0a101c;
+  --surface: #111a2b;
+  --surface-2: #162236;
+  --surface-3: #1c2a42;
+  --sidebar: #0d1524;
+  --overlay-hover: rgba(148, 163, 184, 0.08);
+  --overlay-active: rgba(96, 165, 250, 0.14);
+  --scrim: rgba(2, 6, 15, 0.66);
+
+  /* viền */
+  --border: #233149;
+  --border-strong: #34476b;
+
+  /* chữ */
+  --text: #e6edf7;
+  --text-muted: #9aabc4;
+  --text-faint: #7f93b2;
+  --text-on-primary: #ffffff;
+
+  /* thương hiệu & trạng thái */
+  --primary: #2563eb;        /* nền nút chính: chữ trắng 5.2:1 */
+  --primary-hover: #1d4ed8;
+  --primary-press: #1e40af;
+  --primary-text: #7fb0ff;   /* xanh dùng làm CHỮ / viền trên nền tối */
+  --accent: #f59e0b;
+  --danger: #f87171;
+  --danger-solid: #dc2626;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --info: #60a5fa;
+  --focus: #93c5fd;
+
+  /* nền nhạt của trạng thái (chip, alert, dòng diff) */
+  --tint-primary: rgba(59, 130, 246, 0.14);
+  --tint-danger: rgba(248, 113, 113, 0.12);
+  --tint-ok: rgba(52, 211, 153, 0.12);
+  --tint-warn: rgba(251, 191, 36, 0.12);
+  --tint-info: rgba(96, 165, 250, 0.12);
+  --line-danger: rgba(248, 113, 113, 0.32);
+  --line-ok: rgba(52, 211, 153, 0.32);
+  --line-warn: rgba(251, 191, 36, 0.34);
+  --line-info: rgba(96, 165, 250, 0.32);
+
+  /* chữ */
+  --font-sans: "Fira Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-base: 14px;
+  --fs-md: 16px;
+  --fs-lg: 20px;
+  --fs-xl: 24px;
+  --lh: 1.55;
+
+  /* khoảng cách (thang 4px) */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px; --s10: 40px;
+
+  /* hình khối */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --control-sm: 30px;
+  --control: 36px;
+  --control-lg: 44px;
+  --sidebar-w: 240px;
+  --topbar-h: 60px;
+  --content-max: 1440px;
+
+  /* đổ bóng — chỉ cho lớp nổi (toast, dialog, menu điện thoại) */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 12px 32px rgba(0, 0, 0, 0.45);
+
+  /* chuyển động */
+  --t-fast: 150ms;
+  --t-base: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* lớp z */
+  --z-sticky: 10;
+  --z-nav: 30;
+  --z-scrim: 25;
+  --z-toast: 50;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f3f5f9;
+  --surface: #ffffff;
+  --surface-2: #f7f9fc;
+  --surface-3: #eef2f8;
+  --sidebar: #ffffff;
+  --overlay-hover: rgba(15, 23, 42, 0.045);
+  --overlay-active: rgba(29, 78, 216, 0.09);
+  --scrim: rgba(15, 23, 42, 0.42);
+
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  --text: #0f172a;
+  --text-muted: #475569;
+  --text-faint: #64748b;
+
+  --primary: #1d4ed8;
+  --primary-hover: #1e40af;
+  --primary-press: #1e3a8a;
+  --primary-text: #1d4ed8;
+  --accent: #b45309;
+  --danger: #b91c1c;
+  --danger-solid: #dc2626;
+  --ok: #047857;
+  --warn: #a16207;
+  --info: #1d4ed8;
+  --focus: #2563eb;
+
+  --tint-primary: rgba(29, 78, 216, 0.08);
+  --tint-danger: rgba(220, 38, 38, 0.07);
+  --tint-ok: rgba(4, 120, 87, 0.08);
+  --tint-warn: rgba(202, 138, 4, 0.1);
+  --tint-info: rgba(29, 78, 216, 0.07);
+  --line-danger: rgba(220, 38, 38, 0.28);
+  --line-ok: rgba(4, 120, 87, 0.28);
+  --line-warn: rgba(202, 138, 4, 0.34);
+  --line-info: rgba(29, 78, 216, 0.24);
+
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-2: 0 12px 32px rgba(15, 23, 42, 0.14);
+}

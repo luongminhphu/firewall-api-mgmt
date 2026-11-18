@@ -42,7 +42,15 @@ async function newPage(browser, { tok, viewport = { width: 1440, height: 1000 } 
   return { ctx, page, errors };
 }
 
-const tab = (page, name) => page.click(`.tab[data-tab="${name}"]`);
+// Màn hình hẹp: menu trái là ngăn kéo — mở bằng nút ☰ trước khi chọn mục
+const tab = async (page, name) => {
+  if (await page.isVisible("#nav-toggle")) {
+    await page.click("#nav-toggle");
+    await page.waitForSelector("#app.nav-open");
+    await page.waitForTimeout(250);
+  }
+  await page.click(`.tab[data-tab="${name}"]`);
+};
 const visible = (page, sel) => page.isVisible(sel);
 
 (async () => {
@@ -216,6 +224,23 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.click("#ob-run");
     await page.waitForFunction(() => /nằm chờ|Xếp hàng/.test(document.querySelector("#ob-note").textContent));
     chk("Cài đặt: Chạy ngay → thư nằm chờ khi SMTP tắt", (await page.textContent("#ob-note")).includes("nằm chờ"));
+
+    // Tooltip hướng dẫn cạnh mục cấu hình
+    const ntip = await page.$$eval(".tip", (xs) => xs.length);
+    chk("Tooltip: có nút ⓘ hướng dẫn ở các mục cấu hình", ntip >= 40, ntip);
+    await page.hover('#abs-limit');
+    await page.focus('label:has(#abs-limit) .tip');
+    await page.waitForSelector("#tip-pop:not([hidden])");
+    chk("Tooltip: focus nút ⓘ → hiện hướng dẫn, gắn aria-describedby",
+      (await page.textContent("#tip-pop")).includes("60 phút")
+      && (await page.getAttribute('label:has(#abs-limit) .tip', "aria-describedby")) === "tip-pop");
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#tip-pop", { state: "hidden" });
+    chk("Tooltip: Esc đóng hướng dẫn", true);
+    await page.click('label:has(#abs-weekend) .tip');
+    chk("Tooltip: bấm ⓘ trong nhãn checkbox không đổi trạng thái checkbox", await page.isChecked("#abs-weekend")
+      && !(await page.isHidden("#tip-pop")));
+    await page.click("#panel-settings h2");
 
     // Tự động chặn từ Teams (admin): cấu hình Graph, chọn tài khoản SOC từ người gửi gần đây, whitelist, bật
     const G = "http://127.0.0.1:4470";

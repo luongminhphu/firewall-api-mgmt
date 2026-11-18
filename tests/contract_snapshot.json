@@ -807,6 +807,7 @@
   "POST /api/auth/header",
   "POST /api/autoblock/approve",
   "POST /api/autoblock/breaker/reset",
+  "POST /api/autoblock/holiday-today",
   "POST /api/autoblock/poll",
   "POST /api/autoblock/reject",
   "POST /api/autoblock/reply-test",
