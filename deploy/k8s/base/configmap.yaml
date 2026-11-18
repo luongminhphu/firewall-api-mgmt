@@ -22,6 +22,10 @@ data:
   # v1.9 — giá trị mặc định ban đầu; quản trị viên chỉnh trong tab Cài đặt
   VPN_RULE_GROUPS: "VPN"
   VPN_EXPIRING_DAYS: "30"
+  # v2.0 — thông báo email: chu kỳ lập kế hoạch + gửi (giây), timeout SMTP (giây).
+  # Máy chủ SMTP / người nhận cấu hình trên giao diện (tab Cài đặt).
+  NOTIFY_INTERVAL_SECONDS: "300"
+  SMTP_TIMEOUT: "15"
   ALLOW_PRIVATE: "false"
   # Safe-list: dải sẽ KHÔNG BAO GIỜ bị chặn.
   # Bổ sung dải VPN, đối tác, văn phòng của bạn vào đây trước khi go-live.

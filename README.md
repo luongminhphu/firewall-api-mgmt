@@ -4,6 +4,14 @@ Mini app HTML5 + FastAPI giúp team SOC/NOC dán thẳng đoạn chat Teams (ho�
 bóc IP tự động và đẩy vào **IP Host Group** trên **nhiều Sophos Firewall** cùng lúc qua XML API —
 thao tác được từ điện thoại trong ngày nghỉ lễ Tết.
 
+**Mới ở v2.0.0** — **Thông báo email** hạn VPN:
+- Tab **Cài đặt** (quản trị viên): cấu hình **SMTP** ngay trên giao diện (STARTTLS / SSL / relay nội bộ, kiểm tra chứng
+  chỉ TLS, tài khoản; mật khẩu mã hóa bằng `MASTER_KEY` và không bao giờ hiển thị lại), nút **Gửi thử**.
+- Nhắc **trước hạn** theo mốc (mặc định 30 / 14 / 7 / 1 ngày) tới **đại diện team** (nhập tay) + **Infra**; báo Infra
+  **hằng tuần** rule đã hết hạn nhưng vẫn bật. Mỗi mốc chỉ gửi **một lần** (outbox có `dedupe_key`), đổi hạn thì nhắc lại.
+- Hàng đợi email: thử lại lùi dần khi SMTP lỗi; SMTP tắt thì thư nằm chờ. Xem trạng thái và **Chạy ngay** trong tab Cài đặt.
+- Pod của app cần được mở mạng tới máy chủ SMTP (NetworkPolicy mẫu không chặn egress).
+
 **Mới ở v1.9.0** — Module VPN giai đoạn 2: **thời hạn truy cập qua firewall rule** (CHỈ ĐỌC):
 - Đọc các rule trong Rule Group **VPN** (tên group gắn whitelist trong mã), lưu nguồn / identity / đích / dịch vụ /
   schedule / log / mô tả. Hạn lấy từ **ngày kết thúc Schedule** (OneTime) nếu có, nếu không thì **bóc từ tên rule**
@@ -194,6 +202,8 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 | `VPN_SCAN_TIMEOUT` | Timeout đọc User / Group / chính sách VPN trên firewall, giây (mặc định 180) |
 | `VPN_RULE_GROUPS` | Rule Group chứa rule VPN cần đọc (mặc định `VPN`); chỉ nhận giá trị trong whitelist của mã nguồn. Quản trị viên chỉnh trong tab Cài đặt |
 | `VPN_EXPIRING_DAYS` | Ngưỡng "Sắp hết hạn" (ngày, mặc định 30); chỉnh trong tab Cài đặt |
+| `NOTIFY_INTERVAL_SECONDS` | Chu kỳ lập kế hoạch nhắc hạn VPN + gửi hàng đợi email (giây, mặc định 300; `0` = tắt chạy định kỳ, vẫn dùng được nút Chạy ngay). SMTP và người nhận cấu hình trong tab Cài đặt |
+| `SMTP_TIMEOUT` | Timeout kết nối / gửi SMTP (giây, mặc định 15) |
 | `LOG_FORMAT` | `text` (mặc định, như cũ) hoặc `json` — log JSON một dòng, có `request_id` (nhận `X-Request-ID` từ App Proxy) và dòng truy cập kèm người dùng/mã HTTP/thời gian; không bao giờ ghi mật khẩu/token |
 | `LOG_LEVEL` | Mức log (`INFO`, `DEBUG`…), để trống = mặc định |
 | `GROUP_CACHE_MIN_REFRESH_SECONDS` | Giãn cách tối thiểu giữa hai lần bấm "Quét lại" (mặc định 5) |

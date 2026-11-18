@@ -192,6 +192,30 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.click('#vs-form button[type="submit"]');
     await page.waitForSelector("#vs-msg.alert--ok");
     chk("Cài đặt: lưu ngưỡng VPN", (await page.textContent("#vs-meta")).includes("phu.luong"));
+    // SMTP (để tắt), thông báo, đại diện team, hàng đợi
+    await page.fill("#smtp-host", "smtp.example.invalid");
+    await page.fill("#smtp-port", "587");
+    await page.fill("#smtp-user", "soc");
+    await page.fill("#smtp-pass", "Bi-mat-SMTP-1");
+    await page.fill("#smtp-from", "soc-rapid-block@hsc.com.vn");
+    await page.click('#smtp-form button[type="submit"]');
+    await page.waitForSelector("#smtp-msg.alert--ok");
+    chk("Cài đặt: lưu SMTP, mật khẩu không hiện lại", (await page.inputValue("#smtp-pass")) === ""
+      && (await page.getAttribute("#smtp-pass", "placeholder")).includes("đã lưu")
+      && (await page.textContent("#smtp-state")) === "Đang tắt");
+    await page.check("#nt-enabled");
+    await page.fill("#nt-infra", "infra@hsc.com.vn");
+    await page.click('#nt-form button[type="submit"]');
+    await page.waitForSelector("#nt-msg.alert--ok");
+    chk("Cài đặt: bật thông báo hạn VPN", true);
+    await page.fill("#tc-table tbody tr:first-child .tc-team", "RMS RESEARCH");
+    await page.fill("#tc-table tbody tr:first-child .tc-emails", "rms.lead@hsc.com.vn");
+    await page.click("#tc-save");
+    await page.waitForSelector("#tc-msg.alert--ok");
+    chk("Cài đặt: lưu đại diện team", (await page.textContent("#tc-msg")).includes("1 team"));
+    await page.click("#ob-run");
+    await page.waitForFunction(() => /nằm chờ|Xếp hàng/.test(document.querySelector("#ob-note").textContent));
+    chk("Cài đặt: Chạy ngay → thư nằm chờ khi SMTP tắt", (await page.textContent("#ob-note")).includes("nằm chờ"));
 
     // Logo (tab Người dùng → Logo hiển thị): tải PNG lên, hiện ở thanh trên, rồi gỡ
     await tab(page, "users");

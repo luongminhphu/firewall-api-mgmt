@@ -626,3 +626,16 @@ fieldset.field legend { font-size: var(--text-xs); color: var(--text-muted); mar
   .kv dt { margin-top: var(--space-2); }
   .pager { justify-content: space-between; }
 }
+
+/* ------------------------------------------------ v2.0: Cài đặt — SMTP, thông báo, đại diện team, hàng đợi */
+.grid--settings { grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); align-items: start; }
+.card--wide { grid-column: 1 / -1; }
+.check--field { align-self: end; min-height: var(--control-h-md); }
+.smtp-test { align-items: flex-end; margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.smtp-test .field { flex: 1; margin: 0; }
+#tc-table input { width: 100%; min-width: 140px; }
+#nt-infra { width: 100%; font: inherit; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+@media (max-width: 640px) {
+  #smtp-form .row--2 { grid-template-columns: 1fr; }
+}

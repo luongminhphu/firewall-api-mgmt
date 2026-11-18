@@ -1,6 +1,6 @@
 # SOC Rapid Block — Kiến trúc: hiện trạng, kiến trúc đích, kế hoạch chuyển đổi
 
-> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. **Phase 1–4 xong** (§10–§13). Tiếp theo: phase 5 (thông báo email + SMTP trên giao diện).
+> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. **Phase 1–5 xong** (§10–§14). Việc tiếp theo: rà soát định kỳ ISO 27001 (xây trên B1 + B2), đối chiếu parser với mẫu thật từ `tools/sophos_sample.py`.
 > Áp dụng cho: v1.7.0 (commit `88e54eb` trên `main`).
 > Phạm vi: (A) tái cấu trúc backend + frontend **không đổi hành vi**; (B) module VPN (B1 tài khoản, B2 thời hạn qua firewall rule).
 
@@ -446,3 +446,21 @@ Quyết định chi tiết:
   không tồn tại — chỉ kết luận khi đã đồng bộ tài khoản của firewall đó.
 - Trạng thái tính khi đọc (không lưu) → không bao giờ "cũ"; `as_of` cho phép xem trước tương lai.
 - CSV mặc định gồm: sắp hết hạn, hết hạn còn bật, user không còn, không đọc được tên, lệch thời hạn.
+
+---
+
+## 14. Nhật ký thực hiện phase 5 (thông báo email)
+
+| Bước | Kết quả |
+|---|---|
+| 5.0–5.1 | `modules/notify/` — `smtp.py` (cấu hình trên giao diện, mật khẩu mã hóa, không trả về; chặn header injection; gửi thử), `planner.py` (hàm thuần: mốc nhắc, người nhận, dedupe_key), `outbox.py` (bảng `email_outbox`, retry lùi dần, SMTP tắt → nằm chờ), `router.py`; bảng `vpn_team_contacts`; `mock/mock_smtp.py`; `tests/notify_test.py` (35 kiểm tra) |
+| 5.2 | Tab Cài đặt: SMTP + gửi thử, thông báo, đại diện team, hàng đợi email + Chạy ngay |
+
+Quy tắc gửi:
+- **Sắp hết hạn**: mốc hiện tại = mốc nhỏ nhất ≥ số ngày còn lại; `dedupe_key = vpn_expiring:<fw>:<rule>:<ngày hạn>:<mốc>`
+  → mỗi mốc một lần, app ngừng vài ngày thì chỉ gửi mốc hiện tại, đổi hạn → nhắc lại. Người nhận: đại diện team của
+  rule (khớp tên team không phân biệt hoa/thường) + email Infra.
+- **Hết hạn nhưng vẫn bật**: chỉ Infra, `dedupe_key` theo tuần ISO → nhắc mỗi tuần tới khi rule được tắt/gia hạn.
+- Thư có header `Auto-Submitted: auto-generated`; nội dung không có dữ liệu bí mật; app vẫn **không** sửa rule.
+- Thử lại: 5 phút × 2^(n−1), tối đa 6 giờ, 8 lần → `failed`. Lập kế hoạch + gửi chạy định kỳ (`NOTIFY_INTERVAL_SECONDS`,
+  mỗi vòng một pod qua `pg_try_advisory_lock`).

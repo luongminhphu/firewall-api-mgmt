@@ -474,6 +474,90 @@ Ví dụ:
               <p class="muted tiny" id="vs-meta"></p>
               <button class="btn btn--primary" type="submit">Lưu cấu hình</button>
             </form>
+
+            <form class="card" id="smtp-form" autocomplete="off">
+              <div class="card-head"><h2>Máy chủ email (SMTP)</h2><span id="smtp-state" class="chip"></span></div>
+              <label class="check"><input type="checkbox" id="smtp-enabled" /> <span>Bật gửi email</span></label>
+              <div class="row row--2">
+                <label class="field"><span>Máy chủ SMTP</span><input id="smtp-host" placeholder="smtp.hsc.com.vn" /></label>
+                <label class="field"><span>Cổng</span><input id="smtp-port" type="number" min="1" max="65535" placeholder="587" /></label>
+              </div>
+              <div class="row row--2">
+                <label class="field"><span>Bảo mật kết nối</span>
+                  <select id="smtp-security" class="select">
+                    <option value="starttls">STARTTLS (thường dùng cổng 587)</option>
+                    <option value="ssl">SSL/TLS (thường dùng cổng 465)</option>
+                    <option value="none">Không mã hóa (chỉ relay nội bộ, cổng 25)</option>
+                  </select></label>
+                <label class="check check--field"><input type="checkbox" id="smtp-verify" /> <span>Kiểm tra chứng chỉ TLS</span></label>
+              </div>
+              <div class="row row--2">
+                <label class="field"><span>Tài khoản (để trống nếu relay không cần đăng nhập)</span><input id="smtp-user" autocomplete="off" /></label>
+                <label class="field"><span>Mật khẩu</span><input id="smtp-pass" type="password" autocomplete="new-password" /></label>
+              </div>
+              <label class="check" id="smtp-clear-row"><input type="checkbox" id="smtp-clear" /> <span>Xóa mật khẩu đã lưu</span></label>
+              <div class="row row--2">
+                <label class="field"><span>Địa chỉ gửi (From)</span><input id="smtp-from" type="email" placeholder="soc-rapid-block@hsc.com.vn" /></label>
+                <label class="field"><span>Tên người gửi</span><input id="smtp-from-name" placeholder="SOC Rapid Block" /></label>
+              </div>
+              <p class="muted tiny">Mật khẩu được mã hóa bằng MASTER_KEY và không bao giờ hiển thị lại. Pod của app cần được mở mạng tới máy chủ SMTP.</p>
+              <p id="smtp-msg" class="alert hidden" role="status"></p>
+              <div class="row row--tight">
+                <button class="btn btn--primary" type="submit">Lưu SMTP</button>
+              </div>
+              <div class="row row--tight smtp-test">
+                <label class="field"><span>Gửi thư thử tới</span><input id="smtp-test-to" type="email" placeholder="ban@hsc.com.vn" /></label>
+                <button class="btn" id="smtp-test" type="button">Gửi thử</button>
+              </div>
+            </form>
+
+            <form class="card" id="nt-form">
+              <div class="card-head"><h2>Thông báo hạn VPN</h2></div>
+              <label class="check"><input type="checkbox" id="nt-enabled" /> <span>Bật thông báo email</span></label>
+              <label class="field"><span>Email Infra (nhận mọi thông báo) — mỗi dòng một địa chỉ</span>
+                <textarea id="nt-infra" rows="3" placeholder="infra@hsc.com.vn"></textarea></label>
+              <label class="field"><span>Nhắc trước hạn (ngày, phân cách dấu phẩy)</span>
+                <input id="nt-days" placeholder="30, 14, 7, 1" inputmode="numeric" /></label>
+              <label class="check"><input type="checkbox" id="nt-weekly" /> <span>Báo Infra hằng tuần các rule đã hết hạn nhưng vẫn bật</span></label>
+              <p class="muted tiny">Mỗi mốc chỉ gửi một lần cho mỗi rule; đổi hạn thì nhắc lại theo hạn mới. Đại diện team nhận thư nhắc của các rule thuộc team mình.</p>
+              <p id="nt-msg" class="alert hidden" role="status"></p>
+              <button class="btn btn--primary" type="submit">Lưu thông báo</button>
+            </form>
+
+            <div class="card card--wide">
+              <div class="card-head">
+                <div><h2>Đại diện team</h2><p class="muted tiny">Nhận email nhắc trước hạn VPN của team. Tên team khớp phần team bóc từ tên rule (vd "RMS RESEARCH").</p></div>
+                <button class="btn btn--ghost btn--sm" id="tc-add" type="button">Thêm team</button>
+              </div>
+              <datalist id="tc-teams"></datalist>
+              <div class="table-wrap">
+                <table class="table" id="tc-table">
+                  <thead><tr><th>Team</th><th>Email đại diện (phân cách dấu phẩy)</th><th>Ghi chú</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <p id="tc-msg" class="alert hidden" role="status"></p>
+              <div class="actions"><button class="btn btn--primary" id="tc-save" type="button">Lưu đại diện team</button></div>
+            </div>
+
+            <div class="card card--wide">
+              <div class="card-head">
+                <div><h2>Hàng đợi email</h2><p class="muted tiny" id="ob-note">Tự chạy định kỳ; bấm Chạy ngay để lập kế hoạch và gửi thư đến hạn.</p></div>
+                <div class="row row--tight">
+                  <select id="ob-status" class="select" aria-label="Lọc trạng thái thư">
+                    <option value="">Tất cả</option><option value="pending">Đang chờ</option>
+                    <option value="sent">Đã gửi</option><option value="failed">Thất bại</option>
+                  </select>
+                  <button class="btn" id="ob-run" type="button">Chạy ngay</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table class="table" id="ob-table">
+                  <thead><tr><th>Thời gian</th><th>Trạng thái</th><th>Tiêu đề</th><th>Người nhận</th><th>Lần thử · lỗi</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
 
