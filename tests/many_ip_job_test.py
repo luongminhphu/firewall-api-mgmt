@@ -14,6 +14,9 @@ B = "http://127.0.0.1:8090"
 c = httpx.Client(base_url=B, timeout=120)
 fails = 0
 SYNC_WAIT = float(os.environ.get("JOB_SYNC_WAIT", "20"))
+# Test mô phỏng firewall chậm (SYNC_WAIT/2 + 0.5)×1.6 giây/lệnh — API_TIMEOUT phải lớn hơn, nếu không mọi lệnh đều timeout
+if float(os.environ.get("API_TIMEOUT", "30")) <= (SYNC_WAIT / 2 + 0.5) * 1.6:
+    sys.exit(f"Cần API_TIMEOUT > {(SYNC_WAIT / 2 + 0.5) * 1.6:.1f}s — chạy: JOB_SYNC_WAIT=6 bash tests/run_e2e.sh {__file__}")
 
 
 def chk(name, cond, extra=""):

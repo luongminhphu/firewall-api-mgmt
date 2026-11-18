@@ -232,10 +232,14 @@ input::placeholder, textarea::placeholder { color: var(--field-placeholder); }
   direction: rtl; text-align: right;
 }
 .cand__x {
-  border: 0; background: transparent; color: var(--text-muted); cursor: pointer;
-  font-size: 15px; line-height: 1; padding: 2px 6px; border-radius: 4px;
+  /* vùng bấm 32×32 (dùng được bằng ngón tay trên điện thoại), icon SVG thay ký tự ✕ */
+  display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none;
+  border: 0; background: transparent; color: var(--text-muted); cursor: pointer; border-radius: var(--radius-sm);
+  margin-left: auto;
 }
+.cand__obj + .cand__x { margin-left: 0; }
 .cand__x:hover { color: var(--danger); background: var(--surface); }
+.cand__x:focus-visible { outline: none; box-shadow: var(--ring); }
 
 .fw-picker { display: grid; gap: var(--space-2); }
 .fw-opt {
@@ -516,3 +520,44 @@ input:disabled { opacity: .65; cursor: not-allowed; background: var(--surface-2)
 .brand--lg:has(.brand-logo:not([hidden])) { flex-direction: column; align-items: flex-start; gap: var(--space-4); }
 .brand--lg .brand-divider { display: none; }
 .cache-note { flex-basis: 100%; color: var(--warn); }
+
+/* ------------------------------------------------ v1.7: tiến độ công việc nền + lỗi có hướng xử lý */
+.alert--rich { display: flex; gap: var(--space-3); align-items: flex-start; font-size: var(--text-sm); }
+.alert--rich .ic { flex: none; margin-top: 2px; }
+.alert--rich strong { display: block; }
+.alert--rich p { margin: var(--space-1) 0 0; color: var(--text); }
+.alert__hint { color: var(--text-muted) !important; font-size: var(--text-xs); }
+
+.progress-box {
+  display: grid; gap: var(--space-2); padding: var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2);
+}
+.progress-box__head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+.progress-box p { margin: 0; }
+.progress-box progress {
+  width: 100%; height: 6px; appearance: none; border: 0; border-radius: 999px;
+  background: var(--border); overflow: hidden; accent-color: var(--brand);
+}
+.progress-box progress::-webkit-progress-bar { background: var(--border); border-radius: 999px; }
+.progress-box progress::-webkit-progress-value { background: var(--brand); border-radius: 999px; transition: width 0.3s ease; }
+.progress-box progress::-moz-progress-bar { background: var(--brand); border-radius: 999px; }
+.progress-box__list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); font-size: var(--text-xs); }
+.progress-box__list li { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); min-height: 28px; }
+
+.result-summary { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); align-items: baseline; margin: 0; font-size: var(--text-sm); }
+.result-summary span { color: var(--text); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.result-rows > summary {
+  cursor: pointer; padding: var(--space-2) var(--space-3); font-size: var(--text-xs); color: var(--text-muted);
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+}
+.result-rows:not([open]) > summary { border-bottom: 0; }
+.result-row--err { color: var(--danger); }
+.result-row__msg { overflow-wrap: anywhere; }
+
+.spinner--btn { width: 14px; height: 14px; border-width: 2px; display: inline-block; margin-right: var(--space-2); vertical-align: -2px;
+  border-color: color-mix(in oklab, currentColor 30%, transparent); border-top-color: currentColor; }
+
+@media (max-width: 640px) {
+  /* điện thoại: thông điệp xuống dòng riêng thay vì bị ép sang phải */
+  .result-row__msg { flex-basis: 100%; margin-left: 0; text-align: left; }
+}

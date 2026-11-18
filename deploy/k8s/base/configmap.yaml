@@ -12,6 +12,10 @@ data:
   API_CONNECT_TIMEOUT: "10"
   GROUP_SCAN_TIMEOUT: "180"
   HOST_LOOKUP_LIMIT: "25"
+  # v1.7 — chống 504 khi chặn nhiều IP: gộp lệnh tạo object, song song theo firewall, quá JOB_SYNC_WAIT thì chạy nền
+  SOPHOS_BATCH_SIZE: "50"
+  FW_PARALLEL: "4"
+  JOB_SYNC_WAIT: "20"
   ALLOW_PRIVATE: "false"
   # Safe-list: dải sẽ KHÔNG BAO GIỜ bị chặn.
   # Bổ sung dải VPN, đối tác, văn phòng của bạn vào đây trước khi go-live.

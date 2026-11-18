@@ -49,15 +49,37 @@
     }
   })();
 
+  // Gateway (Entra App Proxy / ingress) trả trang HTML, không phải JSON → dịch sang thông báo có hướng xử lý
+  const GATEWAY_MSG = {
+    502: "Máy chủ trung gian không nhận được phản hồi hợp lệ từ app (502).",
+    503: "App đang khởi động lại hoặc quá tải (503). Thử lại sau ít phút.",
+    504: "Máy chủ trung gian hết thời gian chờ (504).",
+  };
+
+  class ApiError extends Error {
+    constructor(message, { status = 0, hint = "" } = {}) {
+      super(message);
+      this.status = status;
+      this.hint = hint;
+    }
+  }
+
   async function api(path, { method = "GET", body } = {}) {
-    const res = await fetch(`${API}${path}`, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        ...(state.token ? { "X-Auth-Token": state.token } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let res;
+    try {
+      res = await fetch(`${API}${path}`, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          ...(state.token ? { "X-Auth-Token": state.token } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } catch {
+      throw new ApiError("Mất kết nối tới máy chủ app.", {
+        hint: "Kiểm tra mạng/VPN rồi thử lại. Nếu vừa bấm Chặn/Bỏ chặn, xem tab Lịch sử thay đổi trước khi làm lại.",
+      });
+    }
     let data = null;
     try {
       data = await res.json();
@@ -66,10 +88,58 @@
     }
     if (!res.ok) {
       if (res.status === 401 && state.token) logout();
-      throw new Error(data?.detail || `Lỗi ${res.status}`);
+      const writes = method !== "GET";
+      throw new ApiError(data?.detail || GATEWAY_MSG[res.status] || `Lỗi máy chủ (${res.status}).`, {
+        status: res.status,
+        hint:
+          !data?.detail && writes && res.status >= 502
+            ? "Thao tác có thể vẫn đang chạy trên firewall. Xem tab Lịch sử thay đổi trước khi chạy lại."
+            : "",
+      });
     }
     return data;
   }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /** Gửi lệnh ghi; server chưa xong trong ~20s thì trả status "running" + job_id → hỏi tiến độ tới khi xong. */
+  async function runJob(path, body, onProgress) {
+    let job = await api(path, { method: "POST", body });
+    onProgress?.(job);
+    let misses = 0;
+    while (job.status === "running") {
+      await sleep(1500);
+      try {
+        job = await api(`/api/jobs/${encodeURIComponent(job.job_id)}`);
+        misses = 0;
+        onProgress?.(job);
+      } catch (ex) {
+        // Mất mạng chốc lát khi đang theo dõi: thử lại, công việc vẫn chạy trên server
+        if (++misses >= 8 || ex.status === 404) throw ex;
+      }
+    }
+    if (job.status === "error") {
+      throw new ApiError(job.error || "Công việc lỗi", {
+        hint: "Kết quả của các firewall đã xong vẫn được ghi trong tab Lịch sử thay đổi.",
+      });
+    }
+    return job;
+  }
+
+  /** Khối lỗi dùng chung: tiêu đề + chi tiết + gợi ý xử lý. */
+  function errorBox(ex, title = "Không thực hiện được") {
+    return `<div class="alert alert--error alert--rich" role="alert">
+      ${ICON.alert}
+      <div><strong>${esc(title)}</strong><p>${esc(ex.message)}</p>${
+        ex.hint ? `<p class="alert__hint">${esc(ex.hint)}</p>` : ""
+      }</div></div>`;
+  }
+
+  const ICON = {
+    alert:
+      '<svg class="ic" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    x: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  };
 
   const fmtTime = (iso) => {
     if (!iso) return "";
@@ -544,10 +614,14 @@
       box.innerHTML = state.candidates
         .map(
           (c, i) => `<div class="cand">
-            <span class="chip ${c.kind === "Network" ? "chip--info" : ""}">${c.kind}</span>
+            <span class="chip ${c.kind === "Network" ? "chip--info" : ""}">${c.kind === "Network" ? "CIDR" : "IP"}</span>
             <span class="cand__ip">${esc(c.value)}</span>
-            <span class="cand__obj">${esc(c.object)}</span>
-            <button class="cand__x" data-i="${i}" title="Bỏ khỏi danh sách">✕</button>
+            ${
+              c.object && c.object !== c.value // từ v1.4 tên object = chính IP → chỉ hiện khi khác
+                ? `<span class="cand__obj" title="Tên object trên firewall">${esc(c.object)}</span>`
+                : ""
+            }
+            <button class="cand__x" type="button" data-i="${i}" aria-label="Bỏ ${esc(c.value)} khỏi danh sách" title="Bỏ khỏi danh sách">${ICON.x}</button>
           </div>`
         )
         .join("");
@@ -645,21 +719,26 @@
       return;
 
     const btn = $("#do-block");
-    btn.disabled = true;
-    btn.textContent = dry ? "Đang chạy thử…" : "Đang đẩy cấu hình…";
-    $("#block-result").innerHTML = `<div class="skeleton"></div>`;
+    const box = $("#block-result");
+    setBusy(btn, true, dry ? "Đang chạy thử…" : "Đang đẩy cấu hình…");
+    $("#clear-list").disabled = true;
+    box.innerHTML = progressBox({ total: ids.length, done: 0, firewalls: ids.map((id, i) => ({ id, name: fwNames[i] })), results: [] }, dry);
+    box.scrollIntoView({ block: "nearest", behavior: reduceMotion() ? "auto" : "smooth" }); // điện thoại: kết quả nằm dưới nút
     try {
-      const r = await api("/api/block", {
-        method: "POST",
-        body: {
+      const r = await runJob(
+        "/api/block",
+        {
           firewall_ids: ids,
           values: state.candidates.map((c) => c.value),
           reason: $("#block-reason").value.trim(),
           source: state.source === "paste" ? "teams-paste" : state.source,
           dry_run: dry,
         },
-      });
-      renderBlockResult(r);
+        (job) => {
+          if (job.status === "running") box.innerHTML = progressBox(job, dry) + renderBlockResult(job);
+        }
+      );
+      box.innerHTML = blockSummary(r, dry) + renderBlockResult(r);
       if (r.cache_refresh?.length) watchCache(r.cache_refresh);
       const okCount = r.results.filter((x) => x.ok).length;
       toast(
@@ -669,13 +748,68 @@
         okCount === r.results.length ? "ok" : "err"
       );
     } catch (ex) {
-      $("#block-result").innerHTML = `<p class="alert alert--error">${esc(ex.message)}</p>`;
+      box.innerHTML = errorBox(ex, dry ? "Chạy thử không thành công" : "Chặn IP không thành công");
       toast(ex.message, "err");
     }
-    btn.textContent = "Chặn ngay";
+    setBusy(btn, false, "Chặn ngay");
+    $("#clear-list").disabled = false;
     refreshBlockButton();
     loadFirewalls();
   });
+
+  const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+  function setBusy(btn, busy, label) {
+    btn.disabled = busy;
+    btn.setAttribute("aria-busy", String(busy));
+    btn.innerHTML = busy ? `<span class="spinner spinner--btn" aria-hidden="true"></span>${esc(label)}` : esc(label);
+  }
+
+  /** Tiến độ khi đang chạy: thanh tiến độ + trạng thái từng firewall (đang chờ / xong / lỗi). */
+  function progressBox(job, dry) {
+    const total = job.total || job.firewalls?.length || 0;
+    const done = job.results?.length || 0;
+    const byId = Object.fromEntries((job.results || []).map((r) => [r.firewall_id, r]));
+    const items = (job.firewalls || [])
+      .map((f) => {
+        const r = byId[f.id];
+        const st = !r
+          ? '<span class="chip"><span class="spinner spinner--xs" aria-hidden="true"></span>đang xử lý</span>'
+          : r.ok
+          ? '<span class="chip chip--ok">xong</span>'
+          : '<span class="chip chip--err">có lỗi</span>';
+        return `<li><span>${esc(f.name)}</span>${st}</li>`;
+      })
+      .join("");
+    return `<div class="progress-box" role="status">
+      <div class="progress-box__head">
+        <strong>${dry ? "Đang chạy thử" : "Đang đẩy cấu hình"}</strong>
+        <span class="muted tiny">${done}/${total} firewall xong</span>
+      </div>
+      <progress max="${total}" value="${done}" aria-label="Tiến độ theo firewall"></progress>
+      ${items ? `<ul class="progress-box__list">${items}</ul>` : ""}
+      ${
+        job.job_id
+          ? `<p class="muted tiny">Firewall phản hồi chậm — công việc chạy nền trên máy chủ. Có thể để trang mở, kết quả sẽ tự hiện.</p>`
+          : ""
+      }
+    </div>`;
+  }
+
+  /** Tóm tắt cuối cùng ở đầu kết quả: tổng thêm / đã có / lỗi trên mọi firewall. */
+  function blockSummary(r, dry) {
+    const t = { added: 0, existed: 0, error: 0, dry_run: 0 };
+    r.results.forEach((x) => Object.keys(t).forEach((k) => (t[k] += x.summary?.[k] || 0)));
+    const fwErr = r.results.filter((x) => !x.ok).length;
+    const cls = fwErr ? "alert--warn" : "alert--ok";
+    const parts = dry
+      ? [`${t.dry_run} sẽ tạo`, `${t.existed} đã có`]
+      : [`${t.added} đã thêm`, `${t.existed} đã có`, `${t.error} lỗi`];
+    return `<div class="alert ${cls} result-summary" role="status">
+      <strong>${dry ? "Chạy thử xong" : fwErr ? `Xong, ${fwErr}/${r.results.length} firewall có lỗi` : "Đã chặn xong"}</strong>
+      <span>${r.results.length} firewall · ${parts.join(" · ")}</span>
+    </div>`;
+  }
 
   const resultChip = (res) => {
     const map = {
@@ -690,39 +824,43 @@
     return `<span class="chip ${cls}">${label}</span>`;
   };
 
+  const ROWS_OPEN_MAX = 5; // nhiều dòng hơn thì thu gọn (tổng kết đã nằm ở đầu), luôn mở sẵn khi có lỗi
+
   function renderBlockResult(r) {
-    const box = $("#block-result");
-    box.innerHTML = r.results
+    return (r.results || [])
       .map((fw) => {
         const s = fw.summary || {};
         const head = `<div class="result-fw__head">
             <span>${esc(fw.firewall)}</span>
-            <span class="chip">${esc(fw.group)}</span>
-            ${fw.ip_family ? `<span class="chip">IPHostGroup · ${esc(fw.ip_family)}</span>` : ""}
             ${fw.ok ? '<span class="chip chip--ok">OK</span>' : '<span class="chip chip--err">Có lỗi</span>'}
-            <span class="muted tiny">thêm ${s.added || 0} · đã có ${s.existed || 0} · lỗi ${s.error || 0}</span>
+            <span class="muted tiny">thêm ${s.added || 0} · đã có ${s.existed || 0} · lỗi ${s.error || 0}${
+              s.dry_run ? ` · chạy thử ${s.dry_run}` : ""
+            }</span>
           </div>`;
         if (fw.error) {
-          return `<div class="result-fw">${head}<div class="result-row"><span class="muted">${esc(fw.error)}</span></div></div>`;
+          return `<div class="result-fw">${head}<div class="result-row result-row--err">${esc(fw.error)}</div></div>`;
         }
-        const rows = fw.rows
+        const rows = (fw.rows || [])
           .map(
             (row) => `<div class="result-row">
               ${resultChip(row.result)}
               <span class="mono">${esc(row.value)}</span>
-              <span class="muted tiny mono">${esc(row.object)}</span>
+              ${row.object && row.object !== row.value ? `<span class="muted tiny mono">${esc(row.object)}</span>` : ""}
               <span class="result-row__msg">${esc(row.code ? row.code + " · " : "")}${esc(row.message)}</span>
             </div>`
           )
           .join("");
+        const open = (fw.rows || []).length <= ROWS_OPEN_MAX || (s.error || 0) > 0;
+        const list = `<details class="result-rows"${open ? " open" : ""}>
+            <summary>Chi tiết ${(fw.rows || []).length} IP</summary>${rows}</details>`;
         const xml = fw.group_xml
-          ? `<details class="xml-preview"${fw.summary?.dry_run ? " open" : ""}>
-              <summary>Payload IPHostGroup ${fw.summary?.dry_run ? "dự kiến" : "đã gửi"} ·
+          ? `<details class="xml-preview"${s.dry_run ? " open" : ""}>
+              <summary>Payload IPHostGroup ${s.dry_run ? "dự kiến" : "đã gửi"} ·
                 <span class="mono">Set operation="${esc(fw.group_operation)}"</span> · ${esc(fw.ip_family || "IPv4")}</summary>
               <pre class="mono">${esc(fw.group_xml)}</pre>
             </details>`
           : "";
-        return `<div class="result-fw">${head}${rows}${xml}</div>`;
+        return `<div class="result-fw">${head}${list}${xml}</div>`;
       })
       .join("");
   }
@@ -972,18 +1110,22 @@
     const fw = state.firewalls.find((f) => f.id === fwId);
     if (!confirm(`Bỏ chặn ${targets.length} object khỏi group ${group} trên ${fw.name}?`)) return;
     const btn = $("#do-unblock");
-    btn.disabled = true;
-    btn.textContent = "Đang xử lý…";
+    setBusy(btn, true, "Đang bỏ chặn…");
+    const out = $("#unblock-result");
+    out.innerHTML = progressBox({ total: 1, firewalls: [{ id: fwId, name: fw.name }], results: [] }, false);
     try {
-      const r = await api("/api/unblock", {
-        method: "POST",
-        body: {
+      const r = await runJob(
+        "/api/unblock",
+        {
           firewall_ids: [fwId],
           targets,
           delete_object: $("#delete-object").checked,
           reason: "Bỏ chặn từ mini app",
         },
-      });
+        (job) => {
+          if (job.status === "running") out.innerHTML = progressBox(job, false);
+        }
+      );
       $("#unblock-result").innerHTML = r.results
         .map((res) => {
           const head = `<div class="result-fw__head"><span>${esc(res.firewall)}</span>
@@ -1005,9 +1147,10 @@
       if (r.cache_refresh?.length) watchCache(r.cache_refresh);
       await loadMembers({ quiet: true });
     } catch (ex) {
+      out.innerHTML = errorBox(ex, "Bỏ chặn không thành công");
       toast(ex.message, "err");
     }
-    btn.textContent = "Bỏ chặn mục đã chọn";
+    setBusy(btn, false, "Bỏ chặn mục đã chọn");
     refreshUnblockButton();
   });
 

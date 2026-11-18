@@ -4,6 +4,18 @@ Mini app HTML5 + FastAPI giúp team SOC/NOC dán thẳng đoạn chat Teams (ho�
 bóc IP tự động và đẩy vào **IP Host Group** trên **nhiều Sophos Firewall** cùng lúc qua XML API —
 thao tác được từ điện thoại trong ngày nghỉ lễ Tết.
 
+**Mới ở v1.7.0** — Sửa lỗi **504** khi chặn nhiều IP trên nhiều firewall cùng lúc:
+- Nguyên nhân: request `/api/block` xử lý **tuần tự** từng firewall, mỗi IP một lệnh XML API với một lần bắt tay TLS + đăng nhập
+  mới, cộng thêm tra cứu từng object thành viên. 10 IP × 3 firewall ≈ 40+ lệnh → vượt timeout của Entra App Proxy / ingress
+  dù backend vẫn đang ghi lên firewall.
+- Mỗi firewall giờ chỉ cần **3 lệnh** trên **một kết nối HTTPS**: đọc group → tạo mọi IP Host trong **một** lệnh `<Set>` gộp
+  (`transactionid` cho từng entity, tối đa `SOPHOS_BATCH_SIZE`) → ghi group. Không tra cứu từng object nữa (dùng cache + tên object).
+- Các firewall chạy **song song** (`FW_PARALLEL`). Thao tác ghi trên cùng một firewall vẫn tuần tự để không ghi đè HostList của nhau.
+- Chặn/bỏ chặn là **công việc nền** (bảng `jobs`): request chờ tối đa `JOB_SYNC_WAIT` giây; chưa xong thì trả HTTP 202 + mã công việc,
+  giao diện hỏi `GET /api/jobs/{id}` và hiển thị **tiến độ từng firewall**, kết quả firewall nào xong hiện trước.
+- Giao diện: thanh tiến độ + trạng thái từng firewall, tổng kết (đã thêm / đã có / lỗi) ở đầu kết quả, chi tiết thu gọn khi không lỗi;
+  lỗi gateway (502/503/504) và mất mạng hiển thị nguyên nhân + hướng xử lý thay cho "Lỗi 504"; nút xóa IP có nhãn cho trình đọc màn hình.
+
 **Mới ở v1.6.1** — Sửa lỗi "Hết thời gian chờ" với firewall chậm khi quét object group:
 - Nguyên nhân: bản cũ đọc **toàn bộ** IP Host object trên firewall (`<Get><IPHost/>`) để lấy chi tiết thành viên SCANPORT GROUP, dùng cả khi chặn và bỏ chặn. Firewall có nhiều object sẽ vượt `API_TIMEOUT` 30 giây.
 - Chặn/bỏ chặn không còn phụ thuộc lệnh nặng này: chi tiết lấy từ cache, suy từ tên object (tên = IP) hoặc tra cứu từng object theo tên (tối đa `HOST_LOOKUP_LIMIT`).
@@ -136,6 +148,9 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 | `API_CONNECT_TIMEOUT` | Timeout kết nối TCP/TLS tới firewall (mặc định 10 giây) |
 | `GROUP_SCAN_TIMEOUT` | Timeout riêng cho quét đầy đủ IP Host trên firewall nhiều object (mặc định 180 giây) |
 | `HOST_LOOKUP_LIMIT` | Số object tối đa tra cứu từng cái theo tên trước khi đọc toàn bộ (mặc định 25) |
+| `SOPHOS_BATCH_SIZE` | Số IP Host gộp trong một lệnh tạo object (mặc định 50; `1` = tạo từng object như bản cũ) |
+| `FW_PARALLEL` | Số firewall xử lý song song khi chặn/bỏ chặn (mặc định 4) |
+| `JOB_SYNC_WAIT` | Request chặn/bỏ chặn chờ tối đa N giây (mặc định 20) rồi trả mã công việc và chạy nền — phải nhỏ hơn timeout App Proxy (~85s) / ingress (60s) |
 | `GROUP_CACHE_MIN_REFRESH_SECONDS` | Giãn cách tối thiểu giữa hai lần bấm "Quét lại" (mặc định 5) |
 | `GROUP_CACHE_WARMUP` | `true` = quét toàn bộ firewall khi app khởi động để cache sẵn |
 | `LOGO_MAX_KB` | Dung lượng tối đa logo tải lên (mặc định 300) |
