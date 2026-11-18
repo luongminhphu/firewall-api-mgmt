@@ -85,7 +85,9 @@ async function loadOverview() {
 
 // Sau khi chặn/bỏ chặn: backend đánh dấu dirty + quét nền. Hỏi trạng thái mỗi giây đến khi xong.
 const watching = new Set();
-export function watchCache(ids) {
+on("cache-refresh", (ids) => watchCache(ids));
+
+function watchCache(ids) {
   ids.forEach((id) => {
     if (watching.has(id)) return;
     watching.add(id);
