@@ -1,0 +1,355 @@
+# SOC Rapid Block — Kiến trúc: hiện trạng, kiến trúc đích, kế hoạch chuyển đổi
+
+> Trạng thái: **BẢN NHÁP — chờ duyệt**. Chưa có dòng code nào của kế hoạch này được viết.
+> Áp dụng cho: v1.7.0 (commit `88e54eb` trên `main`).
+> Phạm vi: (A) tái cấu trúc backend + frontend **không đổi hành vi**; (B) module VPN (B1 tài khoản, B2 thời hạn qua firewall rule).
+
+---
+
+## 0. Tóm tắt cho người duyệt
+
+| Hạng mục | Đề xuất | Cần anh quyết |
+|---|---|---|
+| Lưới an toàn | Bước 1.0 thêm **contract test** chụp lại danh sách route + hình dạng response hiện tại, chạy sau mỗi commit | — |
+| Backend | Tách `main.py` (1 141 dòng, 38 route) thành `core/ auth/ integrations/sophos/ modules/*`, 9 commit nhỏ; module cũ giữ lại dạng **shim re-export** đến khi test chuyển xong | Duyệt cấu trúc §3 |
+| Pydantic | Schema vào/ra riêng, nhưng **lỗi validate vẫn trả 400 + thông điệp tiếng Việt như cũ** (không để FastAPI trả 422) | Duyệt §3.4 |
+| Hardening | `integrations/sophos/policy.py` thành **điểm chặn duy nhất**: mọi XML gửi firewall được phân tích (thao tác + entity) trước khi gửi, ngoài allowlist → chặn + audit `policy_violation` | — |
+| Frontend | ES modules thuần (`<script type="module">`), không build; tách 7 trang + 6 component, mỗi trang một commit, có smoke test Playwright | — |
+| VPN | Entity đã **xác minh trên tài liệu SFOS 22.0** (§5.1). Chỉ đọc. Bảng DB mới (thêm, không sửa bảng cũ) | Phiên bản SFOS thật; mẫu XML thật (§8) |
+| Thông báo | Bảng `email_outbox` idempotent + worker gửi SMTP | SMTP relay, người nhận (§8) |
+
+---
+
+## 1. Hiện trạng
+
+### 1.1 Triển khai
+
+```
+Trình duyệt ──► Entra App Proxy (MFA) ──► K8s NodePort ──► Pod app (uvicorn, 1 replica) ──► PostgreSQL (StatefulSet)
+                                                              │
+                                                              └─► Sophos XML API https://<fw>:4444/webconsole/APIController
+```
+
+- Image dựng bởi GitHub Actions → GHCR; `deploy/k8s/base` + overlay `prod` (cấu hình site ở `local-config.yaml`).
+- **1 replica** là ràng buộc ngầm: `service.fw_lock` (khóa ghi theo firewall), `jobs._events`, `group_cache._locks` đều nằm trong bộ nhớ tiến trình.
+
+### 1.2 Backend (`backend/app`, ~4 000 dòng)
+
+| File | Dòng | Vai trò thực tế | Vấn đề |
+|---|---|---|---|
+| `main.py` | 1 141 | 38 route + helper auth (principal/require) + login/OIDC/header + firewall CRUD + block/unblock + audit/changes CSV + branding + users + static | Gom mọi tầng; `payload: dict` ở mọi route (mass-assignment chặn thủ công từng trường); `@app.on_event` đã deprecated |
+| `service.py` | ~560 | Block/unblock, test kết nối, `audit()`, `resolve_hosts`, `fw_lock` | Trộn nghiệp vụ + truy cập DB + gọi firewall |
+| `sophos.py` | ~420 | Client XML API + dựng XML IPHost/IPHostGroup + kiểm tra group cố định | Chính sách nằm rải rác (đây + `policy.py` + `main.locked_group`) |
+| `group_cache.py` | 335 | Cache SCANPORT GROUP, bộ lập lịch (thread), quét lite/full | Bộ lập lịch riêng; khóa mềm `refreshing_since` |
+| `changelog.py` | 265 | Nhật ký thay đổi + hash chain + drift + truy vấn batch | Hash chain gắn chặt bảng `group_changes` → không tái dùng được cho VPN |
+| `jobs.py` | ~160 | Công việc nền v1.7 (ThreadPool, bảng `jobs`) | Không có khóa liên pod |
+| `auth.py` / `users.py` / `crypto.py` | 266 / 165 / 103 | OIDC + header SSO; user nội bộ + chống dò mật khẩu; AES-GCM + token HMAC | `crypto.py` gộp 2 việc khác nhau (mã hóa credential và session token) |
+| `db.py` | ~310 | Engine, 9 model, `_migrate()` thủ công | Migration ad-hoc (ALTER khi khởi động) |
+| `policy.py`, `ipparse.py`, `config.py` | nhỏ | Group cố định, bóc IP, cấu hình env | — |
+
+**Luồng phân quyền hiện tại**: token HMAC trong header `X-Auth-Token` (frontend giữ trong `localStorage`), mỗi request đọc lại quyền từ DB (`principal`). Không dùng cookie phiên nên **không có bề mặt CSRF** cho API; riêng `/api/audit.csv` và `/api/changes.csv` nhận token qua **query string** (lọt vào log proxy) — ghi nhận là nợ kỹ thuật, **không sửa trong phase refactor** vì đổi hành vi (xem §7).
+
+**Ghi nhận thêm (giữ nguyên trong phase 1, đưa vào backlog):**
+- CORS `allow_origins=["*"]` — vô hại với token header nhưng nên giới hạn.
+- `/api/audit?q=` lọc **sau** `LIMIT` (tìm kiếm chỉ trong N dòng mới nhất).
+- Không có log có cấu trúc; lỗi chỉ `log.exception` dạng text.
+
+### 1.3 Frontend (`frontend/`, không build)
+
+- `app.js` 1 599 dòng, một IIFE: utils → login/SSO → branding → tabs → firewalls → nguồn IP → block → IP Host Group + cache → audit → users/phân quyền → changes → khởi động.
+- `index.html` 6 tab (`data-tab`/`data-panel`), CSS: `hsc-tokens.css` (token màu HSC, sáng/tối) + `styles.css` + `fonts.css` (Inter tự host).
+- Trạng thái dùng chung trong một object `state`; render bằng template string + `esc()`.
+
+### 1.4 Test
+
+- 11 kịch bản E2E dạng script (`tests/*_test.py`, in `PASS/FAIL`) chạy qua `tests/run_e2e.sh`: dựng mock Sophos (HTTPS tự ký) + app trên SQLite.
+- `mock/mock_sophos.py`: IPHost, IPHostGroup, Set add/update (nhiều entity + `transactionid`), Remove; mô phỏng chậm.
+- Không có test đơn vị thuần, không có test UI tự động trong repo.
+
+---
+
+## 2. Nguyên tắc chuyển đổi
+
+1. **Không đổi hành vi** ở phase 1–2: cùng API path, method, mã HTTP, khóa JSON, thông điệp lỗi, cùng bảng DB.
+2. **Mỗi bước một commit**, toàn bộ test (11 kịch bản cũ + contract test mới) xanh sau mỗi commit; commit không xanh thì không đẩy.
+3. **Strangler**: module mới viết ở vị trí mới; vị trí cũ (`app/service.py`, `app/sophos.py`, `app/db.py`, `app/crypto.py`…) giữ lại dạng **re-export** cho tới bước cuối, để test và import cũ vẫn chạy. Xóa shim là một commit riêng.
+4. Router mỏng → service (nghiệp vụ, không biết HTTP) → repository (SQLAlchemy) / integration (firewall).
+5. Không đổi schema DB ở phase 1–2. Phase 3+ chỉ **thêm** bảng/cột (không đổi/xóa cột cũ).
+6. Hardening không nới: `SCANPORT GROUP` gắn cứng; mọi thao tác lên firewall đi qua một điểm kiểm soát.
+
+---
+
+## 3. Kiến trúc đích — Backend
+
+### 3.1 Cây thư mục
+
+```
+backend/app/
+  main.py                    # tạo app, lifespan, middleware, mount router, static — < 120 dòng
+  core/
+    config.py                # Settings (giữ nguyên tên biến môi trường)
+    db.py                    # engine, SessionLocal, Base, get_session, init_db + _migrate (giữ nguyên)
+    models.py                # các model hiện có (tách khỏi db.py, không đổi bảng/cột)
+    security.py              # encrypt/decrypt credential (AES-GCM) + issue/verify token — tách từ crypto.py
+    audit.py                 # audit() + repository AuditLog
+    hashchain.py             # chuỗi băm dùng chung: append(table, payload) / verify(table)
+    jobs.py                  # công việc nền + bộ lập lịch chung + khóa phân tán (pg_try_advisory_lock)
+    errors.py                # AppError(status, message) + handler giữ định dạng {"detail": "..."}
+    logging.py               # log JSON có cấu trúc (ts, level, logger, msg, request_id, actor, fw)
+    deps.py                  # client_ip_of, selected_firewalls, get_fw (dùng chung các router)
+  auth/
+    rbac.py                  # ROLE_RANK, role_at_least, principal, require("operator"/"admin")
+    local.py                 # /api/login (tài khoản app + mật khẩu chung break-glass)
+    oidc.py                  # Entra OIDC (PKCE, JWKS, state/nonce) — từ auth.py
+    header_sso.py            # header SSO qua App Proxy (TRUSTED_PROXY_CIDRS)
+    users/                   # router + service + repository + schemas (/api/users, /api/me/password)
+    router.py                # /api/auth/*, /api/config
+  integrations/sophos/
+    client.py                # SophosClient: kết nối keep-alive, _post, đăng nhập, mã lỗi, batch transactionid
+    xml.py                   # dựng/parse XML, escape, as_list
+    entities/
+      iphost.py  iphostgroup.py              # đang dùng
+      firewallrule.py  firewallrulegroup.py  # VPN B2 (chỉ đọc)
+      user.py  usergroup.py  schedule.py     # VPN B1/B2 (chỉ đọc)
+      sslvpn.py  ipsec.py                    # VPN B1 (chỉ đọc)
+    policy.py                # ALLOWLIST thao tác + guard trong client — nơi DUY NHẤT quyết định
+  modules/
+    firewalls/   router.py service.py repository.py schemas.py   # CRUD, test kết nối
+    ipblock/     router.py service.py parse.py group_cache.py changelog.py schemas.py
+    audit/       router.py (/api/audit, /api/audit.csv)
+    branding/    router.py service.py
+    vpn/         accounts/  rules/  notify/   (phase 3–5)
+```
+
+### 3.2 Phụ thuộc giữa các tầng
+
+```
+router (FastAPI, schema I/O, RBAC) ──► service (nghiệp vụ thuần) ──► repository (DB)
+                                                   └────────────────► integrations/sophos (qua policy guard)
+core/* được mọi tầng dùng; modules/* KHÔNG import chéo router của nhau (chỉ service public).
+```
+
+Quy tắc kiểm tra tự động (thêm vào contract test): `modules/*/service.py` không import `fastapi`; chỉ `integrations/sophos/client.py` được import `httpx` tới firewall.
+
+### 3.3 Policy — điểm chặn duy nhất
+
+`integrations/sophos/policy.py` khai báo **allowlist cứng trong mã nguồn**:
+
+| Entity | Get | Set add | Set update | Remove | Ràng buộc thêm |
+|---|---|---|---|---|---|
+| `IPHost` | ✔ | ✔ | ✘ | ✔ | Remove chỉ object do app tạo (`is_app_owned`) — giữ như hiện tại |
+| `IPHostGroup` | ✔ (chỉ `SCANPORT GROUP` khi trả về) | ✘ | ✔ | ✘ | Name phải = `SCANPORT GROUP` |
+| `FirewallRule`, `FirewallRuleGroup` | ✔ | ✘ | ✘ | ✘ | Group đọc phải thuộc `VPN_RULE_GROUPS_ALLOWED = ("VPN",)` |
+| `User`, `UserGroup`, `Schedule`, `SSLVPNPolicy`, `VPNIPSecConnection` | ✔ | ✘ | ✘ | ✘ | Kết quả đi qua bộ lọc trường (§5.3) |
+| Mọi entity khác | ✘ | ✘ | ✘ | ✘ | — |
+
+Cơ chế: `SophosClient._post(inner_xml)` **parse lại** XML sắp gửi (thao tác `Get|Set@operation|Remove` × entity × `Name`) và gọi `policy.check()` trước khi mở kết nối. Vi phạm → `PolicyViolation` → service ghi `audit(action="policy_violation", result="denied")` → HTTP 403. Nhờ parse chính payload thật, kể cả lỗi lập trình (dựng nhầm XML) cũng bị chặn. Tên Rule Group VPN cấu hình được (`VPN_RULE_GROUPS`), nhưng giá trị ngoài `VPN_RULE_GROUPS_ALLOWED` bị bỏ qua và ghi cảnh báo khi khởi động.
+
+### 3.4 Schema Pydantic mà không đổi hành vi
+
+- Mỗi route có `XxxIn` (chỉ khai báo trường được nhận, `extra="ignore"`) và `XxxOut` (`response_model`, khóa y hệt hiện tại).
+- Kiểu khai báo **khoan dung** như code hiện tại (vd `port: int | str | None`), kiểm tra nghiệp vụ vẫn trong service để giữ đúng thông điệp.
+- Handler `RequestValidationError` → **HTTP 400 `{"detail": "<thông điệp tiếng Việt>"}`** (thay vì 422 dạng list), vì frontend hiển thị `data.detail` dạng chuỗi.
+- Contract test so sánh response trước/sau trên cùng kịch bản.
+
+### 3.5 Công việc nền & khóa phân tán (`core/jobs.py`)
+
+- Gộp 3 cơ chế hiện có (thread lập lịch group cache, `jobs.py` v1.7, `_scan_wait`) vào một API: `submit()`, `wait()`, `every(name, interval, fn)`.
+- Khóa: PostgreSQL `pg_try_advisory_lock(hashtext(key))` cho tác vụ định kỳ (sync VPN, quét cache, gửi email) và khóa ghi theo firewall; SQLite (test) dùng khóa trong tiến trình. Đây là thay đổi **nội bộ**, giúp chạy được >1 replica sau này; với 1 replica hành vi không đổi.
+
+### 3.6 Logging có cấu trúc
+
+JSON một dòng: `ts, level, logger, msg, request_id, actor, path, status, ms, fw_id, job_id`. Middleware gán `request_id` (nhận `X-Request-ID` từ App Proxy nếu có). **Không bao giờ log** body request, mật khẩu, token, XML gửi firewall (chứa `<Login>`). Bật bằng `LOG_FORMAT=json` (mặc định `text` để không đổi log hiện tại trong phase 1).
+
+---
+
+## 4. Kiến trúc đích — Frontend
+
+```
+frontend/
+  index.html               # giữ markup hiện tại; <script type="module" src="js/main.js">
+  hsc-tokens.css styles.css fonts.css assets/   # giữ nguyên
+  js/
+    main.js                # khởi động: đăng nhập/SSO → config → mount trang
+    api.js                 # fetch + ApiError + thông điệp gateway + runJob (đã có ở v1.7)
+    session.js             # token (localStorage fallback RAM), logout, SSO tự động
+    router.js              # tab ↔ location.hash (#block, #groups…), back/forward
+    store.js               # state dùng chung + subscribe() đơn giản
+    util.js                # esc, fmtTime, debounce, sleep
+    components/
+      table.js badge.js modal.js toast.js filterbar.js pagination.js progress.js
+    pages/
+      block.js groups.js firewalls.js changes.js audit.js users.js vpn.js
+```
+
+- Không framework, không bundler: trình duyệt nạp ES module trực tiếp; middleware `_static_no_cache` hiện có đã áp dụng cho `.js` → không lo cache cũ khi deploy.
+- `router.js` thêm deep link `#tab` (hiện tại tab không có trong URL) — đây là cải tiến UX duy nhất được phép trong phase 2, vì không đổi hành vi hiện có (mở `/` vẫn vào tab Chặn nhanh).
+- Giữ: tiếng Việt, sáng/tối, mobile, các `id` DOM (để smoke test và người dùng quen thao tác).
+- Kiểm chứng: thêm `tests/ui_smoke_test.js` (Playwright có sẵn trong môi trường CI/dev) — đăng nhập, mỗi tab render không lỗi console, chặn thử dry-run.
+
+---
+
+## 5. Module VPN
+
+### 5.1 Entity Sophos — đã xác minh
+
+Nguồn: tài liệu API chính thức **Sophos Firewall 22.0** (`docs.sophos.com/nsg/sophos-firewall/22.0/api/`), đọc trực tiếp các trang Add/Edit (khối *Sample Configuration*). **Cần anh xác nhận phiên bản SFOS đang chạy** — nếu là 20.x/21.x em sẽ đối chiếu lại đúng bản trước phase 3.
+
+| Mục đích | Tag XML | Trang tài liệu | Trường dùng |
+|---|---|---|---|
+| Rule tường lửa | `FirewallRule` | PROTECT › Firewall › SecurityPolicy › *Add firewall rule / Edit firewall rule* | `Name` (≤60 ký tự, không dấu phẩy), `Description`, `Status` (Enable/Disable), `IPFamily`, `Position`, `PolicyType` (User/Network/HTTPBased), `UserPolicy`/`NetworkPolicy` › `Action`, `LogTraffic`, `SourceZones/Zone`, `SourceNetworks/Network`, `Services/Service`, `Schedule`, `DestinationZones/Zone`, `DestinationNetworks/Network`, `MatchIdentity`, `Identity/Member` (user/group) |
+| Rule Group | `FirewallRuleGroup` | PROTECT › Firewall › FirewallGroup | `Name`, `Description`, `SecurityPolicyList/SecurityPolicy` (**tên các rule thuộc group**), `SourceZones`, `DestinationZones`, `Policytype` |
+| Lịch | `Schedule` | SYSTEM › Profiles › Schedule | `Name`, `Type` (**Recurring/OneTime**), `ScheduleDetails/StartDate`, `ScheduleDetails/EndDate` (dạng `2011-03-14 15:38:07`, chỉ có với OneTime) |
+| Tài khoản | `User` | CONFIGURE › Authentication › Users | `Username`, `Name`, `UserType`, `EmailList/EmailID`, `Group`, `Description`, `SSLVPNPolicy`, `Status` (active/deactive, chỉ đọc) — **có cả `Password`, `PasswordHash`** |
+| Nhóm | `UserGroup` | CONFIGURE › Authentication › Groups | `GroupDetail/Name`, `GroupType`, `SSLVPNPolicy`, `GroupMembers/UserName` |
+| SSL VPN remote access | `SSLVPNPolicy` | CONFIGURE › VPN › SSLVPNPolicy | `TunnelPolicy/Name`, `PolicyMembers/Member`, `PermittedNetworkResourcesIPv4/Resource` |
+| IPsec remote access | `VPNIPSecConnection` | CONFIGURE › VPN › IPSECConnection | `Configuration/Name`, `ConnectionType` (=RemoteAccess), `Policy` … — **có `PresharedKey`** |
+
+**Điểm chưa có trong tài liệu, phải xác minh trên dữ liệu thật trước khi code parser** (xem §8):
+1. `FirewallRule` **không có trường ID số** trong schema — khóa nhận diện dự kiến là `Name` (duy nhất trên firewall) + thứ tự trong `SecurityPolicyList`.
+2. `##ALL_SSLVPN_RW` nằm ở `SourceNetworks/Network` hay `Identity/Member`.
+3. `<Get><FirewallRule>` có hỗ trợ `<Filter>` theo tên không; nếu không, đọc toàn bộ rồi lọc theo `SecurityPolicyList` (chạy nền, timeout riêng như quét IP Host).
+
+### 5.2 B1 — Tài khoản VPN (chỉ đọc)
+
+Bảng mới `vpn_accounts`:
+
+| Cột | Ghi chú |
+|---|---|
+| `id`, `firewall_id` | `UNIQUE(firewall_id, username)` |
+| `username`, `display_name`, `user_type`, `email`, `groups` (JSON), `sslvpn_policy`, `status` | chỉ các trường trong allowlist |
+| `has_sslvpn`, `has_ipsec` | suy từ SSLVPNPolicy/VPNIPSecConnection |
+| `first_seen_at`, `last_seen_at`, `removed_at` | mất khỏi firewall → set `removed_at`, **không xóa**; xuất hiện lại → `removed_at = NULL` |
+
+Sync: `core/jobs.every("vpn-accounts", VPN_SYNC_MINUTES)` + nút "Đồng bộ" (operator). API: `GET /api/vpn/accounts` (viewer), `POST /api/vpn/sync` (operator, trả job như v1.7).
+
+### 5.3 Bộ lọc trường bí mật
+
+- **Allowlist** theo entity (chỉ giữ các trường liệt kê ở §5.1), áp ngay sau khi parse XML, **trước** khi ghi DB/log/trả API.
+- Lưới an toàn thứ hai: hàm `assert_no_secret(obj)` từ chối (log cảnh báo, bỏ bản ghi) nếu còn khóa khớp `/pass|secret|key|otp|token|hash|psk/i`.
+- Log/exception từ client không bao giờ chứa body phản hồi thô.
+
+### 5.4 B2 — Thời hạn truy cập qua firewall rule
+
+**Đọc**: `FirewallRuleGroup` có `Name ∈ VPN_RULE_GROUPS` → danh sách tên rule → `FirewallRule` tương ứng → `Schedule` được tham chiếu.
+
+Bảng mới `vpn_rules` (khóa `firewall_id, rule_name`): position, enabled, action, policy_type, src_zones/networks/identity, dst_zones/networks, services, schedule_name, log_traffic, description (JSON cho danh sách), `schedule_end`, `name_date`, `expiry_date`, `expiry_source` (`schedule|name|none`), `expiry_mismatch`, `team`, `user_code`, `account_ids` (JSON), `content_hash`, `first_seen_at`, `last_seen_at`, `removed_at`.
+
+**Parser tên rule** (`modules/vpn/rules/naming.py`, hàm thuần, test đầy đủ):
+
+```
+<tên> := [TEAM " - "] [USERCODE] [" -"]? ["expire"]? [DATE]
+DATE  := d{1,2} / d{1,2} / d{4}   (dd/mm/yyyy, cũng chấp nhận - . làm dấu phân cách)
+```
+
+| Ví dụ | team | user_code | name_date |
+|---|---|---|---|
+| `THAM.NQ expire 23/04/2027` | — | THAM.NQ | 2027-04-23 |
+| `RMS RESEARCH - CHAU.NB expire 19/10/2027` | RMS RESEARCH | CHAU.NB | 2027-10-19 |
+| `RMS RESEARCH - NHAN.NDT 30/06/2027` | RMS RESEARCH | NHAN.NDT | 2027-06-30 |
+| `HR team testing HRIS - expire 31/12/2026` | HR team testing HRIS | — | 2026-12-31 |
+| `VPN - RMS RESEARCH GROUP access Factset Server` | VPN | — | — (`none`) |
+| `ABC expire 31/02/2027` | — | — | lỗi → trạng thái *Không đọc được tên* |
+
+- `user_code` = token dạng `CHỮ.CHỮ` (in hoa, có dấu chấm). Ngày **luôn hiểu là dd/mm** (quy ước HSC); ngày không hợp lệ → không đoán.
+- **Ưu tiên**: Schedule `OneTime` có `EndDate` → `expiry_source=schedule`; nếu không → ngày trong tên (`name`); không có → `none`. Cả hai có và khác ngày → `expiry_mismatch = true` (badge *Lệch thời hạn*).
+- Hạn tính **hết ngày** theo giờ Việt Nam (23:59:59 Asia/Ho_Chi_Minh).
+
+**Liên kết rule ↔ tài khoản**: `Identity/Member` khớp `vpn_accounts.username` (không phân biệt hoa/thường; member là group → mở rộng qua `UserGroup`); dự phòng: `user_code` khớp phần trước `@` của username/email.
+
+**Trạng thái** (tính khi đọc, không lưu — phụ thuộc ngày hôm nay; ngưỡng `vpn.expiring_days` mặc định 30):
+
+| Trạng thái | Điều kiện (kiểm theo thứ tự) |
+|---|---|
+| Không đọc được tên | có chữ "expire"/chuỗi giống ngày nhưng parse lỗi, và không có schedule |
+| User không còn / bị disabled | liên kết được tài khoản nhưng `removed_at` ≠ NULL hoặc `status = deactive` |
+| Đã hết hạn nhưng rule vẫn bật | `expiry_date < hôm nay` và `enabled` |
+| Sắp hết hạn | `0 ≤ expiry_date − hôm nay ≤ ngưỡng` |
+| Còn hạn | `expiry_date − hôm nay > ngưỡng` |
+| Không có hạn | `expiry_source = none` |
+
+(Rule đã hết hạn và **đã tắt** → *Còn hạn* không áp dụng; hiển thị *Đã hết hạn (đã tắt)* ở bộ lọc phụ.) Một rule có thể mang thêm cờ *Lệch thời hạn*.
+
+**Lịch sử**: mỗi lần sync so với `content_hash` lần trước → sự kiện `rule_added | rule_removed | expiry_changed | destination_changed | identity_changed | status_changed` ghi vào bảng `vpn_rule_changes` qua `core/hashchain` (chuỗi riêng, verify như `group_changes`).
+
+**Dashboard (tab "VPN")**: thẻ đếm theo trạng thái → bảng lọc (team, trạng thái, firewall, khoảng ngày hết hạn, ô tìm) → panel chi tiết rule (nguồn/đích/dịch vụ/schedule, lịch sử) → xuất CSV "danh sách cần xử lý". **Không có nút sửa/tắt/xóa rule.**
+
+API (đề xuất): `GET /api/vpn/rules`, `GET /api/vpn/rules/{fw_id}/{name}`, `GET /api/vpn/summary`, `GET /api/vpn/rules.csv`, `GET /api/vpn/changes`, `POST /api/vpn/sync` (operator), `GET|PUT /api/vpn/settings` (admin).
+
+### 5.5 Thông báo email (phase 5)
+
+- Bảng `email_outbox`: `dedupe_key UNIQUE`, `to`, `subject`, `body`, `status` (pending/sent/failed), `attempts`, `next_attempt_at`, `sent_at`, `last_error`.
+- Idempotent: `dedupe_key = f"{kind}:{fw_id}:{rule}:{expiry_date}:{bucket}"`, bucket = mốc nhắc (30/14/7/1 ngày) → chạy sync nhiều lần không gửi trùng; đổi hạn → khóa mới.
+- Loại: *sắp hết hạn* (đại diện team + Infra), *đã hết hạn nhưng vẫn bật* (Infra, nhắc hằng tuần).
+- Worker gửi SMTP (`core/jobs.every`, khóa advisory), retry lùi dần; nội dung không chứa dữ liệu ngoài tên rule, user_code, ngày, đích.
+- Cấu hình (admin): ngưỡng, mốc nhắc, email Infra, bảng `vpn_team_contacts(team, emails)`.
+
+### 5.6 Phân quyền VPN
+
+| Vai trò | Quyền |
+|---|---|
+| viewer (Readonly) | xem tài khoản, rule, dashboard, lịch sử, xuất CSV |
+| operator (Write) | + `POST /api/vpn/sync` |
+| admin | + `PUT /api/vpn/settings`, người nhận, đại diện team |
+
+---
+
+## 6. Kế hoạch chuyển đổi
+
+Mỗi dòng = 1 commit; cột "Kiểm chứng" là điều kiện để đẩy.
+
+### Phase 1 — Backend (không đổi hành vi)
+
+| # | Bước | Kiểm chứng |
+|---|---|---|
+| 1.0 | `tests/contract_test.py`: danh sách 38 route (method+path), khóa JSON của response mẫu mỗi nhóm, mã lỗi chính (400/401/403/404) | 11 kịch bản cũ + contract xanh |
+| 1.1 | `core/` (config, db+models, security, audit, errors, deps) + shim ở vị trí cũ | như trên |
+| 1.2 | `core/hashchain.py`, `changelog.py` dùng lại (hash cũ verify y hệt) | + `changes/verify` OK trên DB có sẵn dữ liệu |
+| 1.3 | `integrations/sophos/` (client, xml, entities iphost/iphostgroup) + **policy guard** trong `_post` | + test mới: Set/Remove ngoài allowlist bị chặn + audit |
+| 1.4 | `auth/` (rbac, local, oidc, header_sso, users) + router | oidc/sso/users tests |
+| 1.5 | `modules/firewalls/` + schemas + handler 400 | contract |
+| 1.6 | `modules/ipblock/` (parse, service block/unblock, group_cache, changelog router, jobs router) | iphostgroup/slow/many_ip/group_cache tests |
+| 1.7 | `modules/audit`, `modules/branding` | contract |
+| 1.8 | `core/jobs.py` hợp nhất lập lịch + advisory lock; `main.py` dùng lifespan, < 120 dòng | toàn bộ |
+| 1.9 | `core/logging.py` (`LOG_FORMAT=json` tùy chọn), chuyển test sang import mới, **xóa shim** | toàn bộ |
+
+### Phase 2 — Frontend
+
+| # | Bước |
+|---|---|
+| 2.0 | `tests/ui_smoke_test.js` (Playwright) chạy trên `app.js` hiện tại |
+| 2.1 | Chuyển sang `<script type="module">`, tách `util/api/session/store` |
+| 2.2 | `router.js` (hash) + components (toast, badge, table, modal, filterbar, pagination, progress) |
+| 2.3–2.8 | Mỗi trang một commit: block → groups → firewalls → changes → audit → users |
+| 2.9 | Xóa `app.js` cũ |
+
+### Phase 3 — VPN B1 · Phase 4 — VPN B2 + dashboard · Phase 5 — Email
+
+Bắt đầu phase 3 chỉ khi đã có câu trả lời §8.1–8.2. Mỗi phase: mock Sophos mở rộng trước (User/UserGroup/Schedule/FirewallRule/FirewallRuleGroup "VPN" với các rule mẫu ở §5.4, có trường bí mật giả để test lọc) → model/migration thêm bảng → integration → service + test thuần → router → UI.
+
+**Test bắt buộc** (theo yêu cầu): parser tên rule (đủ mẫu + mẫu lỗi), ưu tiên schedule > tên, phân loại trạng thái theo ngày (tham số `today`), mọi Set/Remove lên `FirewallRule`/`User` bị chặn kèm audit `policy_violation`, không lộ trường bí mật (DB, log, API), mock có Rule Group "VPN".
+
+---
+
+## 7. Rủi ro & ngoài phạm vi
+
+| Rủi ro | Giảm thiểu |
+|---|---|
+| Refactor làm lệch response | Contract test bước 1.0; shim; commit nhỏ |
+| 422 thay 400 khi dùng Pydantic | Handler §3.4 + contract test |
+| Đọc FirewallRule chậm (nhiều rule) | Chạy nền, timeout riêng `VPN_SCAN_TIMEOUT`, chỉ rule trong group |
+| Tên rule không theo quy ước | Trạng thái *Không đọc được tên* + CSV để Infra chuẩn hóa dần; không đoán ngày |
+| Lộ bí mật từ User/IPsec | Allowlist + assert lần 2 + test |
+| Nhiều replica | Advisory lock (§3.5) — vẫn khuyến nghị 1 replica tới khi khóa ghi theo firewall chuyển sang PG |
+
+**Không làm trong các phase này** (backlog): token CSV qua query string → link tải ký ngắn hạn; giới hạn CORS; audit search trên DB; Alembic; tự động tắt/sửa rule (cấm theo yêu cầu); rà soát định kỳ ISO 27001 (xây trên B1+B2 sau).
+
+---
+
+## 8. Câu hỏi cần anh trả lời trước khi code
+
+1. **Phiên bản SFOS** đang chạy trên các firewall (tài liệu đã đối chiếu: 22.0).
+2. **Mẫu XML thật đã che thông tin** (chạy bằng tài khoản API chỉ đọc): `<Get><FirewallRuleGroup>` của group "VPN", 3–5 `<FirewallRule>` trong đó (có rule gắn Schedule), 1 `<Schedule>` OneTime, 1 `<User>` (xóa Password/PasswordHash). Dùng để dựng mock đúng thực tế và chốt 3 điểm ở cuối §5.1.
+3. **SMTP relay** cho thông báo (host/port, có cần đăng nhập không, địa chỉ gửi) — cần mở mạng từ pod.
+4. **Đại diện team**: nhập tay trong app (đề xuất) hay lấy từ nhóm AD/Entra?
+5. Duyệt các quyết định: cấu trúc §3.1, xử lý 400 §3.4, `LOG_FORMAT` mặc định `text`, deep link tab §4, quy ước ngày **dd/mm** §5.4.
