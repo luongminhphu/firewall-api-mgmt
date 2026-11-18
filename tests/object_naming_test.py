@@ -6,8 +6,8 @@ import sys
 import httpx
 
 sys.path.insert(0, "backend")
-from app.ipparse import host_object_name, is_app_owned, legacy_object_name  # noqa: E402
-from app.sophos import SophosClient  # noqa: E402
+from app.integrations.sophos.naming import host_object_name, is_app_owned, legacy_object_name  # noqa: E402
+from app.integrations.sophos import SophosClient  # noqa: E402
 
 B = "http://127.0.0.1:8090"
 c = httpx.Client(base_url=B, timeout=30)

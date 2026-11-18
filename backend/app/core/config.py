@@ -120,8 +120,12 @@ class Settings:
     HEADER_ADMINS: str = os.getenv("HEADER_ADMINS", "")      # UPN, phân tách dấu phẩy
     HEADER_OPERATORS: str = os.getenv("HEADER_OPERATORS", "")
 
+    # Log: LOG_FORMAT=json → log JSON có request_id/actor (docs/architecture.md §3.6); mặc định text như cũ.
+    LOG_FORMAT: str = os.getenv("LOG_FORMAT", "text").strip().lower()
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "").strip()
+
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "1.7.0"
+    APP_VERSION: str = "1.7.1"
 
     @property
     def auth_modes(self) -> list[str]:

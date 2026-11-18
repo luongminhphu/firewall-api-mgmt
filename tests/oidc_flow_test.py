@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from app import main
 from app.auth import oidc as sso
-from app.crypto import verify_principal
+from app.core.security import verify_principal
 key=rsa.generate_private_key(public_exponent=65537,key_size=2048)
 class K: pass
 k=K(); k.key=key.public_key()
@@ -50,6 +50,6 @@ for name,fn,expect in [
     _,loc=run(fn); msg=urllib.parse.unquote(loc)
     print("PASS" if "sso_error" in loc and expect in msg else "FAIL", name, "→", msg[13:110])
 _,loc=run(lambda n: mk(n), tamper_state=True); print("PASS" if "state" in urllib.parse.unquote(loc) else "FAIL","state mismatch")
-from app.config import settings; settings.OIDC_REQUIRE_MFA_CLAIM=True
+from app.core.config import settings; settings.OIDC_REQUIRE_MFA_CLAIM=True
 _,loc=run(lambda n: mk(n, amr=["pwd"])); print("PASS" if "MFA" in urllib.parse.unquote(loc) else "FAIL","require MFA claim")
 r=c.post("/api/login",json={"password":"socadmin"}); print("PASS" if r.status_code==403 else "FAIL","local login disabled when AUTH_MODES=oidc")

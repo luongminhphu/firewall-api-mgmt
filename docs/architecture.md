@@ -1,6 +1,6 @@
 # SOC Rapid Block — Kiến trúc: hiện trạng, kiến trúc đích, kế hoạch chuyển đổi
 
-> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. Đang thực hiện phase 1.
+> Trạng thái: **ĐÃ DUYỆT** (18/11/2026) — quyết định ở §9. **Phase 1 xong** (commit 1.0–1.9, §10). Tiếp theo: phase 2.
 > Áp dụng cho: v1.7.0 (commit `88e54eb` trên `main`).
 > Phạm vi: (A) tái cấu trúc backend + frontend **không đổi hành vi**; (B) module VPN (B1 tài khoản, B2 thời hạn qua firewall rule).
 
@@ -366,3 +366,24 @@ Bước đầu phase 3: công cụ **`tools/sophos_sample.py`** (chỉ đọc) �
 | 3 | SMTP | Cấu hình trên giao diện, mục **Cài đặt** (admin), mật khẩu mã hóa, có gửi thử |
 | 4 | Đại diện team | Nhập tay trong app |
 | 5 | Cấu trúc §3.1, lỗi 400 §3.4, `LOG_FORMAT` mặc định `text`, deep link tab §4, ngày dd/mm §5.4 | Duyệt |
+
+---
+
+## 10. Nhật ký thực hiện phase 1
+
+| Bước | Kết quả | Ghi chú |
+|---|---|---|
+| 1.0 | `tests/contract_test.py` + snapshot | 42 route, 53 response; mục mới được ghi bằng code cũ rồi so với code mới |
+| 1.1 | `core/` | shim ở vị trí cũ tới 1.9 |
+| 1.2 | `core/hashchain.py` | chuỗi do code cũ ghi verify khớp bằng code mới |
+| 1.3 | `integrations/sophos/` + policy guard | `tests/policy_guard_test.py` (35 kiểm tra, không gửi gì khi bị chặn) |
+| 1.4 | `auth/` | 3 test OIDC chỉ đổi đường dẫn import |
+| 1.5 | `modules/firewalls/` + `core/errors.py` | lỗi validate → 400 chuỗi tiếng Việt; trường lạ bị bỏ qua |
+| 1.6 | `modules/ipblock/` | `tests/imports_test.py` bắt import hỏng trong thân hàm |
+| 1.7 | `modules/audit`, `modules/branding` | regex SVG/chữ ký file đối chiếu giống hệt |
+| 1.8 | `core/jobs.py` (lock + every), lifespan | `tests/jobs_lock_test.py` mô phỏng 2 pod trên PostgreSQL |
+| 1.9 | `core/logging.py`, xóa shim | `tests/logging_test.py`; `main.py` còn ~110 dòng |
+
+Toàn bộ test chạy được trên SQLite và PostgreSQL 16 (`E2E_DATABASE_URL`). Khác biệt hành vi có chủ đích duy nhất:
+lỗi validate body trả **400** (trước là 422 của FastAPI — frontend chưa từng gửi body sai kiểu), và response có thêm
+header `X-Request-ID`.

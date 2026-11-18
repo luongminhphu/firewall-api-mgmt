@@ -78,6 +78,22 @@ Cách chặn: với mỗi IP/CIDR, app tạo **IP Host** có tên chính là đ�
 sau đó ghi lại toàn bộ `<HostList>` của group trong **một** lệnh (Sophos không hỗ trợ thêm/bớt từng phần tử của IPHostGroup —
 [tài liệu IPHostGroup](https://docs.sophos.com/nsg/sophos-firewall/22.0/api/SYSTEM/Host%20and%20Services/IPHostGroup/operations/AddIpHostGroup&EditIpHostGroup.html)).
 
+Mã nguồn backend (từ v1.7.1, chi tiết và lý do ở [`docs/architecture.md`](docs/architecture.md)):
+
+```
+backend/app/
+  main.py                 tạo app, lifespan, middleware, mount router, phục vụ frontend
+  core/                   config, db + models, security (mã hóa credential, token), audit, hashchain,
+                          jobs (công việc nền + khóa phân tán pg_advisory_lock + lập lịch), errors, logging
+  auth/                   rbac (vai trò), router (đăng nhập), oidc (Entra), header_sso, users/
+  integrations/sophos/    client XML API, entities (IPHost, IPHostGroup), naming,
+                          policy.py — NƠI DUY NHẤT quyết định lệnh nào được gửi lên firewall
+  modules/                firewalls/, ipblock/ (chặn/bỏ chặn, cache group, lịch sử thay đổi), audit/, branding/
+```
+
+Kiểm thử: `bash tests/run_e2e.sh tests/<tên>_test.py` (SQLite); thêm `E2E_DATABASE_URL=postgresql+psycopg2://…`
+để chạy trên PostgreSQL. `tests/contract_test.py` khóa danh sách API và hình dạng response.
+
 ---
 
 ## 2. Yêu cầu phía firewall (làm 1 lần cho mỗi firewall)
@@ -151,6 +167,8 @@ cho toàn bộ firewall. Sao lưu key ở nơi an toàn (KeePass/vault), không 
 | `SOPHOS_BATCH_SIZE` | Số IP Host gộp trong một lệnh tạo object (mặc định 50; `1` = tạo từng object như bản cũ) |
 | `FW_PARALLEL` | Số firewall xử lý song song khi chặn/bỏ chặn (mặc định 4) |
 | `JOB_SYNC_WAIT` | Request chặn/bỏ chặn chờ tối đa N giây (mặc định 20) rồi trả mã công việc và chạy nền — phải nhỏ hơn timeout App Proxy (~85s) / ingress (60s) |
+| `LOG_FORMAT` | `text` (mặc định, như cũ) hoặc `json` — log JSON một dòng, có `request_id` (nhận `X-Request-ID` từ App Proxy) và dòng truy cập kèm người dùng/mã HTTP/thời gian; không bao giờ ghi mật khẩu/token |
+| `LOG_LEVEL` | Mức log (`INFO`, `DEBUG`…), để trống = mặc định |
 | `GROUP_CACHE_MIN_REFRESH_SECONDS` | Giãn cách tối thiểu giữa hai lần bấm "Quét lại" (mặc định 5) |
 | `GROUP_CACHE_WARMUP` | `true` = quét toàn bộ firewall khi app khởi động để cache sẵn |
 | `LOGO_MAX_KB` | Dung lượng tối đa logo tải lên (mặc định 300) |

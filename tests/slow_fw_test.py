@@ -9,7 +9,7 @@ import time
 import httpx
 
 sys.path.insert(0, "backend")
-from app.sophos import SophosClient  # noqa: E402
+from app.integrations.sophos import SophosClient  # noqa: E402
 
 B = "http://127.0.0.1:8090"
 M = "https://127.0.0.1:4460"
@@ -120,9 +120,9 @@ chk("firewall nhanh: Quét lại trả kết quả trực tiếp", r["source"] =
 chk("mốc quét đầy đủ được làm mới", r["cache"]["full_scanned_at"] != full_at0)
 
 # Lập lịch: TTL + mốc giờ hằng ngày (giờ Việt Nam)
-from app import group_cache as gc  # noqa: E402
-from app.config import settings  # noqa: E402
-from app.db import GroupCache  # noqa: E402
+from app.modules.ipblock import group_cache as gc  # noqa: E402
+from app.core.config import settings  # noqa: E402
+from app.core.models import GroupCache  # noqa: E402
 
 UTC = dt.timezone.utc
 now = dt.datetime(2026, 11, 9, 3, 0, tzinfo=UTC)  # 10:00 giờ VN

@@ -16,8 +16,9 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from app import main
 from app.auth import oidc as sso
-from app.db import SessionLocal, AppUser
-from app.crypto import verify_principal
+from app.core.db import SessionLocal
+from app.core.models import AppUser
+from app.core.security import verify_principal
 fails = 0
 def chk(n, c, x=""):
     global fails; fails += 0 if c else 1; print("PASS" if c else "FAIL", n, x)

@@ -1,9 +1,10 @@
 # Chạy: cd backend && PYTHONPATH=. DATABASE_URL=sqlite:////tmp/mg.db MASTER_KEY=0123456789abcdef0123456789abcdef python3 ../tests/missing_group_test.py
 # Firewall chưa có 'SCANPORT GROUP' → app phải báo lỗi rõ ràng và KHÔNG tự tạo group / IP Host.
 import os
-from app import service
-from app.db import Firewall, SessionLocal, init_db
-from app.crypto import encrypt
+from app.modules.ipblock import service
+from app.core.db import SessionLocal, init_db
+from app.core.models import Firewall
+from app.core.security import encrypt
 
 calls = []
 

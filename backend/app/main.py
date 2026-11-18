@@ -18,6 +18,7 @@ from .auth.router import router as auth_router
 from .auth.users.router import router as users_router
 from .core import errors as app_errors
 from .core import jobs
+from .core import logging as app_logging
 from .core.config import settings
 from .core.db import SessionLocal, init_db
 from .core.models import Firewall
@@ -53,6 +54,8 @@ async def lifespan(_: FastAPI):
     yield
 
 
+app_logging.setup()  # mức module: uvicorn nạp app trước khi ghi log khởi động → mọi dòng đã đúng định dạng
+
 app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION, docs_url="/api/docs", lifespan=lifespan)
 
 app.add_middleware(
@@ -63,6 +66,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app_errors.install(app)
+app_logging.install(app)
 
 for _router in (auth_router, firewalls_router, users_router, ipblock_router, changes_router, audit_router,
                 branding_router):

@@ -1,7 +1,7 @@
 """Vai trò và phân quyền: xếp hạng vai trò + dependency FastAPI (principal / require)."""
 from __future__ import annotations
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..core.config import settings
@@ -22,6 +22,7 @@ def role_at_least(role: str, needed: str) -> bool:
 def principal(
     x_auth_token: str | None = Header(default=None, alias="X-Auth-Token"),
     db: Session = Depends(get_session),
+    request: Request = None,  # FastAPI tự truyền; gọi trực tiếp principal(token, db) vẫn được
 ) -> dict:
     from .users import service as um
 
@@ -42,6 +43,8 @@ def principal(
             raise HTTPException(401, "Tài khoản không còn tồn tại — liên hệ quản trị viên")
         elif settings.USERS_STRICT and out["method"].startswith("entra"):
             raise HTTPException(401, "Tài khoản chưa có trong danh sách người dùng của app")
+    if request is not None:
+        request.state.actor = out["user"]  # dòng log truy cập (LOG_FORMAT=json) ghi kèm người dùng
     return out
 
 

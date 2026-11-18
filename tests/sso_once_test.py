@@ -9,7 +9,7 @@ if os.path.exists("/tmp/sso1.db"): os.remove("/tmp/sso1.db")
 from fastapi.testclient import TestClient
 from app import main
 from app.auth import oidc as sso
-from app.config import settings
+from app.core.config import settings
 fails = 0
 def chk(n, cond, extra=""):
     global fails; fails += 0 if cond else 1; print(("PASS " if cond else "FAIL ") + n, "" if cond else extra)
@@ -36,7 +36,8 @@ chk("OIDC_AUTO_LOGIN=false -> oidc_auto off", c.get("/api/auth/modes").json()["o
 settings.OIDC_AUTO_LOGIN = True
 
 # Người có trong danh sách: quyền theo app, không cần App Role; không có & không App Role -> từ chối rõ ràng
-from app.db import SessionLocal, AppUser
+from app.core.db import SessionLocal
+from app.core.models import AppUser
 with SessionLocal() as db:
     db.add(AppUser(username="soc.a@hsc.com.vn", auth_type="microsoft", permission="write")); db.commit()
     p1 = main.resolve_sso(db, {"user": "soc.a@hsc.com.vn", "name": "A", "role": None, "method": "entra-oidc"})

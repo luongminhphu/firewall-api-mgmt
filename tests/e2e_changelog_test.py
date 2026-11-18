@@ -40,7 +40,7 @@ st=json.load(open("/tmp/mock_t.json"))
 print("mock keys", list(st.keys()))
 # ---- drift: thay đổi trực tiếp trên firewall bằng client riêng (giả lập admin sửa WebAdmin)
 import sys; sys.path.insert(0,"/home/user/workspace/sophos-blocker/backend")
-from app.sophos import SophosClient
+from app.integrations.sophos import SophosClient
 fc=SophosClient(host="127.0.0.1",port=4460,username="apiadmin",password="Sophos@123",verify_ssl=False,timeout=10)
 fc.add_ip_host("MANUAL_BAD_1","IP","103.77.1.9","them tay tren WebAdmin")
 g=fc.get_group("SCANPORT GROUP")
