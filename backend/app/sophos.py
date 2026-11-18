@@ -149,6 +149,30 @@ class SophosClient:
         self.verify_ssl = verify_ssl
         self.timeout = timeout
         self.connect_timeout = min(connect_timeout or timeout, timeout)
+        self._http: httpx.Client | None = None
+
+    # ------------------------------------------------------------- lifecycle
+    # Một kết nối HTTPS (keep-alive) dùng lại cho mọi lệnh của client: bỏ được bắt tay TCP/TLS lặp lại
+    # cho từng IP — trước v1.7 mỗi lệnh mở kết nối mới, 10 IP × 3 firewall ≈ 40 lần bắt tay.
+    def _client(self) -> httpx.Client:
+        if self._http is None:
+            self._http = httpx.Client(
+                verify=self.verify_ssl,
+                timeout=httpx.Timeout(self.timeout, connect=self.connect_timeout),
+                limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
+            )
+        return self._http
+
+    def close(self) -> None:
+        if self._http is not None:
+            self._http.close()
+            self._http = None
+
+    def __enter__(self) -> "SophosClient":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
 
     # ------------------------------------------------------------------ core
     def _login_block(self) -> str:
@@ -164,12 +188,12 @@ class SophosClient:
         read_t = timeout or self.timeout
         tmo = httpx.Timeout(read_t, connect=min(self.connect_timeout, read_t))
         try:
-            with httpx.Client(verify=self.verify_ssl, timeout=tmo) as client:
-                resp = client.post(
-                    self.url,
-                    data={"reqxml": reqxml},
-                    headers={"Accept": "application/xml"},
-                )
+            resp = self._client().post(
+                self.url,
+                data={"reqxml": reqxml},
+                headers={"Accept": "application/xml"},
+                timeout=tmo,
+            )
         except httpx.ConnectError as exc:
             raise SophosError(f"Không kết nối được tới {self.url} ({exc})") from exc
         except httpx.ConnectTimeout as exc:
@@ -313,8 +337,8 @@ class SophosClient:
         return None
 
     # ------------------------------------------------------------ write: host
-    def add_ip_host(self, name: str, kind: str, value: str, description: str = "") -> OpResult:
-        """Tạo IP Host. kind = IP | Network. value = '1.2.3.4' hoặc '1.2.3.0/24'."""
+    @staticmethod
+    def _iphost_body(name: str, kind: str, value: str, description: str = "") -> str:
         if kind == "Network":
             import ipaddress
 
@@ -332,8 +356,55 @@ class SophosClient:
             )
         if description:
             body += f"<Description>{_esc(description[:255])}</Description>"
+        return body
+
+    def add_ip_host(self, name: str, kind: str, value: str, description: str = "") -> OpResult:
+        """Tạo IP Host. kind = IP | Network. value = '1.2.3.4' hoặc '1.2.3.0/24'."""
+        body = self._iphost_body(name, kind, value, description)
         data = self._post(f'<Set operation="add"><IPHost>{body}</IPHost></Set>')
         return self._entity_status(data, "IPHost")
+
+    def add_ip_hosts(self, items: list[tuple[str, str, str]], description: str = "",
+                     batch_size: int | None = None) -> list[OpResult]:
+        """Tạo nhiều IP Host trong ít lệnh nhất: mỗi lệnh `<Set operation="add">` chứa tối đa
+        `batch_size` entity, mỗi entity gắn `transactionid` để ghép đúng kết quả (Sophos trả về
+        một `<IPHost transactionid="…"><Status/></IPHost>` cho từng entity).
+
+        `items` = [(name, kind, value)]. Trả list OpResult cùng thứ tự với `items`.
+        Phản hồi không ghép được (firmware lạ) → tự chuyển sang tạo từng object, không đoán bừa.
+        """
+        size = max(1, batch_size or settings.SOPHOS_BATCH_SIZE)
+        if size == 1:
+            return [self.add_ip_host(n, k, v, description) for n, k, v in items]
+        out: list[OpResult] = []
+        for start in range(0, len(items), size):
+            chunk = items[start:start + size]
+            body = "".join(
+                f'<IPHost transactionid="t{i}">{self._iphost_body(n, k, v, description)}</IPHost>'
+                for i, (n, k, v) in enumerate(chunk)
+            )
+            data = self._post(f'<Set operation="add">{body}</Set>')
+            mapped = self._batch_status(data, "IPHost", len(chunk))
+            if mapped is None:
+                log.warning("Phản hồi batch IPHost không ghép được (%d entity) — tạo từng object", len(chunk))
+                mapped = [self.add_ip_host(n, k, v, description) for n, k, v in chunk]
+            out.extend(mapped)
+        return out
+
+    @classmethod
+    def _batch_status(cls, data: dict, tag: str, n: int) -> list[OpResult] | None:
+        """Ghép Status theo transactionid ("t0".."tN"); không có id thì theo thứ tự nếu đủ số lượng."""
+        nodes = [x for x in _as_list(data.get(tag)) if isinstance(x, dict)]
+        by_id: dict[int, OpResult] = {}
+        for node in nodes:
+            tid = str(node.get("@transactionid") or "")
+            if tid.startswith("t") and tid[1:].isdigit():
+                by_id[int(tid[1:])] = cls._entity_status({tag: node}, tag)
+        if len(by_id) == n and set(by_id) == set(range(n)):
+            return [by_id[i] for i in range(n)]
+        if len(nodes) == n:
+            return [cls._entity_status({tag: node}, tag) for node in nodes]
+        return None
 
     def delete_ip_host(self, name: str, actual_value: str | None = None) -> OpResult:
         # Chỉ được xóa IP Host do app tạo: tên = chính địa chỉ của object (vd 45.138.12.16)

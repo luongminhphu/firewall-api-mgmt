@@ -31,6 +31,8 @@ class Settings:
 
     # Timeout gọi API firewall (giây).
     API_TIMEOUT: int = int(os.getenv("API_TIMEOUT", "30"))
+    # Số IP Host gộp trong một lệnh <Set operation="add"> (mỗi entity có transactionid). 1 = tạo từng object như bản cũ.
+    SOPHOS_BATCH_SIZE: int = int(os.getenv("SOPHOS_BATCH_SIZE", "50"))
     # Timeout bắt tay TCP/TLS (giây) — firewall chết/không route thì báo lỗi nhanh, không chờ hết API_TIMEOUT.
     API_CONNECT_TIMEOUT: int = int(os.getenv("API_CONNECT_TIMEOUT", "10"))
     # Timeout đọc riêng cho lượt quét đầy đủ chạy nền (đọc mọi IP Host trên firewall) — firewall nhiều object cần lâu hơn.
