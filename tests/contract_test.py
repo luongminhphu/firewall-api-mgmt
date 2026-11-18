@@ -84,6 +84,17 @@ call("fw_create_other_group", "POST", "/api/firewalls", headers=H, keep_detail=T
 call("fw_list", "GET", "/api/firewalls", headers=H)
 call("fw_update", "PUT", f"/api/firewalls/{fid}", headers=H, json={"note": "contract"})
 call("fw_404", "PUT", "/api/firewalls/99999", headers=H, json={}, keep_detail=True)
+# Schema (1.5): trường không khai báo bị bỏ qua (không mass-assignment), sai kiểu → 400 + detail dạng chuỗi
+r_ma = c.put(f"/api/firewalls/{fid}", headers=H,
+             json={"id": 999, "password_enc": "x", "last_status": "hacked", "default_group": None})
+EXTRA_CHECKS = [
+    ("mass-assignment bị bỏ qua", r_ma.status_code == 200 and r_ma.json()["id"] == fid
+     and r_ma.json()["last_status"] != "hacked"),
+]
+r_bad = c.put(f"/api/firewalls/{fid}", headers=H, json={"verify_ssl": {"x": 1}})
+EXTRA_CHECKS.append(("sai kiểu → 400 + detail chuỗi tiếng Việt",
+                     r_bad.status_code == 400 and isinstance(r_bad.json().get("detail"), str)
+                     and r_bad.json()["detail"].startswith("Dữ liệu không hợp lệ")))
 call("fw_test", "POST", f"/api/firewalls/{fid}/test", headers=H)
 call("fw_test_all", "POST", "/api/firewalls/test-all", headers=H, json={"firewall_ids": [fid]})
 
@@ -152,6 +163,9 @@ if RECORD:
 with open(SNAP, encoding="utf-8") as fh:
     want = json.load(fh)
 fails = 0
+for name, ok in EXTRA_CHECKS:
+    fails += 0 if ok else 1
+    print(("PASS " if ok else "FAIL ") + name)
 for k in sorted(set(want) | set(out)):
     ok = want.get(k) == out.get(k)
     fails += 0 if ok else 1

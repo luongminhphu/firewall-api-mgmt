@@ -21,16 +21,17 @@ from . import changelog
 from . import group_cache as gc
 from . import jobs
 from .core.config import settings
-from .core.security import MasterKeyMissing, encrypt
 from .core.db import get_session, init_db
 from .auth.rbac import admin, current_user, operator, principal, role_at_least
 from .auth.router import resolve_sso  # noqa: F401 — tests/sso_once_test.py dùng main.resolve_sso
 from .auth.router import router as auth_router
 from .auth.users.router import router as users_router
+from .modules.firewalls.router import router as firewalls_router
+from .modules.shared import enforce_group_audited
 from .core.deps import client_ip_of, get_fw, selected_firewalls
 from .core.models import AppSetting, AuditLog, Firewall
 from .ipparse import extract, host_object_name
-from .policy import BLOCK_GROUP, GroupPolicyError, enforce_group
+from .policy import BLOCK_GROUP
 from .service import (
     _host_value,
     audit,
@@ -40,7 +41,6 @@ from .service import (
     resolve_hosts,
     client_for,
     normalize_entries,
-    test_firewall,
     unblock_on_firewall,
 )
 from .sophos import SophosAuthError, SophosError
@@ -56,7 +56,11 @@ app.add_middleware(
 )
 
 
+from .core import errors as app_errors  # noqa: E402
+
+app_errors.install(app)
 app.include_router(auth_router)
+app.include_router(firewalls_router)
 app.include_router(users_router)
 
 
@@ -87,150 +91,13 @@ def _startup() -> None:
 
 def locked_group(db: Session, request: Request, requested, actor: str) -> str:
     """Áp chính sách group cố định; vi phạm → 403 và ghi audit 'policy_violation'."""
-    try:
-        return enforce_group(requested)
-    except GroupPolicyError as exc:
-        audit(db, action="policy_violation", fw=None, target=str(requested)[:120], result="denied",
-              message=str(exc), group=str(requested)[:120], actor=actor, client_ip=client_ip_of(request))
-        db.commit()
-        raise HTTPException(403, str(exc)) from exc
+    return enforce_group_audited(db, requested, actor=actor, client_ip=client_ip_of(request))
 
 
 # ---------------------------------------------------------------------- auth
 
 
 # ----------------------------------------------------------------- firewalls
-@app.get("/api/firewalls")
-def list_firewalls(db: Session = Depends(get_session), user: str = Depends(current_user)):
-    fws = db.scalars(select(Firewall).order_by(Firewall.name)).all()
-    return [f.to_dict() for f in fws]
-
-
-@app.post("/api/firewalls")
-def create_firewall(
-    request: Request,
-    bg: BackgroundTasks,
-    payload: dict = Body(...),
-    db: Session = Depends(get_session),
-    p: dict = Depends(admin),
-):
-    user = p["user"]
-    required = ("name", "host", "username", "password")
-    missing = [k for k in required if not (payload.get(k) or "").strip()]
-    if missing:
-        raise HTTPException(400, f"Thiếu thông tin: {', '.join(missing)}")
-    if db.scalar(select(Firewall).where(Firewall.name == payload["name"].strip())):
-        raise HTTPException(400, "Tên firewall đã tồn tại")
-    try:
-        pwd = encrypt(payload["password"])
-    except MasterKeyMissing as exc:
-        raise HTTPException(400, str(exc)) from exc
-
-    fw = Firewall(
-        name=payload["name"].strip(),
-        site=(payload.get("site") or "").strip(),
-        host=payload["host"].strip(),
-        port=int(payload.get("port") or 4444),
-        username=payload["username"].strip(),
-        password_enc=pwd,
-        default_group=locked_group(db, request, payload.get("default_group"), user),
-        verify_ssl=bool(payload.get("verify_ssl")),
-        enabled=bool(payload.get("enabled", True)),
-        note=(payload.get("note") or "").strip(),
-    )
-    db.add(fw)
-    db.commit()
-    audit(db, action="firewall_cud", fw=fw, target="create", result="ok",
-          message=f"{fw.host}:{fw.port}", actor=user, client_ip=client_ip_of(request))
-    db.commit()
-    bg.add_task(gc.refresh_now, fw.id, force=True)
-    return fw.to_dict()
-
-
-@app.put("/api/firewalls/{fw_id}")
-def update_firewall(
-    fw_id: int,
-    request: Request,
-    bg: BackgroundTasks,
-    payload: dict = Body(...),
-    db: Session = Depends(get_session),
-    p: dict = Depends(admin),
-):
-    user = p["user"]
-    fw = get_fw(db, fw_id)
-    if payload.get("default_group") is not None:
-        locked_group(db, request, payload.get("default_group"), user)
-    fw.default_group = BLOCK_GROUP
-    for field in ("name", "site", "host", "username", "note"):
-        if payload.get(field) is not None:
-            setattr(fw, field, str(payload[field]).strip())
-    if payload.get("port"):
-        fw.port = int(payload["port"])
-    if payload.get("verify_ssl") is not None:
-        fw.verify_ssl = bool(payload["verify_ssl"])
-    if payload.get("enabled") is not None:
-        fw.enabled = bool(payload["enabled"])
-    if payload.get("password"):
-        try:
-            fw.password_enc = encrypt(payload["password"])
-        except MasterKeyMissing as exc:
-            raise HTTPException(400, str(exc)) from exc
-    db.add(fw)
-    db.commit()
-    audit(db, action="firewall_cud", fw=fw, target="update", result="ok",
-          actor=user, client_ip=client_ip_of(request))
-    db.commit()
-    gc.mark_dirty(db, [fw.id])
-    bg.add_task(gc.refresh_now, fw.id, force=True, mode="full")  # host/tài khoản có thể đã đổi
-    return fw.to_dict()
-
-
-@app.delete("/api/firewalls/{fw_id}")
-def delete_firewall(
-    fw_id: int,
-    request: Request,
-    db: Session = Depends(get_session),
-    p: dict = Depends(admin),
-):
-    user = p["user"]
-    fw = get_fw(db, fw_id)
-    name, host = fw.name, f"{fw.host}:{fw.port}"
-    db.query(AuditLog).filter(AuditLog.firewall_id == fw.id).update({"firewall_id": None})
-    gc.drop(db, fw.id)
-    db.delete(fw)
-    db.commit()
-    audit(db, action="firewall_cud", fw=None, target=f"delete {name}", result="ok",
-          message=host, actor=user, client_ip=client_ip_of(request))
-    db.commit()
-    return {"ok": True, "deleted": name}
-
-
-@app.post("/api/firewalls/{fw_id}/test")
-def test_one(
-    fw_id: int,
-    request: Request,
-    db: Session = Depends(get_session),
-    p: dict = Depends(operator),
-):
-    user = p["user"]
-    return test_firewall(db, get_fw(db, fw_id), user, client_ip_of(request))
-
-
-@app.post("/api/firewalls/test-all")
-def test_all(
-    request: Request,
-    payload: dict = Body(default={}),
-    db: Session = Depends(get_session),
-    p: dict = Depends(operator),
-):
-    user = p["user"]
-    fws = selected_firewalls(db, payload.get("firewall_ids"))
-    ip = client_ip_of(request)
-    ids = [fw.id for fw in fws]
-    job_id = jobs.submit("test", user, ids, lambda s, fw: test_firewall(s, fw, user, ip))
-    jobs.wait(job_id, settings.API_CONNECT_TIMEOUT + settings.API_TIMEOUT + 5)
-    db.expire_all()
-    return {"results": jobs.to_dict(jobs.get(db, job_id))["results"]}
 
 
 # --------------------------------------------------------------- object view

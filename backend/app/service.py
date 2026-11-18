@@ -16,21 +16,10 @@ from .core.config import settings
 from .core.security import decrypt
 from .core.audit import audit  # noqa: F401 — giữ tên `service.audit` cho mã cũ
 from .core.models import Firewall, GroupCache
+from .modules.firewalls.service import client_for, mark_status, test_firewall  # noqa: F401
 from .ipparse import classify, host_object_name, legacy_object_name
 from .policy import BLOCK_GROUP, BLOCK_GROUP_FAMILY, GroupPolicyError
 from .sophos import SophosAuthError, SophosClient, SophosError, build_iphostgroup_xml, pretty_xml
-
-
-def client_for(fw: Firewall) -> SophosClient:
-    return SophosClient(
-        host=fw.host,
-        port=fw.port,
-        username=fw.username,
-        password=decrypt(fw.password_enc),
-        verify_ssl=fw.verify_ssl,
-        timeout=settings.API_TIMEOUT,
-        connect_timeout=settings.API_CONNECT_TIMEOUT,
-    )
 
 
 log = logging.getLogger("service")
@@ -142,36 +131,7 @@ def _host_value(h: dict) -> str:
     return h.get("ip_address") or ""
 
 
-def mark_status(db: Session, fw: Firewall, status: str, message: str) -> None:
-    fw.last_status = status
-    fw.last_message = message[:2000]
-    fw.last_checked = dt.datetime.now(dt.timezone.utc)
-    db.add(fw)
-
-
 # --------------------------------------------------------------------- test
-def test_firewall(db: Session, fw: Firewall, actor: str, client_ip: str) -> dict:
-    try:
-        with client_for(fw) as cli:
-            res = cli.test_login()
-        mark_status(db, fw, "ok", res.message)
-        audit(
-            db, action="test", fw=fw, target=f"{fw.host}:{fw.port}", result="ok",
-            code=res.code, message=res.message, actor=actor, client_ip=client_ip,
-        )
-        out = {"ok": True, "message": res.message, "code": res.code}
-    except (SophosError, SophosAuthError, ValueError) as exc:
-        msg = str(exc)
-        code = getattr(exc, "code", "")
-        status = "auth_error" if isinstance(exc, SophosAuthError) else "error"
-        mark_status(db, fw, status, msg)
-        audit(
-            db, action="test", fw=fw, target=f"{fw.host}:{fw.port}", result="error",
-            code=code, message=msg, actor=actor, client_ip=client_ip,
-        )
-        out = {"ok": False, "message": msg, "code": code}
-    db.commit()
-    return {"firewall_id": fw.id, "firewall": fw.name, **out}
 
 
 # -------------------------------------------------------------------- block
