@@ -711,11 +711,11 @@ Ví dụ:
 
               <fieldset class="field">
                 <legend>Người được gửi lệnh (team SOC trực 24/7)</legend>
-                <p class="muted tiny">Tin cậy người gửi nếu khớp <strong>một</strong> trong ba cách dưới. Tin của người khác (kể cả nhân viên HSC trong cùng group chat) bị bỏ qua và ghi nhật ký. Bấm <strong>Kiểm tra kết nối</strong> để thấy người gửi gần đây kèm tenant, rồi bấm để thêm nhanh.</p>
+                <p class="muted tiny">Tin cậy người gửi nếu khớp <strong>một</strong> trong ba cách dưới; tin của người khác bị bỏ qua và ghi nhật ký. Thành viên SOC external dùng cách 1. <strong>Thành viên HSC được ủy quyền</strong> (vd team IT Security) dùng cách 2 hoặc 3 — nhân viên HSC khác trong cùng group chat không gửi được lệnh. Bấm <strong>Kiểm tra kết nối</strong> để thấy người gửi gần đây kèm tenant, rồi bấm để thêm nhanh.</p>
 
                 <div class="ab-trust">
-                  <div class="ab-trust__head"><strong>1 · Tenant của đơn vị SOC</strong> <span class="chip chip--ok">Khuyến nghị cho dịch vụ SOC Managed Service</span></div>
-                  <p class="muted tiny">Thành viên SOC là tài khoản <em>external</em> (tenant của nhà cung cấp dịch vụ) được thêm vào group chat của HSC: mọi người thuộc tenant này <strong>trong group chat</strong> đều gửi được lệnh — đổi ca, người mới chỉ cần được thêm vào chat. Không khai báo được tenant của chính HSC.</p>
+                  <div class="ab-trust__head"><strong>1 · Tenant của đơn vị SOC</strong> <span class="chip chip--ok">Team SOC Managed Service (external)</span></div>
+                  <p class="muted tiny">Thành viên SOC là tài khoản <em>external</em> (tenant của nhà cung cấp dịch vụ) được thêm vào group chat của HSC: mọi người thuộc tenant này <strong>trong group chat</strong> đều gửi được lệnh — đổi ca, người mới chỉ cần được thêm vào chat. Không khai báo được tenant của chính HSC (sẽ cho mọi nhân viên HSC gửi lệnh) — thành viên HSC được ủy quyền khai báo ở cách 2 / 3.</p>
                   <div class="table-wrap">
                     <table class="table" id="abs-tenants">
                       <thead><tr><th>Tên đơn vị</th><th>Tenant ID</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
@@ -730,8 +730,8 @@ Ví dụ:
                 </div>
 
                 <div class="ab-trust">
-                  <div class="ab-trust__head"><strong>2 · Nhóm Entra của HSC</strong> <span class="chip">SOC nội bộ / khách B2B</span></div>
-                  <p class="muted tiny">Thành viên nhóm (kể cả nhóm lồng) được tin cậy, app đọc lại mỗi 30 phút và ngay khi gặp người gửi lạ. Cần quyền ứng dụng <code>GroupMember.Read.All</code>. Tài khoản external không nằm trong danh bạ HSC nên dùng cách 1.</p>
+                  <div class="ab-trust__head"><strong>2 · Nhóm Entra của HSC</strong> <span class="chip chip--ok">Thành viên HSC được ủy quyền — vd team IT Security</span></div>
+                  <p class="muted tiny">Cách nên dùng cho thành viên HSC: tạo / dùng security group (vd <code>IT-Security</code>); thêm hay gỡ người trong nhóm là app tự cập nhật (đọc lại mỗi 30 phút và ngay khi gặp người gửi lạ). Cũng dùng được cho SOC nội bộ / khách B2B. Cần quyền ứng dụng <code>GroupMember.Read.All</code>. Tài khoản external không nằm trong danh bạ HSC nên dùng cách 1.</p>
                   <div class="table-wrap">
                     <table class="table" id="abs-groups">
                       <thead><tr><th>Nhóm</th><th>Object ID</th><th class="num">Thành viên</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
@@ -740,13 +740,14 @@ Ví dụ:
                   </div>
                   <div class="row">
                     <label class="field"><span>Object ID nhóm Entra</span><input id="abs-new-group" placeholder="xxxxxxxx-xxxx-…" spellcheck="false" /></label>
-                    <label class="field"><span>Tên nhóm (ghi chú)</span><input id="abs-new-group-name" placeholder="SOC-24x7" /></label>
+                    <label class="field"><span>Tên nhóm (ghi chú)</span><input id="abs-new-group-name" placeholder="IT-Security" /></label>
                     <button class="btn btn--ghost" id="abs-add-group" type="button">Thêm</button>
                   </div>
                 </div>
 
                 <div class="ab-trust">
-                  <div class="ab-trust__head"><strong>3 · Tài khoản riêng lẻ</strong></div>
+                  <div class="ab-trust__head"><strong>3 · Tài khoản riêng lẻ</strong> <span class="chip">Một vài thành viên HSC / SOC cụ thể</span></div>
+                  <p class="muted tiny">Khai báo từng người theo Object ID (vd 2–3 thành viên IT Security khi chưa có nhóm Entra). Ghi tên kèm vai trò để dễ đối chiếu trong bằng chứng, vd <em>Nguyễn A (IT Security)</em>.</p>
                   <div class="table-wrap">
                     <table class="table" id="abs-senders">
                       <thead><tr><th>Tên</th><th>Object ID</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
@@ -755,7 +756,7 @@ Ví dụ:
                   </div>
                   <div class="row">
                     <label class="field"><span>Object ID</span><input id="abs-new-id" placeholder="xxxxxxxx-xxxx-…" spellcheck="false" /></label>
-                    <label class="field"><span>Tên (ghi chú)</span><input id="abs-new-name" placeholder="SOC ca đêm" /></label>
+                    <label class="field"><span>Tên (ghi chú)</span><input id="abs-new-name" placeholder="Nguyễn A (IT Security)" /></label>
                     <button class="btn btn--ghost" id="abs-add" type="button">Thêm</button>
                   </div>
                 </div>

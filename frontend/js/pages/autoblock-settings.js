@@ -93,7 +93,7 @@ function renderSenders() {
         <span class="muted tiny mono">${esc(x.tenant || "")}</span>${x.commands ? ` <span class="muted tiny">· ${x.commands} lệnh</span>` : ""}</span>
       <span class="ab-seen__acts">
         ${ext && !tids.has(x.tenant) ? `<button class="btn btn--ghost btn--sm" type="button" data-add-tenant="${esc(x.tenant)}">+ Tin cậy tenant này</button>` : ""}
-        ${ids.has(x.id) ? "" : `<button class="btn btn--ghost btn--sm" type="button" data-add="${esc(x.id)}" data-name="${esc(x.name || "")}">+ Chỉ tài khoản này</button>`}
+        ${ids.has(x.id) ? "" : `<button class="btn btn--ghost btn--sm" type="button" data-add="${esc(x.id)}" data-name="${esc(x.name || "")}">${ext ? "+ Chỉ tài khoản này" : "+ Cho phép tài khoản HSC này"}</button>`}
       </span></div>`;
   }).join("") : "";
 }

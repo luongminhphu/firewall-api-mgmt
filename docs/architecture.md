@@ -667,3 +667,10 @@ Test: gửi → chặn → xóa → bản chụp còn nguyên, có mốc xóa ·
 **Giao diện:** *Cài đặt › Người được gửi lệnh* có ba khối. *Kiểm tra kết nối* liệt kê người gửi gần đây chưa được tin cậy, kèm tenant và nhãn External / HSC, với nút **"+ Tin cậy tenant này"** (chỉ có ở người external) và **"+ Chỉ tài khoản này"**.
 
 Test: thành viên MSSP chưa khai báo thì bỏ qua → khai báo tenant → người mới vào ca gửi lệnh được chặn · nhân viên HSC trong chat thì bỏ qua · khai báo tenant HSC → 400 · nhóm Entra: thành viên được chặn, người vừa thêm vào nhóm được nhận nhờ đọc lại, đọc nhóm 403 thì giữ danh sách cũ · bằng chứng ghi tenant và cách tin cậy.
+
+**Cập nhật (18/11/2026), thành viên HSC được ủy quyền.** Team IT Security của HSC (cùng tenant HSC) có quyền gửi lệnh.
+Không cần cơ chế mới: thứ tự kiểm tra là tài khoản riêng lẻ → nhóm Entra → tenant. Chặn tenant HSC chỉ áp dụng cho cách
+"tin cậy *cả tenant*", nên thành viên HSC khai báo đích danh hoặc nằm trong nhóm `IT-Security` vẫn được nhận.
+
+- Giao diện ghi rõ cách khai báo, và có nút "+ Cho phép tài khoản HSC này".
+- Test khóa hành vi: thành viên IT Security (tài khoản hoặc nhóm) được tự chặn; nhân viên HSC khác bị bỏ qua.

@@ -469,6 +469,20 @@ chk("thành viên MSSP bất kỳ (kể cả người mới vào ca) gửi lện
     r and r["mode"] == "auto" and "Tenant MSSP SOC" in r["note"], r)
 chk("nhân viên HSC trong cùng group chat gửi lệnh → không chặn (tenant HSC không được tin cậy)",
     by_ip("99.0.0.3") is None)
+# team IT Security của HSC được ủy quyền: khai báo tài khoản riêng lẻ (cùng tenant HSC)
+SECOPS = "bbbb0002-0000-4000-8000-000000000002"
+cur = c.get("/api/autoblock/settings", headers=H).json()["soc_senders"]
+r_sec = c.put("/api/autoblock/settings", headers=H, json={"soc_senders": cur + [{"id": SECOPS, "name": "Nguyễn A (IT Security)"}]})
+chk("khai báo thành viên HSC được ủy quyền (IT Security) dạng tài khoản riêng lẻ", r_sec.status_code == 200, r_sec.text[:200])
+post(f"<p>{CMD} 99.0.0.8</p>", sender=SECOPS, name="Nguyễn A", tenant_id=TENANT)
+post(f"<p>{CMD} 99.0.0.9</p>", sender=HSC_STAFF, name="Nhân viên HSC", tenant_id=TENANT)
+poll()
+r_sec = wait_status("99.0.0.8", "blocked")
+chk("thành viên IT Security của HSC gửi lệnh → tự chặn, ghi 'Tài khoản Nguyễn A (IT Security)'",
+    r_sec and r_sec["mode"] == "auto" and "Tài khoản Nguyễn A (IT Security)" in r_sec["note"], r_sec)
+r = by_ip("99.0.0.2")  # lệnh của thành viên MSSP — dùng cho kiểm tra bằng chứng bên dưới
+chk("nhân viên HSC KHÁC (chưa được ủy quyền) vẫn không chặn được", by_ip("99.0.0.9") is None)
+c.put("/api/autoblock/settings", headers=H, json={"soc_senders": cur})
 ev5 = c.get(f"/api/autoblock/requests/{r['id']}/evidence", headers=V).json()["evidence"]
 chk("bằng chứng ghi tenant người gửi + cách tin cậy", ev5["sender_tenant"] == MSSP
     and ev5["trusted_by"] == "Tenant MSSP SOC" and ev5["intact"], ev5)
@@ -477,6 +491,16 @@ chk("bằng chứng ghi tenant người gửi + cách tin cậy", ev5["sender_te
 GRP = "9999aaaa-0000-4000-8000-0000000000f1"
 GUEST = "cccc0001-0000-4000-8000-000000000001"
 g.post("/_group", json={"id": GRP, "name": "SOC-24x7", "members": [{"id": GUEST, "displayName": "Guest SOC"}]})
+# nhóm Entra IT-Security của HSC: thành viên HSC cùng tenant HSC vẫn được tin cậy qua nhóm
+GRP_SEC = "9999aaaa-0000-4000-8000-0000000000f2"
+SECOPS2 = "bbbb0003-0000-4000-8000-000000000003"
+g.post("/_group", json={"id": GRP_SEC, "name": "IT-Security", "members": [{"id": SECOPS2, "displayName": "Trần B"}]})
+c.put("/api/autoblock/settings", headers=H, json={"soc_groups": [{"id": GRP_SEC, "name": ""}]})
+post(f"<p>{CMD} 99.0.0.10</p>", sender=SECOPS2, name="Trần B", tenant_id=TENANT)
+poll()
+r = wait_status("99.0.0.10", "blocked")
+chk("thành viên nhóm Entra IT-Security (nhân viên HSC) gửi lệnh → tự chặn, ghi 'Nhóm IT-Security'",
+    r and "Nhóm IT-Security" in r["note"], r)
 r = c.put("/api/autoblock/settings", headers=H, json={"soc_groups": [{"id": GRP, "name": ""}]})
 chk("khai báo nhóm Entra của team SOC", r.status_code == 200, r.text[:200])
 post(f"<p>{CMD} 99.0.0.4</p>", sender=GUEST, name="Guest SOC", tenant_id=TENANT, identity_type="aadUser")
