@@ -5,6 +5,8 @@ import datetime as dt
 import ipaddress
 import json
 import logging
+import threading
+from contextlib import contextmanager
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -31,6 +33,22 @@ def client_for(fw: Firewall) -> SophosClient:
 
 
 log = logging.getLogger("service")
+
+_fw_locks: dict[int, threading.Lock] = {}
+_fw_locks_guard = threading.Lock()
+
+
+@contextmanager
+def fw_lock(fw_id: int):
+    """Tuần tự hóa thao tác ghi trên CÙNG một firewall trong tiến trình này.
+
+    Sophos chỉ cho ghi lại toàn bộ HostList của group → hai lệnh chặn song song trên cùng firewall
+    (hai người bấm cùng lúc) có thể ghi đè thành viên của nhau. Firewall khác nhau vẫn chạy song song.
+    """
+    with _fw_locks_guard:
+        lock = _fw_locks.setdefault(fw_id, threading.Lock())
+    with lock:
+        yield
 
 
 def derive_host(name: str) -> dict | None:
@@ -73,7 +91,7 @@ def cached_details(db: Session, fw_id: int) -> dict[str, dict]:
     return {d["name"]: d for d in data.get("details", []) if isinstance(d, dict) and d.get("name")}
 
 
-def resolve_hosts(cli: SophosClient, names: list[str], known: dict[str, dict] | None = None,
+def resolve_hosts(cli: SophosClient | None, names: list[str], known: dict[str, dict] | None = None,
                   *, full_timeout: int | None = None) -> tuple[dict[str, dict], list[str]]:
     """Chi tiết các IP Host theo tên mà KHÔNG đọc toàn bộ IP Host của firewall nếu không cần.
 
@@ -90,8 +108,8 @@ def resolve_hosts(cli: SophosClient, names: list[str], known: dict[str, dict] | 
             out[n] = d
         else:
             unknown.append(n)
-    if not unknown:
-        return out, []
+    if not unknown or cli is None:  # cli=None: chỉ dùng cache + suy từ tên, không gọi firewall
+        return out, unknown
     try:
         if len(unknown) <= settings.HOST_LOOKUP_LIMIT:
             for n in unknown:
