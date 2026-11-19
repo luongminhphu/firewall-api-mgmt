@@ -13,6 +13,16 @@
     <script>
       // Base URL của API. Rỗng = cùng origin (FastAPI phục vụ luôn frontend).
       window.__API_BASE__ = "";
+      // Giao diện sáng/tối: áp dụng NGAY trong <head> (trước khi vẽ trang) để không nháy màu khi tải lại.
+      // Ưu tiên lựa chọn gần nhất của người dùng (localStorage), chưa chọn thì theo hệ điều hành.
+      (function () {
+        var t = null;
+        try { t = localStorage.getItem("sb_theme"); } catch (e) { /* trình duyệt chặn lưu trữ */ }
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.dataset.theme = t;
+      })();
     </script>
   </head>
   <body>

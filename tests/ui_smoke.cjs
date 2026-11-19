@@ -388,6 +388,15 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.click("#theme-toggle");
     const after = await page.evaluate(() => document.documentElement.dataset.theme || "");
     chk("nút sáng/tối đổi theme", before !== after, `${before} → ${after}`);
+    await page.reload();
+    await page.waitForSelector("#theme-toggle");
+    const kept = await page.evaluate(() => document.documentElement.dataset.theme || "");
+    chk("tải lại trang → giữ chế độ sáng/tối vừa chọn", kept === after, `${after} → ${kept}`);
+    await page.click("#theme-toggle");
+    await page.reload();
+    await page.waitForSelector("#theme-toggle");
+    const back = await page.evaluate(() => document.documentElement.dataset.theme || "");
+    chk("đổi lại rồi tải lại → vẫn nhớ lựa chọn mới nhất", back === before, `${before} → ${back}`);
     chk("không lỗi JS (luồng admin)", errors.length === 0, errors.join(" | "));
     await ctx.close();
 

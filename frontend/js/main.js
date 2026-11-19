@@ -98,13 +98,16 @@ initRouter((tab) => {
   if (tab === "reports") loadReports();
 });
 
+// Giao diện sáng/tối: chế độ ban đầu đã được áp dụng trong <head> (index.html); bấm đổi → ghi nhớ cho lần sau
 $("#theme-toggle").addEventListener("click", () => {
   const el = document.documentElement;
   el.dataset.theme = el.dataset.theme === "dark" ? "light" : "dark";
+  try {
+    localStorage.setItem("sb_theme", el.dataset.theme);
+  } catch {
+    /* trình duyệt chặn lưu trữ (chế độ riêng tư) — vẫn đổi được, chỉ không nhớ */
+  }
 });
-if (window.matchMedia && !window.matchMedia("(prefers-color-scheme: dark)").matches) {
-  document.documentElement.dataset.theme = "light";
-}
 
 // ------------------------------------------------------------ phân quyền
 function applyRole() {
