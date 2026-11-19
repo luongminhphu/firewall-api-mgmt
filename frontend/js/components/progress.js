@@ -4,9 +4,16 @@ import { esc } from "../util.js";
 export const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
 export function setBusy(btn, busy, label) {
+  // nhớ nhãn gốc khi bắt đầu chạy → kết thúc không truyền nhãn thì trả lại nhãn gốc (không để nút trống chữ)
+  if (busy && btn.dataset.idleLabel === undefined) btn.dataset.idleLabel = btn.textContent.trim();
   btn.disabled = busy;
   btn.setAttribute("aria-busy", String(busy));
-  btn.innerHTML = busy ? `<span class="spinner spinner--btn" aria-hidden="true"></span>${esc(label)}` : esc(label);
+  if (busy) {
+    btn.innerHTML = `<span class="spinner spinner--btn" aria-hidden="true"></span>${esc(label ?? "")}`;
+  } else {
+    btn.textContent = label ?? btn.dataset.idleLabel ?? "";
+    delete btn.dataset.idleLabel;
+  }
 }
 
 /** Tiến độ khi đang chạy: thanh tiến độ + trạng thái từng firewall (đang chờ / xong / lỗi). */

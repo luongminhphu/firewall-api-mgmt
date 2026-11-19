@@ -38,7 +38,8 @@ export async function api(path, { method = "GET", body } = {}) {
     });
   } catch {
     throw new ApiError("Mất kết nối tới máy chủ app.", {
-      hint: "Kiểm tra mạng/VPN rồi thử lại. Nếu vừa bấm Chặn/Bỏ chặn, xem tab Lịch sử thay đổi trước khi làm lại.",
+      hint: "Kiểm tra mạng/VPN, tải lại trang (F5) — truy cập qua Entra Application Proxy thì phiên đăng nhập proxy có thể "
+        + "đã hết hạn — rồi thử lại. Nếu vừa bấm Chặn/Bỏ chặn, xem tab Lịch sử thay đổi trước khi làm lại.",
     });
   }
   let data = null;
