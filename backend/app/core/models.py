@@ -589,8 +589,10 @@ class AutoBlockEvidence(Base):
                 return ""
             return (t.replace(tzinfo=dt.timezone.utc) if t.tzinfo is None else t.astimezone(dt.timezone.utc)).isoformat()
 
+        # Bản ghi từ trước khi có sender_tenant / trusted_by (cả hai rỗng) băm theo định dạng cũ — để nâng cấp
+        # (thêm cột) không làm chuỗi băm báo "đã bị sửa"
+        who = [self.sender_tenant, self.trusted_by] if (self.sender_tenant or self.trusted_by) else []
         return "\x1f".join([iso(self.captured_at), str(self.message_id or ""), self.msg_id or "", self.chat_id or "",
-                            self.sender_id or "", self.sender_name or "", self.sender_tenant or "",
-                            self.trusted_by or "", iso(self.teams_created_at),
+                            self.sender_id or "", self.sender_name or "", *who, iso(self.teams_created_at),
                             iso(self.teams_modified_at), self.status or "", self.commands or "", self.text or "",
                             self.sha256 or "", self.prev_hash or ""])

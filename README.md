@@ -351,8 +351,9 @@ Dùng chung `base/` và `overlays/prod/`: `kubectl apply -k deploy/k8s/overlays/
 ### 4.4 Nâng cấp từ bản cũ lên 2.2
 
 1. **Sao lưu DB** (lệnh ở bảng vận hành trên) và kiểm tra lại `MASTER_KEY`.
-2. **Đổi image** sang `2.2.0` (hoặc `rollout restart` nếu dùng `latest`). Không cần migrate: các bảng mới (`autoblock_*`,
-   `autoblock_evidence`) tự tạo khi khởi động, bảng cũ giữ nguyên.
+2. **Đổi image** sang `2.2.0` (hoặc `rollout restart` nếu dùng `latest`). Không cần migrate tay: khi khởi động, app tự
+   tạo bảng mới và **tự thêm cột mới** vào bảng đã có (log `Nâng cấp DB: thêm cột …`). Bằng chứng ghi trước khi nâng cấp
+   vẫn kiểm tra toàn vẹn được.
 3. **Tùy chọn trong ConfigMap / `local-config.yaml`:**
    - thêm `AUTOBLOCK_POLL_SECONDS` (mặc định 300);
    - đặt `APP_BASE_URL` nếu chưa có, vì link trong email và báo cáo dùng giá trị này.
@@ -708,6 +709,7 @@ E2E_DATABASE_URL=postgresql+psycopg2://u:p@127.0.0.1:5432/srb bash tests/run_e2e
 |---|---|
 | `autoblock_test.py` | Cú pháp, team SOC (chỉ thành viên được ủy quyền, không cả tenant đối tác; sai tenant bị từ chối; danh sách thành viên chat; nhóm Entra tự cập nhật; thành viên IT Security của HSC; nâng cấp cấu hình cũ), tin đã sửa, whitelist, lịch (cuối tuần / ngày lễ), ngưỡng, công tắc, lọc phía Graph, lệnh cũ, **bằng chứng khi tin bị xóa / sửa** |
 | `reports_test.py` | Số liệu báo cáo, khoảng ngày trên lịch, PDF (Executive Summary, logo, tiếng Việt), Excel, gửi email đính kèm |
+| `db_migrate_test.py` | Nâng cấp DB bản cũ: tự thêm cột thiếu, giữ toàn vẹn chuỗi băm bằng chứng cũ |
 | `contract_test.py` | Khóa danh sách API và hình dạng response (ghi lại bằng `CONTRACT_RECORD=1` khi cố ý thêm API) |
 | `policy_guard_test.py` | Không lệnh ghi nào lọt lên firewall ngoài allowlist |
 | `ui_smoke_test.py` | Playwright trên mọi tab: desktop, điện thoại 390px, tooltip, phân quyền giao diện |

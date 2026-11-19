@@ -4,7 +4,11 @@ from __future__ import annotations
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
+import logging
+
 from .config import settings
+
+log = logging.getLogger(__name__)
 
 connect_args = {}
 if settings.DATABASE_URL.startswith("sqlite"):
@@ -29,14 +33,36 @@ def init_db() -> None:
 
 
 def _migrate() -> None:
-    """Bổ sung cột mới cho DB đã có (create_all không ALTER bảng cũ)."""
-    from sqlalchemy import inspect, text
+    """Bổ sung cột mới cho bảng đã có — create_all chỉ tạo bảng CHƯA có, không ALTER bảng cũ.
 
-    cols = {c["name"] for c in inspect(engine).get_columns("app_users")}
-    if "entra_oid" not in cols:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE app_users ADD COLUMN entra_oid VARCHAR(64)"))
-            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_app_users_entra_oid ON app_users (entra_oid)"))
+    So từng bảng trong models với DB: cột nào thiếu thì ADD COLUMN (cho phép NULL, kèm DEFAULT của model để các dòng
+    cũ có giá trị), tạo index nếu cột có index. Chạy mỗi lần khởi động, idempotent; nâng cấp phiên bản không cần
+    migrate tay. Không xóa / đổi kiểu cột.
+    """
+    from sqlalchemy import inspect, literal, text
+
+    insp = inspect(engine)
+    existing = set(insp.get_table_names())
+    pg = engine.dialect.name == "postgresql"
+    for table in Base.metadata.sorted_tables:
+        if table.name not in existing:
+            continue
+        have = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in have:
+                continue
+            ddl = f'ALTER TABLE {table.name} ADD COLUMN {"IF NOT EXISTS " if pg else ""}{col.name} ' \
+                  f"{col.type.compile(dialect=engine.dialect)}"
+            default = col.default.arg if col.default is not None and col.default.is_scalar else None
+            if default is not None:
+                ddl += " DEFAULT " + str(literal(default, type_=col.type).compile(
+                    dialect=engine.dialect, compile_kwargs={"literal_binds": True}))
+            with engine.begin() as conn:
+                conn.execute(text(ddl))
+                if col.index:
+                    conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table.name}_{col.name} "
+                                      f"ON {table.name} ({col.name})"))
+            log.warning("Nâng cấp DB: thêm cột %s.%s", table.name, col.name)
 
 
 def get_session():
