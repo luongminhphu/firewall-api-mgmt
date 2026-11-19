@@ -589,9 +589,15 @@ progress::-moz-progress-bar { background: var(--primary-text); border-radius: 99
 
 /* ============================================================= BÁO CÁO === */
 .table th.num, .table td.num { text-align: right; width: 1%; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.rp-range { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s3) var(--s4); }
-.rp-dates { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s3); }
-.rp-dates .field { width: 170px; }
+/* Kỳ báo cáo: nút kỳ + ô ngày + nút Xem cùng MỘT hàng, cùng chiều cao — bấm "Chọn trên lịch" không làm khung phình */
+.rp-range { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s4); min-height: var(--control); }
+.rp-range .seg { height: var(--control); align-items: stretch; }
+.rp-range .seg-btn { min-height: 0; }
+.rp-dates { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+.rp-dates[hidden] { display: none; }
+.rp-dates .field { display: flex; align-items: center; gap: var(--s2); width: auto; margin: 0; }
+.rp-dates .field > span { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+.rp-dates input[type="date"] { width: 160px; height: var(--control); min-height: 0; }
 .rp-label { flex-basis: 100%; }
 .rp-headline { font-size: var(--fs-md); line-height: 1.6; margin-bottom: var(--s4); max-width: 100ch; }
 .rp-cards { grid-template-columns: repeat(6, minmax(0, 1fr)); }
@@ -743,7 +749,12 @@ progress::-moz-progress-bar { background: var(--primary-text); border-radius: 99
   /* Trực đêm trên điện thoại: chờ duyệt / ca ngoài giờ dạng thẻ — nút Approve / Gỡ chặn luôn trong màn hình */
   .ab-cards, #vr-cards, .rp-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rp-two, .rp-grid { grid-template-columns: minmax(0, 1fr); }
-  .rp-dates, .rp-dates .field, #rp-q { width: 100%; }
+  .rp-dates, #rp-q { width: 100%; }
+  .rp-dates .field { flex: 1 1 100%; }
+  .rp-dates .field > span { min-width: 2.5em; }
+  .rp-dates input[type="date"] { flex: 1; width: auto; min-width: 0; }
+  .rp-dates .btn { width: 100%; }
+  .rp-range { min-height: 0; }
   .rp-mail__foot .btn { margin-left: 0; width: 100%; }
   .ab-cards > :last-child:nth-child(odd) { grid-column: 1 / -1; }   /* số thẻ lẻ: thẻ cuối trải hết hàng */
   .status-card { min-height: 72px; }
