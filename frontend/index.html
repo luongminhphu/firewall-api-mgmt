@@ -696,14 +696,44 @@ Ví dụ:
         </section>
 
         <section class="panel" data-panel="settings" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings">
-          <div class="grid grid--settings">
-            <form class="card card--wide" id="ab-form" autocomplete="off">
+          <div class="st-layout">
+            <nav class="st-nav" id="st-nav" aria-label="Nhóm cài đặt">
+              <button type="button" class="st-nav__item is-active" data-st="autoblock" aria-pressed="true">
+                <svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                <span><strong>Tự động chặn (Teams)</strong><small>Kết nối, người gửi lệnh, lịch, whitelist</small></span>
+              </button>
+              <button type="button" class="st-nav__item" data-st="vpn" aria-pressed="false">
+                <svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span><strong>VPN &amp; rà soát</strong><small>Firewall có VPN, hạn truy cập, rà soát quý</small></span>
+              </button>
+              <button type="button" class="st-nav__item" data-st="mail" aria-pressed="false">
+                <svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+                <span><strong>Email &amp; thông báo</strong><small>SMTP, nhắc hạn, đại diện team, hàng đợi</small></span>
+              </button>
+              <button type="button" class="st-nav__item" data-st="general" aria-pressed="false">
+                <svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2a10 10 0 0 0 0 20c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a6 6 0 0 0 6-6c0-4.9-4.5-8.6-10-8.6z"/></svg>
+                <span><strong>Giao diện</strong><small>Logo hiển thị</small></span>
+              </button>
+            </nav>
+            <div class="st-body">
+              <div class="st-group" data-st-group="autoblock">
+            <form class="card card--wide st-form" id="ab-form" autocomplete="off">
               <div class="card-head">
                 <div><h2>Tự động chặn từ Teams</h2>
-                  <p class="muted tiny">Đọc group chat với SOC qua Microsoft Graph (chỉ đọc). Cần App registration có quyền
-                    <code>ChatMessage.Read.Chat</code> (cấp riêng cho group chat, khuyến nghị) hoặc <code>Chat.Read.All</code>.</p></div>
+                  <p class="muted tiny">Đọc group chat với SOC qua Microsoft Graph, nhận lệnh <code>ĐỀ XUẤT CỦA SOC: BLOCK IP &lt;ip&gt;</code> và chặn trên firewall theo lịch.</p></div>
                 <span id="ab-cfg-state" class="chip"></span>
               </div>
+              <nav class="st-index" aria-label="Các bước cấu hình tự động chặn">
+                <button type="button" class="st-index__item" data-goto="abs-sec-1"><span class="st-step" aria-hidden="true">1</span>Kết nối</button>
+                <button type="button" class="st-index__item" data-goto="abs-sec-2"><span class="st-step" aria-hidden="true">2</span>Người gửi lệnh</button>
+                <button type="button" class="st-index__item" data-goto="abs-sec-3"><span class="st-step" aria-hidden="true">3</span>Lịch &amp; giới hạn</button>
+                <button type="button" class="st-index__item" data-goto="abs-sec-4"><span class="st-step" aria-hidden="true">4</span>Whitelist</button>
+                <button type="button" class="st-index__item" data-goto="abs-sec-5"><span class="st-step" aria-hidden="true">5</span>Trả lời Teams</button>
+                <button type="button" class="st-index__item" data-goto="abs-sec-6"><span class="st-step" aria-hidden="true">6</span>Cảnh báo &amp; firewall</button>
+              </nav>
+              <section class="st-sec" id="abs-sec-1" aria-labelledby="abs-sec-1-t">
+                <h3 class="st-sec__title" id="abs-sec-1-t"><span class="st-step" aria-hidden="true">1</span>Kết nối Microsoft Graph</h3>
+                <p class="muted tiny st-sec__desc">App registration đọc group chat (chỉ đọc): quyền <code>Chat.Read.All</code> hoặc <code>ChatMessage.Read.Chat</code>, thêm <code>ChatMember.Read.All</code> để liệt kê thành viên. Bấm <strong>Kiểm tra kết nối</strong> sau khi nhập.</p>
               <label class="check"><input type="checkbox" id="abs-enabled" /> <span>Bật đọc Teams và tự động chặn</span></label>
               <div class="row row--2">
                 <label class="field"><span>Tenant ID</span><input id="abs-tenant" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" spellcheck="false" /></label>
@@ -718,9 +748,11 @@ Ví dụ:
                 <button class="btn" id="abs-test" type="button">Kiểm tra kết nối</button>
               </div>
               <div id="abs-test-out" class="ab-test-out"></div>
-
+              </section>
+              <section class="st-sec" id="abs-sec-2" aria-labelledby="abs-sec-2-t">
+                <h3 class="st-sec__title" id="abs-sec-2-t"><span class="st-step" aria-hidden="true">2</span>Người được gửi lệnh</h3>
               <fieldset class="field">
-                <legend>Người được gửi lệnh (team SOC trực 24/7, IT Security)</legend>
+                <legend class="sr-only">Người được gửi lệnh (team SOC trực 24/7, IT Security)</legend>
                 <p class="muted tiny">Chỉ <strong>những người được khai báo cụ thể</strong> mới ra lệnh được — app <strong>không</strong> tin cậy cả tenant của đối tác SOC (vd HPT), vì đối tác có thể có người khác trong group chat. Tin của người chưa được ủy quyền bị bỏ qua và ghi nhật ký. Bấm <strong>Kiểm tra kết nối</strong> để thấy thành viên group chat kèm tenant, rồi bấm <strong>+ Ủy quyền</strong> cạnh từng người.</p>
                 <div id="abs-legacy"></div>
 
@@ -758,16 +790,11 @@ Ví dụ:
                 </div>
                 <div id="abs-seen" class="ab-seen"></div>
               </fieldset>
-
+              </section>
+              <section class="st-sec" id="abs-sec-3" aria-labelledby="abs-sec-3-t">
+                <h3 class="st-sec__title" id="abs-sec-3-t"><span class="st-step" aria-hidden="true">3</span>Lịch tự chặn &amp; giới hạn</h3>
               <fieldset class="field">
-                <legend>Whitelist — IP của HSC, Akamai, đối tác…</legend>
-                <p class="muted tiny">SOC đề xuất chặn IP thuộc các danh sách này → <strong>không tự chặn</strong>, chuyển sang chờ duyệt và chỉ quản trị viên bấm <strong>Approve</strong> được. Mỗi dòng một IPv4 hoặc CIDR (vd <code>23.32.0.0/11</code>); dán được cả danh sách, phần sau dấu <code>#</code> là ghi chú.</p>
-                <div id="abs-wl" class="ab-wl"></div>
-                <button class="btn btn--ghost btn--sm" id="abs-wl-add" type="button">+ Thêm danh sách</button>
-              </fieldset>
-
-              <fieldset class="field">
-                <legend>Lịch tự chặn (ngoài giờ / ca đêm)</legend>
+                <legend class="sr-only">Lịch tự chặn (ngoài giờ / ca đêm)</legend>
                 <p class="muted tiny">Trong lịch: app tự chặn. Ngoài lịch (giờ hành chính, Infra có mặt): lệnh của SOC chuyển sang chờ duyệt. Bỏ tick = tự chặn 24/7.</p>
                 <label class="check"><input type="checkbox" id="abs-window" /> <span>Chỉ tự chặn theo lịch dưới đây</span></label>
                 <div class="row row--2">
@@ -786,6 +813,7 @@ Ví dụ:
                   </div>
                 </div>
               </fieldset>
+              <h4 class="st-sub">Giới hạn &amp; chu kỳ đọc</h4>
               <div class="row row--2">
                 <label class="field"><span>Tối đa IP tự chặn mỗi giờ (vượt → ngắt, chờ duyệt, báo Admin)</span>
                   <input id="abs-limit" type="number" min="1" max="200" /></label>
@@ -797,8 +825,20 @@ Ví dụ:
                   <input id="abs-stale" type="number" min="5" max="1440" /></label>
                 <div></div>
               </div>
+              </section>
+              <section class="st-sec" id="abs-sec-4" aria-labelledby="abs-sec-4-t">
+                <h3 class="st-sec__title" id="abs-sec-4-t"><span class="st-step" aria-hidden="true">4</span>Whitelist</h3>
               <fieldset class="field">
-                <legend>Trả lời kết quả vào group chat</legend>
+                <legend class="sr-only">Whitelist — IP của HSC, Akamai, đối tác…</legend>
+                <p class="muted tiny">SOC đề xuất chặn IP thuộc các danh sách này → <strong>không tự chặn</strong>, chuyển sang chờ duyệt và chỉ quản trị viên bấm <strong>Approve</strong> được. Mỗi dòng một IPv4 hoặc CIDR (vd <code>23.32.0.0/11</code>); dán được cả danh sách, phần sau dấu <code>#</code> là ghi chú.</p>
+                <div id="abs-wl" class="ab-wl"></div>
+                <button class="btn btn--ghost btn--sm" id="abs-wl-add" type="button">+ Thêm danh sách</button>
+              </fieldset>
+              </section>
+              <section class="st-sec" id="abs-sec-5" aria-labelledby="abs-sec-5-t">
+                <h3 class="st-sec__title" id="abs-sec-5-t"><span class="st-step" aria-hidden="true">5</span>Trả lời vào group chat</h3>
+              <fieldset class="field">
+                <legend class="sr-only">Trả lời kết quả vào group chat</legend>
                 <p class="muted tiny">Sau mỗi IP chặn thành công, app gửi vào group chat: <code class="ab-syntax">INFRA ĐÃ BLOCK &lt;ip&gt; THEO YÊU CẦU LÚC &lt;thời điểm&gt;</code>.
                   Microsoft Graph không cho app gửi tin vào chat bằng quyền ứng dụng, nên dùng <strong>Teams Workflows</strong>: ở thanh bên trái Teams mở app <em>Workflows</em> (hoặc <em>Apps › Workflows</em>) › <em>Create</em> ›
                   mẫu <em>Send webhook alerts to a chat</em> › <em>Post in: Group chat</em>, chọn đúng group chat, rồi dán URL webhook vào đây. URL chứa chữ ký bí mật — được mã hóa, không hiển thị lại.</p>
@@ -809,17 +849,27 @@ Ví dụ:
                   <button class="btn" id="abs-reply-test" type="button">Gửi thử</button>
                 </div>
               </fieldset>
+              </section>
+              <section class="st-sec" id="abs-sec-6" aria-labelledby="abs-sec-6-t">
+                <h3 class="st-sec__title" id="abs-sec-6-t"><span class="st-step" aria-hidden="true">6</span>Cảnh báo &amp; firewall đích</h3>
               <label class="field"><span>Email nhóm Admin (cảnh báo vượt ngưỡng, chờ duyệt, báo cáo khi hết ca ngoài giờ) — để trống = mọi quản trị viên có email</span>
                 <textarea id="abs-admins" rows="2" placeholder="infra-admin@hsc.com.vn"></textarea></label>
               <fieldset class="field">
                 <legend>Firewall đích (không chọn = mọi firewall đang bật)</legend>
                 <div id="abs-fws" class="check-list"></div>
               </fieldset>
-              <p id="abs-msg" class="alert hidden" role="status"></p>
-              <p class="muted tiny" id="abs-meta"></p>
-              <button class="btn btn--primary" type="submit">Lưu cấu hình tự động chặn</button>
+              </section>
+              <div class="st-savebar">
+                <div class="st-savebar__msg">
+                  <p id="abs-msg" class="alert hidden" role="status"></p>
+                  <p class="muted tiny" id="abs-meta"></p>
+                </div>
+                <button class="btn btn--primary" type="submit">Lưu cấu hình tự động chặn</button>
+              </div>
             </form>
+              </div>
 
+              <div class="st-group grid grid--settings" data-st-group="vpn" hidden>
             <form class="card" id="vs-form">
               <div class="card-head"><h2>VPN · thời hạn truy cập</h2></div>
               <label class="field"><span>Báo "Sắp hết hạn" khi còn ≤ (ngày)</span>
@@ -846,11 +896,13 @@ Ví dụ:
                 <label class="field"><span>Hạn hoàn thành (ngày)</span><input id="rs-due" type="number" min="1" max="90" /></label>
                 <label class="field"><span>Nhắc khi còn ≤ (ngày)</span><input id="rs-remind" type="number" min="0" max="30" /></label>
               </div>
-              <p class="muted tiny">Người rà soát là đại diện team (bảng bên dưới); mục không thuộc team nào do Infra (quản trị viên) rà soát. Đại diện team chưa là người dùng app vẫn đăng nhập được bằng Microsoft, chỉ thấy tab Rà soát.</p>
+              <p class="muted tiny">Người rà soát là đại diện team (khai báo ở <strong>Email &amp; thông báo › Đại diện team</strong>); mục không thuộc team nào do Infra (quản trị viên) rà soát. Đại diện team chưa là người dùng app vẫn đăng nhập được bằng Microsoft, chỉ thấy tab Rà soát.</p>
               <p id="rs-msg" class="alert hidden" role="status"></p>
               <button class="btn btn--primary" type="submit">Lưu</button>
             </form>
+              </div>
 
+              <div class="st-group grid grid--settings" data-st-group="mail" hidden>
             <form class="card" id="smtp-form" autocomplete="off">
               <div class="card-head"><h2>Máy chủ email (SMTP)</h2><span id="smtp-state" class="chip"></span></div>
               <label class="check"><input type="checkbox" id="smtp-enabled" /> <span>Bật gửi email</span></label>
@@ -934,6 +986,29 @@ Ví dụ:
                 </table>
               </div>
             </div>
+              </div>
+
+              <div class="st-group" data-st-group="general" hidden>
+          <div class="card logo-card">
+            <div class="card-head">
+              <div>
+                <h2>Logo hiển thị</h2>
+                <p class="muted tiny">Hiển thị ở thanh trên cùng và màn hình đăng nhập. PNG, JPG, WebP hoặc SVG, tối đa <span id="logo-max">300</span> KB. Nên dùng logo nền trong suốt, cao tối thiểu 64 px.</p>
+              </div>
+            </div>
+            <div class="logo-edit">
+              <div class="logo-preview" id="logo-preview"><span class="muted tiny">Chưa có logo — đang dùng biểu tượng mặc định</span></div>
+              <div class="logo-actions">
+                <input type="file" id="logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" />
+                <button class="btn" id="logo-pick" type="button">Chọn tệp logo</button>
+                <button class="btn" id="logo-save" type="button" disabled>Lưu logo</button>
+                <button class="btn btn--ghost" id="logo-remove" type="button" disabled>Gỡ logo</button>
+              </div>
+              <p id="logo-msg" class="alert hidden"></p>
+            </div>
+          </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -1012,24 +1087,6 @@ Ví dụ:
                 <button class="btn btn--primary btn--block" type="submit">Lưu người dùng</button>
                 <p id="u-form-msg" class="alert hidden"></p>
               </form>
-            </div>
-          </div>
-          <div class="card logo-card">
-            <div class="card-head">
-              <div>
-                <h2>Logo hiển thị</h2>
-                <p class="muted tiny">Hiển thị ở thanh trên cùng và màn hình đăng nhập. PNG, JPG, WebP hoặc SVG, tối đa <span id="logo-max">300</span> KB. Nên dùng logo nền trong suốt, cao tối thiểu 64 px.</p>
-              </div>
-            </div>
-            <div class="logo-edit">
-              <div class="logo-preview" id="logo-preview"><span class="muted tiny">Chưa có logo — đang dùng biểu tượng mặc định</span></div>
-              <div class="logo-actions">
-                <input type="file" id="logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" />
-                <button class="btn" id="logo-pick" type="button">Chọn tệp logo</button>
-                <button class="btn" id="logo-save" type="button" disabled>Lưu logo</button>
-                <button class="btn btn--ghost" id="logo-remove" type="button" disabled>Gỡ logo</button>
-              </div>
-              <p id="logo-msg" class="alert hidden"></p>
             </div>
           </div>
         </section>

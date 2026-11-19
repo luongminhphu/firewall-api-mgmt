@@ -770,3 +770,60 @@ progress::-moz-progress-bar { background: var(--primary-text); border-radius: 99
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ===================================================================== Cài đặt: nhóm theo công việc vận hành
+   Menu con trái (sticky) · nội dung bên phải. Điện thoại: menu thành thanh cuộn ngang trên cùng. */
+.st-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: var(--s4); align-items: start; }
+.st-nav { position: sticky; top: calc(var(--topbar-h) + var(--s4)); display: grid; gap: 4px; padding: var(--s2); border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface); }
+.st-nav__item { display: flex; align-items: flex-start; gap: var(--s3); width: 100%; min-height: 52px; padding: var(--s2) var(--s3);
+  border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-muted);
+  font: inherit; text-align: left; cursor: pointer; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
+.st-nav__item .ic { flex: none; margin-top: 2px; }
+.st-nav__item span { display: grid; gap: 2px; min-width: 0; }
+.st-nav__item strong { font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.st-nav__item small { font-size: var(--fs-xs); line-height: 1.35; }
+.st-nav__item:hover { background: var(--surface-2); color: var(--text); }
+.st-nav__item.is-active { background: var(--tint-primary); border-color: color-mix(in oklab, var(--primary-text) 35%, transparent); color: var(--text); }
+.st-nav__item.is-active .ic { color: var(--primary-text); }
+.st-nav__item:focus-visible { outline: 2px solid var(--primary-text); outline-offset: 2px; }
+.st-group.grid { margin: 0; }
+.st-group .logo-card { margin: 0; }
+
+/* form Tự động chặn: các bước đánh số + mục lục nhảy nhanh + thanh Lưu dính đáy */
+.st-index { display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s2); }
+.st-index__item { display: inline-flex; align-items: center; gap: var(--s2); min-height: 32px; padding: 0 var(--s3);
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text-muted);
+  font: inherit; font-size: var(--fs-xs); font-weight: 500; cursor: pointer; transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
+.st-index__item:hover { color: var(--text); border-color: var(--border-strong); }
+.st-step { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 999px;
+  background: var(--tint-primary); color: var(--primary-text); font-size: var(--fs-xs); font-weight: 700; }
+.st-sec { padding: var(--s4) 0; border-top: 1px solid var(--border); scroll-margin-top: calc(var(--topbar-h) + var(--s4)); }
+/* trong một bước: fieldset không kẻ viền riêng (tiêu đề bước đã phân tách); legend trùng ý tiêu đề → sr-only */
+#ab-form .st-sec > fieldset.field { padding-top: 0; margin-top: 0; border-top: 0; }
+#ab-form .st-sec > fieldset.field > legend.sr-only { float: none; width: 1px; }
+.st-sec:first-of-type { border-top: 0; }
+.st-sec__title { display: flex; align-items: center; gap: var(--s2); margin: 0 0 var(--s2); font-size: var(--fs-base); font-weight: 600; }
+.st-sec__desc { margin: 0 0 var(--s3); }
+.st-sec > .field:first-of-type { margin-top: 0; }
+.st-sub { margin: var(--s4) 0 var(--s2); font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
+.st-savebar { position: sticky; bottom: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s3); margin: var(--s2) calc(-1 * var(--s5)) calc(-1 * var(--s5)); padding: var(--s3) var(--s5);
+  border-top: 1px solid var(--border); background: color-mix(in oklab, var(--surface) 94%, transparent);
+  backdrop-filter: blur(6px); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.st-savebar__msg { display: grid; gap: 4px; min-width: 0; }
+.st-savebar__msg .alert { margin: 0; }
+.st-savebar__msg .muted { margin: 0; }
+.st-savebar .btn { flex: none; }
+
+@media (max-width: 1080px) {
+  .st-layout { grid-template-columns: minmax(0, 1fr); }
+  .st-nav { position: static; display: flex; overflow-x: auto; scrollbar-width: none; padding: 4px; }
+  .st-nav__item { flex: none; width: auto; min-height: 44px; align-items: center; }
+  .st-nav__item small { display: none; }
+}
+@media (max-width: 720px) {
+  .st-savebar { flex-direction: column; align-items: stretch; margin: var(--s2) calc(-1 * var(--s4)) calc(-1 * var(--s4));
+    padding: var(--s3) var(--s4); border-radius: 0 0 var(--radius) var(--radius); }
+  .st-savebar .btn { width: 100%; }
+}

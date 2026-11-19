@@ -195,12 +195,18 @@ const visible = (page, sel) => page.isVisible(sel);
 
     // Cài đặt (admin): ngưỡng sắp hết hạn
     await tab(page, "settings");
+    chk("Cài đặt: có 4 nhóm (Tự động chặn, VPN & rà soát, Email & thông báo, Giao diện)",
+      (await page.$$eval("#st-nav [data-st]", (xs) => xs.map((x) => x.dataset.st))).join(",") === "autoblock,vpn,mail,general");
+    await page.click('#st-nav [data-st="vpn"]');
+    chk("Cài đặt: chọn nhóm → chỉ hiện nhóm đó", await visible(page, "#vs-form") && !(await visible(page, "#ab-form"))
+      && !(await visible(page, "#smtp-form")));
     await page.waitForFunction(() => document.querySelector("#vs-days").value !== "");
     await page.fill("#vs-days", "45");
     await page.click('#vs-form button[type="submit"]');
     await page.waitForSelector("#vs-msg.alert--ok");
     chk("Cài đặt: lưu ngưỡng VPN", (await page.textContent("#vs-meta")).includes("phu.luong"));
     // SMTP (để tắt), thông báo, đại diện team, hàng đợi
+    await page.click('#st-nav [data-st="mail"]');
     await page.fill("#smtp-host", "smtp.example.invalid");
     await page.fill("#smtp-port", "587");
     await page.fill("#smtp-user", "soc");
@@ -228,6 +234,9 @@ const visible = (page, sel) => page.isVisible(sel);
     // Tooltip hướng dẫn cạnh mục cấu hình
     const ntip = await page.$$eval(".tip", (xs) => xs.length);
     chk("Tooltip: có nút ⓘ hướng dẫn ở các mục cấu hình", ntip >= 40, ntip);
+    await page.click('#st-nav [data-st="autoblock"]');
+    await page.click('[data-goto="abs-sec-3"]');
+    chk("Cài đặt: mục lục bước → cuộn tới bước 3 (Lịch & giới hạn)", await visible(page, "#abs-sec-3"));
     await page.hover('#abs-limit');
     await page.focus('label:has(#abs-limit) .tip');
     await page.waitForSelector("#tip-pop:not([hidden])");
@@ -376,9 +385,13 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.waitForFunction((id) => !document.querySelector(`#rv-item-${id}`), first);
     chk("Rà soát: thu hồi kèm lý do → rời danh sách chưa quyết định", true);
 
-    // Logo (tab Người dùng → Logo hiển thị): tải PNG lên, hiện ở thanh trên, rồi gỡ
-    await tab(page, "users");
-    await page.waitForSelector("#panel-users.is-active");
+    // Logo (Cài đặt › Giao diện): tải PNG lên, hiện ở thanh trên, rồi gỡ
+    await tab(page, "settings");
+    await page.click('#st-nav [data-st="general"]');
+    await page.waitForSelector("#logo-pick", { state: "visible" });
+    await page.reload();
+    await page.waitForSelector("#panel-settings.is-active");
+    chk("Cài đặt: tải lại trang → mở lại đúng nhóm vừa xem (Giao diện)", await visible(page, "#logo-pick"));
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40)]);
     await page.setInputFiles("#logo-file", { name: "logo.png", mimeType: "image/png", buffer: png });
     await page.waitForFunction(() => !document.querySelector("#logo-save").disabled);

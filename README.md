@@ -409,20 +409,23 @@ chạm vào để xem hướng dẫn (điền gì, lấy ở đâu, ví dụ).
 
 1. **Người dùng.** Đăng nhập bằng `APP_PASSWORD` (hoặc Microsoft). Ở tab **Người dùng**:
    - tạo tài khoản cho từng người: Readonly / Write / Quản trị viên; loại *Microsoft* (tên đăng nhập = UPN) hoặc *Mật khẩu riêng*;
-   - tải **logo** (dùng cả trên giao diện và header báo cáo).
+   - tải **logo** ở *Cài đặt › Giao diện* (dùng cả trên giao diện và header báo cáo).
 
    Khi đã có quản trị viên đăng nhập được, đặt `SHARED_PASSWORD_LOGIN=false`.
 2. **Firewall.** Ở tab **Firewall**, thêm từng firewall (tên, IP/host, cổng 4444, tài khoản API) rồi bấm **Kiểm tra tất cả**.
-3. **SMTP.** Ở *Cài đặt › Máy chủ email*, nhập máy chủ, cổng, bảo mật, tài khoản, địa chỉ gửi, tick **Bật gửi email**, rồi **Gửi thử**.
-4. **Nhắc hạn VPN và rà soát** (nếu dùng): ở *Cài đặt*, nhập email Infra, các mốc nhắc, đại diện từng team, lịch rà soát.
+3. **SMTP.** Ở *Cài đặt › Email & thông báo › Máy chủ email*, nhập máy chủ, cổng, bảo mật, tài khoản, địa chỉ gửi, tick **Bật gửi email**, rồi **Gửi thử**.
+4. **VPN, nhắc hạn và rà soát** (nếu dùng):
+   - *Cài đặt › VPN & rà soát*: chọn **firewall có VPN** (firewall không cấu hình VPN thì bỏ chọn), ngưỡng hạn, lịch rà soát;
+   - *Cài đặt › Email & thông báo*: email Infra, các mốc nhắc, đại diện từng team.
+
    Sau đó vào tab **VPN** › **Đồng bộ ngay**.
-5. **Tự động chặn từ Teams** (*Cài đặt › Tự động chặn từ Teams*):
+5. **Tự động chặn từ Teams** (*Cài đặt › Tự động chặn (Teams)*, form chia 6 bước đánh số, nút **Lưu** luôn ở đáy):
    1. Nhập Tenant ID, Client ID, Client secret của **app đọc chat**, và Chat ID ([mục 3.2](#32-microsoft-entra-id--teams)).
    2. **Người được gửi lệnh.** Bấm **Kiểm tra kết nối**: app liệt kê thành viên group chat kèm tenant, email và nhãn
       *External* / *HSC*. Bấm **"+ Ủy quyền"** cạnh **từng** thành viên SOC của đối tác và từng thành viên IT Security
       của HSC. Tài khoản được gắn tenant. Có thể dùng thêm nhóm Entra cho thành viên HSC.
-   3. **Whitelist:** dải public HSC, dải Akamai (SiteShield / Origin IP ACL), IP đối tác; mỗi dòng một IP/CIDR.
-   4. **Lịch tự chặn:** ngoài giờ ngày thường, cuối tuần, ngày lễ. Đặt thêm ngưỡng IP/giờ, chu kỳ đọc, ngưỡng lệnh cũ.
+   3. **Lịch tự chặn & giới hạn:** ngoài giờ ngày thường, cuối tuần, ngày lễ; ngưỡng IP/giờ, chu kỳ đọc, ngưỡng lệnh cũ.
+   4. **Whitelist:** dải public HSC, dải Akamai (SiteShield / Origin IP ACL), IP đối tác; mỗi dòng một IP/CIDR.
    5. **Trả lời vào group chat:** dán URL webhook Workflows, bấm **Gửi thử** và kiểm tra tin trong Teams.
    6. Nhập **email nhóm Admin** và chọn **firewall đích**. Tick **Bật** rồi **Lưu**. App chỉ xử lý tin gửi **sau** lúc bật.
    7. **Thống nhất với SOC** cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>` (dòng riêng, IN HOA) và quy định *sửa tin thì gửi lại tin mới*.
@@ -604,19 +607,19 @@ Ghi mọi thao tác: ai, lúc nào, IP nào, firewall nào, kết quả. Có b�
 
 ### 6.10 Cài đặt (quản trị viên)
 
-| Thẻ | Nội dung |
+Bốn nhóm theo công việc vận hành, chọn ở menu con bên trái (trên điện thoại là thanh cuộn ngang). App nhớ nhóm vừa xem.
+
+| Nhóm | Nội dung |
 |---|---|
-| **Tự động chặn từ Teams** | Kết nối Graph, tài khoản SOC, whitelist, lịch tự chặn (ngày thường / cuối tuần / ngày lễ), ngưỡng IP/giờ, chu kỳ đọc, ngưỡng lệnh cũ, trả lời vào chat (webhook), email nhóm Admin, firewall đích |
-| **VPN** | Ngưỡng "sắp hết hạn", Rule Group được đọc |
-| **Rà soát** | Tự mở hằng quý, số ngày hạn hoàn thành, số ngày nhắc trước hạn |
-| **Máy chủ email (SMTP)** | Máy chủ, cổng, STARTTLS / SSL / không mã hóa, kiểm tra TLS, tài khoản (mật khẩu mã hóa), địa chỉ gửi, **Gửi thử** |
-| **Thông báo hạn VPN** | Bật/tắt, email Infra, mốc nhắc, báo hằng tuần |
-| **Đại diện team · Hàng đợi email** | Người nhận theo team · trạng thái từng thư, **Chạy ngay**. Thư lỗi tự thử lại (lùi dần tới 6 giờ, tối đa 8 lần) |
+| **Tự động chặn (Teams)** | Một form chia 6 bước, có mục lục nhảy nhanh và nút **Lưu** luôn ở đáy: 1 · Kết nối Microsoft Graph (+ Kiểm tra kết nối) · 2 · Người được gửi lệnh · 3 · Lịch tự chặn & giới hạn (ngày thường / cuối tuần / ngày lễ, ngưỡng IP/giờ, chu kỳ đọc, ngưỡng lệnh cũ) · 4 · Whitelist · 5 · Trả lời vào group chat (webhook) · 6 · Cảnh báo & firewall đích |
+| **VPN & rà soát** | Firewall có VPN (chỉ đồng bộ các firewall này), ngưỡng "sắp hết hạn", Rule Group được đọc · rà soát định kỳ (tự mở hằng quý, hạn hoàn thành, nhắc trước hạn) |
+| **Email & thông báo** | Máy chủ SMTP (STARTTLS / SSL / không mã hóa, kiểm tra TLS, mật khẩu mã hóa, **Gửi thử**) · thông báo hạn VPN (email Infra, mốc nhắc, báo hằng tuần) · đại diện team · hàng đợi email (**Chạy ngay**; thư lỗi tự thử lại, lùi dần tới 6 giờ, tối đa 8 lần) |
+| **Giao diện** | Logo hiển thị (PNG / JPG / WebP / SVG, ≤ `LOGO_MAX_KB`) — trên thanh trên cùng, màn hình đăng nhập, header báo cáo |
 
 ### 6.11 Người dùng (quản trị viên)
 
 Thêm / sửa / khóa / xóa người dùng; quyền Readonly / Write / Quản trị viên; loại Microsoft hoặc mật khẩu riêng.
-Thay đổi có hiệu lực ngay ở request kế tiếp. Có thẻ **Logo hiển thị** (PNG / JPG / WebP / SVG, ≤ `LOGO_MAX_KB`).
+Thay đổi có hiệu lực ngay ở request kế tiếp. Logo nay ở *Cài đặt › Giao diện*.
 
 ---
 
@@ -666,7 +669,7 @@ Thay đổi có hiệu lực ngay ở request kế tiếp. Có thẻ **Logo hi�
 | Pod app `CrashLoopBackOff` | Thiếu `MASTER_KEY`, DB chưa sẵn sàng hoặc sai `POSTGRES_PASSWORD` (`kubectl logs`) |
 | Pod Postgres `Pending` / `ErrImagePull` | `storageClassName` không khớp cụm / thiếu secret `ghcr-pull` hoặc PAT hết hạn |
 | Đăng nhập Microsoft lỗi | `OIDC_REDIRECT_URI` phải trùng **chính xác** App registration; pod ra được `login.microsoftonline.com` |
-| Không nhận được email | *Cài đặt › Hàng đợi email*: xem lỗi từng thư · **Gửi thử** · egress tới SMTP |
+| Không nhận được email | *Cài đặt › Email & thông báo › Hàng đợi email*: xem lỗi từng thư · **Gửi thử** · egress tới SMTP |
 | Tự động chặn: "Đọc Teams lỗi … 403" | App đọc chat chưa có `ChatMessage.Read.Chat` (RSC) cho group chat, hoặc `Chat.Read.All` chưa được admin consent |
 | Tự động chặn: "… 404" | Sai Chat ID (phải có dạng `19:…@thread.v2`) |
 | Thành viên SOC mới vào ca gửi lệnh nhưng bị "bỏ qua (người gửi)" | Người đó chưa được ủy quyền: *Kiểm tra kết nối* › **+ Ủy quyền**. Đã ủy quyền mà vẫn bị bỏ qua: tenant gắn với tài khoản không khớp (xem cột *Đơn vị*). Theo nhóm Entra: đã được thêm vào nhóm chưa; tab hiện lỗi "GroupMember.Read.All" nếu app chưa được cấp quyền đọc nhóm |

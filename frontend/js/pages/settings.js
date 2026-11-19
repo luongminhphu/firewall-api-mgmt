@@ -1,4 +1,6 @@
-/* Tab Cài đặt (quản trị viên):
+/* Tab Cài đặt (quản trị viên) — 4 nhóm theo công việc vận hành (menu con trái, nhớ nhóm vừa xem):
+   - Tự động chặn (Teams) · VPN & rà soát · Email & thông báo · Giao diện (logo).
+   Chi tiết:
    - Tự động chặn từ Teams (autoblock-settings.js): Graph, tài khoản SOC, whitelist, khung giờ, ngưỡng, chu kỳ đọc.
    - VPN: ngưỡng "sắp hết hạn", Rule Group được đọc (trong whitelist), firewall có VPN cần đồng bộ.
    - SMTP: máy chủ / bảo mật / tài khoản (mật khẩu không bao giờ hiển thị lại), người gửi, gửi thử.
@@ -45,6 +47,43 @@ $("#rs-form").addEventListener("submit", async (e) => {
   } catch (ex) {
     say($("#rs-msg"), ex.message, "error");
   }
+});
+
+// ------------------------------------------------------------------ menu con: nhóm cài đặt
+const ST_KEY = "sb_settings_group";
+function showGroup(name) {
+  const items = $$("#st-nav [data-st]");
+  const valid = items.some((b) => b.dataset.st === name) ? name : items[0].dataset.st;
+  items.forEach((b) => {
+    const on = b.dataset.st === valid;
+    b.classList.toggle("is-active", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
+  $$("[data-st-group]").forEach((g) => { g.hidden = g.dataset.stGroup !== valid; });
+  try {
+    localStorage.setItem(ST_KEY, valid);
+  } catch {
+    /* trình duyệt chặn lưu trữ — vẫn chuyển nhóm được, chỉ không nhớ */
+  }
+}
+$("#st-nav").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-st]");
+  if (b) showGroup(b.dataset.st);
+});
+let remembered = null;
+try {
+  remembered = localStorage.getItem(ST_KEY);
+} catch {
+  /* không đọc được lưu trữ → nhóm đầu tiên */
+}
+showGroup(remembered);
+// mục lục các bước của form Tự động chặn: cuộn tới bước, không đổi địa chỉ trang
+$("#ab-form").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-goto]");
+  if (!b) return;
+  const sec = document.getElementById(b.dataset.goto);
+  sec.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  sec.querySelector("input, select, textarea, button")?.focus({ preventScroll: true });
 });
 
 // ------------------------------------------------------------------ VPN
