@@ -291,6 +291,11 @@ chk("IP thuộc whitelist Akamai / Đối tác / HSC → KHÔNG tự chặn, ch�
     and ra["whitelist"] == "Akamai: 23.32.0.0/11" and rp["whitelist"] == "Đối tác: 203.113.88.9"
     and "23.33.1.1" not in group_hosts(), (ra, rp))
 chk("lý do chờ nêu rõ danh sách", "whitelist Akamai" in ra["pending_reason"] and "Approve" in ra["pending_reason"])
+post(f"<p>{CMD} 203.113.88.9</p>")  # SOC gửi lại IP whitelist khi đang chờ → vẫn chỉ quản trị viên Approve
+poll()
+rp2 = next(x for x in reqs() if x["id"] == rp["id"])
+chk("gửi lại IP thuộc whitelist đang chờ → KHÔNG tự nâng thành tự chặn", rp2["status"] == "pending"
+    and rp2["needs_admin"], rp2)
 chk("whitelist không tính vào ngưỡng IP/giờ, không ngắt",
     c.get("/api/autoblock/status", headers=V).json()["auto_last_hour"] == used_before
     and not c.get("/api/autoblock/status", headers=V).json()["breaker_tripped_at"])
@@ -426,6 +431,23 @@ chk("lệnh SOC gửi quá ngưỡng (45 > 30 phút) mới được đọc → c
     and "Lệnh cũ" in r["pending_reason"] and "trễ 4" in r["pending_reason"], r)
 chk("lưu thời điểm SOC gửi (createdDateTime của Graph), khác lúc app xử lý",
     r and r["requested_at"] and (dt.datetime.fromisoformat(r["created_at"]) - dt.datetime.fromisoformat(r["requested_at"])).total_seconds() > 40 * 60, r)
+# SOC gửi lại cùng IP (lệnh mới, trong khung) khi yêu cầu cũ đang chờ duyệt vì "lệnh cũ" → nâng thành tự chặn
+old_id = r["id"]
+post(f"<p>{CMD} 77.77.77.3</p>", sender=SOC2_ID, name="SOC ca 2")
+poll()
+end = time.time() + 15
+while time.time() < end:
+    r_up = next(x for x in reqs() if x["id"] == old_id)
+    if r_up["status"] == "blocked":
+        break
+    time.sleep(0.3)
+dupe = next((x for x in reqs() if x["ip"] == "77.77.77.3" and x["id"] != old_id), {})
+chk("lệnh mới cùng IP đủ điều kiện → yêu cầu chờ duyệt được NÂNG thành tự chặn và chặn ngay",
+    r_up["status"] == "blocked" and r_up["mode"] == "auto" and "Tự chặn theo lệnh mới của SOC ca 2" in r_up["note"], r_up)
+chk("lệnh mới ghi là trùng, nêu đã nâng yêu cầu cũ", dupe.get("status") == "duplicate"
+    and f"Đã nâng yêu cầu #{old_id}" in dupe.get("note", ""), dupe)
+chk("nâng thành tự chặn → trả lời vào group chat", any("77.77.77.3" in (w.get("text") or "") for w in g.get("/_workflow").json())
+    or not c.get("/api/autoblock/settings", headers=H).json()["reply_enabled"])
 chk("ngưỡng lệnh cũ ngoài 5–1440 phút → 400",
     c.put("/api/autoblock/settings", headers=H, json={"stale_minutes": 2}).status_code == 400)
 

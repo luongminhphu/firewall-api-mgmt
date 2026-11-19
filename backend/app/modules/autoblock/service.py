@@ -20,7 +20,7 @@ import hashlib
 import json
 import logging
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ...core import hashchain, jobs
@@ -342,33 +342,34 @@ def _handle_command(db: Session, cfg: dict, st: dict, msg: AutoBlockMessage, c: 
         db.flush()
         event(db, "invalid", ip=req.ip, request_id=req.id, detail=req.note)
         return
-    dup = db.scalars(select(AutoBlockRequest).where(AutoBlockRequest.ip == req.ip,
-                                                    AutoBlockRequest.status.in_(ACTIVE)).limit(1)).first()
-    if dup is not None or any(r.ip == req.ip for r in auto_reqs + pending_reqs):
-        req.status, req.mode, req.note = "duplicate", "duplicate", f"Đã có yêu cầu #{dup.id if dup else ''} cho IP này"
+    dup = next((r for r in auto_reqs + pending_reqs if r.ip == req.ip), None) or db.scalars(
+        select(AutoBlockRequest).where(AutoBlockRequest.ip == req.ip, AutoBlockRequest.status.in_(ACTIVE))
+        .order_by(AutoBlockRequest.id.desc()).limit(1)).first()
+    if dup is not None:
+        req.status, req.mode, req.note = "duplicate", "duplicate", f"Đã có yêu cầu #{dup.id} cho IP này"
+        # Yêu cầu trước đang CHỜ DUYỆT (vd lệnh cũ do app đọc trễ, gửi trong giờ hành chính) mà lệnh mới này đủ điều
+        # kiện tự chặn → nâng yêu cầu đó thành tự chặn ngay, không bắt SOC chờ quản trị viên
+        if dup.status == "pending" and not dup.needs_admin:
+            reason, _ = _pending_reason(db, cfg, st, req.ip, sent, lag)
+            if not reason:
+                dup.mode, dup.status, dup.pending_reason = "auto", "blocking", ""
+                dup.decided_by, dup.decided_at = ACTOR, _now()  # tính vào ngưỡng IP/giờ theo lúc nâng
+                dup.note = (f"{dup.note} · " if dup.note else "") + \
+                    f"Tự chặn theo lệnh mới của {msg.sender_name} lúc {_vn(sent)}"[:400]
+                if dup in pending_reqs:
+                    pending_reqs.remove(dup)
+                auto_reqs.append(dup)
+                req.note = f"Đã nâng yêu cầu #{dup.id} (đang chờ duyệt) thành tự chặn"
+                stats["auto"] += 1
+                event(db, "auto_block", ip=req.ip, request_id=dup.id,
+                      detail=f"Lệnh mới của {msg.sender_name} — yêu cầu chờ duyệt #{dup.id} chuyển thành tự chặn")
         stats["duplicate"] += 1
         db.add(req)
         db.flush()
         return
-    reason = ""
-    hit = cfgmod.whitelist_hit(cfg, req.ip)
+    reason, hit = _pending_reason(db, cfg, st, req.ip, sent, lag)
     if hit:  # IP của HSC / Akamai / đối tác…: không bao giờ tự chặn, chờ quản trị viên Approve
         req.needs_admin, req.whitelist = True, f"{hit[0]}: {hit[1]}"[:160]
-        reason = f"Thuộc whitelist {hit[0]} ({hit[1]}) — chờ quản trị viên Approve"
-    elif not cfg["auto_enabled"]:
-        reason = "Công tắc tự động chặn đang TẮT"
-    elif lag > cfgmod.stale_after(cfg):
-        reason = (f"Lệnh cũ: SOC gửi lúc {_vn(sent)}, app đọc trễ {int(lag.total_seconds() // 60)} phút "
-                  f"(> {int(cfgmod.stale_after(cfg).total_seconds() // 60)} phút) — chờ duyệt")
-    elif not cfgmod.in_window(cfg, sent):  # khung giờ theo LÚC SOC GỬI, không theo lúc app đọc
-        reason = f"Ngoài khung giờ tự động — trong giờ hành chính ({cfgmod.schedule_text(cfg)})"
-    elif st.get("breaker_tripped_at"):
-        reason = f"Đã vượt ngưỡng {cfg['hourly_limit']} IP/giờ — chờ quản trị viên mở lại"
-    else:
-        used = auto_count_last_hour(db)  # gồm cả IP vừa quyết định trong lượt này (đã flush)
-        if used >= cfg["hourly_limit"]:
-            reason = f"Vượt ngưỡng {cfg['hourly_limit']} IP/giờ"
-            _trip(db, cfg, st, used)
     if reason:
         req.pending_reason = reason
         stats["pending"] += 1
@@ -385,10 +386,33 @@ def _handle_command(db: Session, cfg: dict, st: dict, msg: AutoBlockMessage, c: 
         event(db, "auto_block", ip=req.ip, request_id=req.id, detail=f"Lệnh của {msg.sender_name}")
 
 
+def _pending_reason(db: Session, cfg: dict, st: dict, ip: str, sent: dt.datetime,
+                    lag: dt.timedelta) -> tuple[str, tuple | None]:
+    """'' = đủ điều kiện tự chặn; ngược lại là lý do chuyển chờ duyệt. Trả kèm whitelist khớp (nếu có)."""
+    hit = cfgmod.whitelist_hit(cfg, ip)
+    if hit:
+        return f"Thuộc whitelist {hit[0]} ({hit[1]}) — chờ quản trị viên Approve", hit
+    if not cfg["auto_enabled"]:
+        return "Công tắc tự động chặn đang TẮT", None
+    if lag > cfgmod.stale_after(cfg):
+        return (f"Lệnh cũ: SOC gửi lúc {_vn(sent)}, app đọc trễ {int(lag.total_seconds() // 60)} phút "
+                f"(> {int(cfgmod.stale_after(cfg).total_seconds() // 60)} phút) — chờ duyệt"), None
+    if not cfgmod.in_window(cfg, sent):  # khung giờ theo LÚC SOC GỬI, không theo lúc app đọc
+        return f"Ngoài khung giờ tự động — trong giờ hành chính ({cfgmod.schedule_text(cfg)})", None
+    if st.get("breaker_tripped_at"):
+        return f"Đã vượt ngưỡng {cfg['hourly_limit']} IP/giờ — chờ quản trị viên mở lại", None
+    used = auto_count_last_hour(db)  # gồm cả IP vừa quyết định trong lượt này (đã flush)
+    if used >= cfg["hourly_limit"]:
+        _trip(db, cfg, st, used)
+        return f"Vượt ngưỡng {cfg['hourly_limit']} IP/giờ", None
+    return "", None
+
+
 def auto_count_last_hour(db: Session) -> int:
     since = _now() - dt.timedelta(hours=1)
     return db.scalar(select(func.count()).select_from(AutoBlockRequest).where(
-        AutoBlockRequest.mode == "auto", AutoBlockRequest.created_at >= since)) or 0
+        AutoBlockRequest.mode == "auto",
+        or_(AutoBlockRequest.created_at >= since, AutoBlockRequest.decided_at >= since))) or 0
 
 
 def _trip(db: Session, cfg: dict, st: dict, used: int) -> None:
