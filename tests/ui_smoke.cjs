@@ -257,6 +257,8 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.waitForSelector("#abs-test-out .alert--ok");
     await page.waitForSelector(`#abs-seen [data-add="${SOC}"]`);
     chk("Tự động chặn: Kiểm tra kết nối → liệt kê người gửi gần đây", true);
+    chk("Tự động chặn: nút Kiểm tra kết nối giữ nhãn sau khi chạy xong",
+      (await page.textContent("#abs-test")).trim() === "Kiểm tra kết nối", await page.textContent("#abs-test"));
     await page.click(`#abs-seen [data-add="${SOC}"]`);
     chk("Tự động chặn: chọn tài khoản SOC từ người gửi", (await page.textContent("#abs-senders")).includes(SOC));
     chk("Tự động chặn: mặc định có whitelist HSC / Akamai / Đối tác",
@@ -272,6 +274,8 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.waitForSelector("#abs-msg.alert--ok");
     chk("Tự động chặn: gửi thử trả lời vào group chat qua Workflows",
       (await page.textContent("#abs-msg")).includes("INFRA ĐÃ BLOCK 192.0.2.1 THEO YÊU CẦU LÚC"));
+    chk("Tự động chặn: nút Gửi thử giữ nhãn sau khi gửi xong",
+      (await page.textContent("#abs-reply-test")).trim() === "Gửi thử", await page.textContent("#abs-reply-test"));
     chk("Tự động chặn: URL webhook không hiện lại, chỉ tên máy",
       (await page.inputValue("#abs-reply-url")) === "" && (await page.getAttribute("#abs-reply-url", "placeholder")).includes("127.0.0.1"));
     chk("Tự động chặn: lịch mặc định 18:00–08:00 + cả ngày cuối tuần",
@@ -351,6 +355,8 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.click("#rp-send");
     await page.waitForSelector("#rp-mail-msg.alert--error");
     chk("Báo cáo: SMTP đang tắt → báo lỗi rõ ràng", (await page.textContent("#rp-mail-msg")).includes("TẮT"));
+    chk("Báo cáo: nút gửi email giữ nhãn sau khi báo lỗi", !!(await page.textContent("#rp-send")).trim()
+      && !(await page.isDisabled("#rp-send")), await page.textContent("#rp-send"));
 
     // Rà soát định kỳ (admin): mở đợt, quyết định (thu hồi cần lý do), tiến độ theo team
     await tab(page, "review");
