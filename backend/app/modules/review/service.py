@@ -25,6 +25,7 @@ from ...core.models import (
 from ..notify import outbox, planner
 from ..vpn import expiry
 from ..vpn import rules as vpn_rules
+from ..vpn import settings as vpn_settings
 
 log = logging.getLogger("review")
 SETTINGS_KEY = "review.settings"
@@ -127,7 +128,10 @@ def open_campaign(db: Session, *, actor: str, client_ip: str = "", period_key: s
                                 scope=team_key if team_key in contacts else "infra",
                                 snapshot_json=json.dumps(snap, ensure_ascii=False)))
     names = {i.firewall_id: i.firewall_name for i in items}
+    fw_scope = vpn_settings.scope_ids(db)
     for a in db.scalars(select(VpnAccount).where(VpnAccount.removed_at.is_(None))):
+        if fw_scope is not None and a.firewall_id not in fw_scope:
+            continue
         if not (a.has_sslvpn or a.has_ipsec) or (a.firewall_id, a.username_key) in linked:
             continue
         snap = {"username": a.username, "display_name": a.display_name, "groups": json.loads(a.groups_json or "[]"),

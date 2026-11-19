@@ -331,9 +331,16 @@ $("#vh-verify").addEventListener("click", async () => {
 $("#v-sync").addEventListener("click", async () => {
   const btn = $("#v-sync");
   const out = $("#v-result");
-  const fws = state.firewalls.filter((f) => f.enabled);
-  const title = "Đang đồng bộ VPN (tài khoản + rule)";
   setBusy(btn, true, "Đang đọc firewall…");
+  // chỉ firewall có VPN (Cài đặt › VPN); chưa chọn = mọi firewall đang bật
+  let scope = [];
+  try {
+    scope = (await api("/api/vpn/settings")).firewall_ids || [];
+  } catch {
+    /* không đọc được cấu hình → hiển thị theo mọi firewall đang bật, server vẫn lọc đúng */
+  }
+  const fws = state.firewalls.filter((f) => f.enabled && (!scope.length || scope.includes(f.id)));
+  const title = "Đang đồng bộ VPN (tài khoản + rule)";
   out.innerHTML = progressBox({ total: fws.length, firewalls: fws.map((f) => ({ id: f.id, name: f.name })), results: [] },
     false, title);
   try {

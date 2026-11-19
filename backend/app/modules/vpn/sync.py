@@ -1,7 +1,6 @@
 """Một lượt đồng bộ VPN cho một firewall: tài khoản (B1) rồi rule thời hạn (B2) — rule liên kết với tài khoản vừa đọc."""
 from __future__ import annotations
 
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...core.models import Firewall
@@ -31,8 +30,9 @@ def sync_firewall(db: Session, fw: Firewall, *, kind: str = "all", actor: str = 
 
 
 def sync_all() -> list[dict]:
-    """Lượt định kỳ (core.jobs.every, một pod/vòng): mọi firewall đang bật."""
+    """Lượt định kỳ (core.jobs.every, một pod/vòng): firewall đang bật thuộc phạm vi VPN (Cài đặt › VPN)."""
     from ...core.db import SessionLocal
+    from . import settings as vpn_settings
 
     with SessionLocal() as db:
-        return [sync_firewall(db, fw) for fw in db.scalars(select(Firewall).where(Firewall.enabled.is_(True))).all()]
+        return [sync_firewall(db, fw) for fw in vpn_settings.sync_firewalls(db)]

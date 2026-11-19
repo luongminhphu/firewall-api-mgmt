@@ -9,12 +9,13 @@ import datetime as dt
 import json
 import logging
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...core.audit import audit
 from ...core.config import settings
 from ...core.errors import AppError
-from ...core.models import AppSetting
+from ...core.models import AppSetting, Firewall
 from ...integrations.sophos.policy import VPN_RULE_GROUPS_ALLOWED
 
 log = logging.getLogger("vpn.settings")
@@ -28,7 +29,8 @@ def _allowed_groups(values) -> list[str]:
 
 def defaults() -> dict:
     groups = _allowed_groups(settings.VPN_RULE_GROUPS.split(",")) or list(VPN_RULE_GROUPS_ALLOWED[:1])
-    return {"expiring_days": max(1, min(365, settings.VPN_EXPIRING_DAYS)), "rule_groups": groups}
+    # firewall_ids: firewall có cấu hình VPN cần đồng bộ; rỗng = mọi firewall đang bật (hành vi cũ)
+    return {"expiring_days": max(1, min(365, settings.VPN_EXPIRING_DAYS)), "rule_groups": groups, "firewall_ids": []}
 
 
 def get(db: Session) -> dict:
@@ -44,6 +46,8 @@ def get(db: Session) -> dict:
         groups = _allowed_groups(saved.get("rule_groups") or [])
         if groups:
             cur["rule_groups"] = groups
+        if isinstance(saved.get("firewall_ids"), list):
+            cur["firewall_ids"] = sorted({int(i) for i in saved["firewall_ids"] if isinstance(i, int)})
     return {**cur, "allowed_rule_groups": list(VPN_RULE_GROUPS_ALLOWED),
             "updated_by": row.updated_by if row else "", "updated_at": row.updated_at.isoformat()
             if row and row.updated_at else None}
@@ -51,7 +55,7 @@ def get(db: Session) -> dict:
 
 def update(db: Session, data: dict, *, actor: str, client_ip: str) -> dict:
     cur = get(db)
-    new = {"expiring_days": cur["expiring_days"], "rule_groups": cur["rule_groups"]}
+    new = {"expiring_days": cur["expiring_days"], "rule_groups": cur["rule_groups"], "firewall_ids": cur["firewall_ids"]}
     if data.get("expiring_days") is not None:
         days = data["expiring_days"]
         if not isinstance(days, int) or not 1 <= days <= 365:
@@ -64,12 +68,39 @@ def update(db: Session, data: dict, *, actor: str, client_ip: str) -> dict:
             raise AppError(400, f"Rule Group chỉ được chọn trong danh sách cho phép: {', '.join(VPN_RULE_GROUPS_ALLOWED)}"
                                 + (f" (không chấp nhận: {', '.join(b[:60] for b in bad)})" if bad else ""))
         new["rule_groups"] = _allowed_groups(wanted)
+    if data.get("firewall_ids") is not None:
+        ids = sorted({int(i) for i in data["firewall_ids"]})
+        known = set(db.scalars(select(Firewall.id).where(Firewall.id.in_(ids)))) if ids else set()
+        if set(ids) - known:
+            raise AppError(400, f"Firewall không tồn tại: {', '.join(map(str, sorted(set(ids) - known)))}")
+        new["firewall_ids"] = ids
     row = db.get(AppSetting, KEY) or AppSetting(key=KEY)
     row.value = json.dumps(new, ensure_ascii=False)
     row.updated_by = actor
     row.updated_at = dt.datetime.now(dt.timezone.utc)
     db.merge(row)
     audit(db, action="settings_cud", fw=None, target="vpn", result="ok", actor=actor, client_ip=client_ip,
-          message=f"Ngưỡng sắp hết hạn {new['expiring_days']} ngày · Rule Group {', '.join(new['rule_groups'])}")
+          message=f"Ngưỡng sắp hết hạn {new['expiring_days']} ngày · Rule Group {', '.join(new['rule_groups'])}"
+                  f" · firewall có VPN: {', '.join(map(str, new['firewall_ids'])) or 'mọi firewall đang bật'}")
     db.commit()
     return get(db)
+
+
+def scope_ids(db: Session) -> set[int] | None:
+    """Firewall thuộc phạm vi VPN (đã chọn trong cấu hình); None = chưa chọn → mọi firewall."""
+    ids = get(db)["firewall_ids"]
+    return set(ids) if ids else None
+
+
+def sync_firewalls(db: Session, wanted: list[int] | None = None) -> list[Firewall]:
+    """Firewall cần đồng bộ VPN: đang bật ∩ phạm vi VPN (∩ danh sách người dùng chọn, nếu có)."""
+    scope = scope_ids(db)
+    stmt = select(Firewall).where(Firewall.enabled.is_(True)).order_by(Firewall.id)
+    fws = [f for f in db.scalars(stmt) if scope is None or f.id in scope]
+    if wanted:
+        outside = [i for i in wanted if scope is not None and i not in scope]
+        if outside:
+            raise AppError(400, "Firewall chưa được chọn là có VPN (Cài đặt › VPN): "
+                                + ", ".join(map(str, outside)))
+        fws = [f for f in fws if f.id in set(wanted)]
+    return fws

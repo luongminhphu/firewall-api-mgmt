@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from ...auth.rbac import admin, current_user, operator, principal
 from ...core import hashchain, jobs
 from ...core.db import get_session
-from ...core.deps import client_ip_of, job_response, selected_firewalls
+from ...core.deps import client_ip_of, job_response
 from ...core.errors import AppError
 from ...core.models import Firewall, VpnRule, VpnRuleChange
 from . import accounts, rules
@@ -34,6 +34,7 @@ class SettingsIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     expiring_days: int | None = None
     rule_groups: list[str] | None = None
+    firewall_ids: list[int] | None = None
 
 
 # ----------------------------------------------------------------- tài khoản
@@ -55,7 +56,10 @@ def vpn_accounts(
 def vpn_sync(request: Request, payload: SyncIn = Body(default=SyncIn()), db: Session = Depends(get_session),
              p: dict = Depends(operator)):
     """Đồng bộ ngay tài khoản + rule (chạy nền, song song theo firewall; quá JOB_SYNC_WAIT → 202 + mã công việc)."""
-    fws = selected_firewalls(db, payload.firewall_ids)
+    fws = vpn_settings.sync_firewalls(db, payload.firewall_ids)
+    if not fws:
+        raise AppError(400, "Không có firewall nào để đồng bộ VPN: chọn firewall có VPN ở Cài đặt › VPN "
+                            "(và firewall phải đang bật)")
     user, ip, kind = p["user"], client_ip_of(request), payload.kind
 
     def work(s: Session, fw: Firewall) -> dict:

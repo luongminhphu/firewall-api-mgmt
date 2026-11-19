@@ -59,6 +59,7 @@ const HELP = {
 
   // ---------------------------------------------------------------- VPN / rà soát
   "vs-days": "Rule còn hạn ≤ số ngày này được đánh dấu \"Sắp hết hạn\" trên dashboard VPN (mặc định 30).",
+  "vs-fws": "Chọn firewall có cấu hình VPN (SSL VPN / IPsec, Rule Group VPN). Đồng bộ định kỳ và nút Đồng bộ ngay chỉ đọc các firewall này. Không chọn = mọi firewall đang bật.",
   "vs-groups": "Rule Group trên firewall chứa rule cấp quyền VPN. Chỉ chọn được group có trong whitelist mã nguồn (hardening).",
   "rs-auto": "Tự mở đợt rà soát trong 15 ngày đầu mỗi quý (khi đã có dữ liệu VPN). Quản trị viên vẫn mở tay được ở tab Rà soát.",
   "rs-due": "Số ngày đại diện team có để xác nhận từ lúc mở đợt (mặc định 14).",

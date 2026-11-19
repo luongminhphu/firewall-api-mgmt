@@ -829,6 +829,11 @@ Ví dụ:
                 <div id="vs-groups" class="check-list"></div>
                 <p class="muted tiny">Chỉ chọn được trong danh sách cho phép gắn cứng trong mã nguồn (hardening) — muốn thêm group phải sửa mã và build lại.</p>
               </fieldset>
+              <fieldset class="field">
+                <legend>Firewall có VPN (đồng bộ tài khoản + rule)</legend>
+                <div id="vs-fws" class="check-list"></div>
+                <p class="muted tiny">Chỉ đồng bộ tài khoản VPN và rule thời hạn từ các firewall được chọn — firewall không cấu hình VPN thì bỏ chọn. <strong>Không chọn firewall nào = mọi firewall đang bật.</strong> Dữ liệu của firewall bỏ chọn được giữ lại nhưng ẩn khỏi dashboard, email nhắc hạn và rà soát.</p>
+              </fieldset>
               <p id="vs-msg" class="alert hidden" role="status"></p>
               <p class="muted tiny" id="vs-meta"></p>
               <button class="btn btn--primary" type="submit">Lưu cấu hình</button>

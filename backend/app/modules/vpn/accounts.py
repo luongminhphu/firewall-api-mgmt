@@ -20,6 +20,7 @@ from ...core.config import settings
 from ...core.models import Firewall, VpnAccount, VpnSync
 from ...integrations.sophos import SophosAuthError, SophosError
 from ..firewalls.service import client_for
+from . import settings as vpn_settings
 
 log = logging.getLogger("vpn.accounts")
 NO_POLICY = {"", "no policy applied", "none"}
@@ -174,6 +175,9 @@ def list_accounts(db: Session, *, firewall_id: int | None = None, q: str = "", s
         stmt = stmt.where(VpnAccount.removed_at.is_not(None))
     if scope == "vpn":
         stmt = stmt.where(VpnAccount.has_sslvpn.is_(True) | VpnAccount.has_ipsec.is_(True))
+    fw_scope = vpn_settings.scope_ids(db)
+    if fw_scope is not None:  # chỉ firewall có VPN (Cài đặt › VPN) — dữ liệu firewall đã bỏ chọn được giữ nhưng ẩn
+        stmt = stmt.where(VpnAccount.firewall_id.in_(fw_scope))
     names = {f.id: f.name for f in db.scalars(select(Firewall))}
     rows = [account_dict(r, names.get(r.firewall_id, f"#{r.firewall_id}")) for r in db.scalars(stmt)]
     if q:
@@ -186,7 +190,10 @@ def list_accounts(db: Session, *, firewall_id: int | None = None, q: str = "", s
 def sync_status(db: Session) -> list[dict]:
     names = {f.id: f.name for f in db.scalars(select(Firewall))}
     out = []
+    fw_scope = vpn_settings.scope_ids(db)
     for s in db.scalars(select(VpnSync).where(VpnSync.kind == "accounts").order_by(VpnSync.firewall_id)):
+        if fw_scope is not None and s.firewall_id not in fw_scope:
+            continue
         out.append({"firewall_id": s.firewall_id, "firewall": names.get(s.firewall_id, f"#{s.firewall_id}"),
                     "synced_at": _iso(s.synced_at), "status": s.status, "error": s.error,
                     "summary": json.loads(s.summary_json or "{}"), "duration_ms": s.duration_ms})

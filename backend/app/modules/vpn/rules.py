@@ -295,6 +295,9 @@ def list_rules(db: Session, *, firewall_id: int | None = None, status: str = "",
     stmt = select(VpnRule).order_by(VpnRule.firewall_id, VpnRule.position)
     if firewall_id:
         stmt = stmt.where(VpnRule.firewall_id == firewall_id)
+    fw_scope = vpn_settings.scope_ids(db)
+    if fw_scope is not None:  # chỉ firewall có VPN — áp dụng cả dashboard, email nhắc hạn, rà soát
+        stmt = stmt.where(VpnRule.firewall_id.in_(fw_scope))
     if not include_removed:
         stmt = stmt.where(VpnRule.removed_at.is_(None))
     all_rows, teams = [], set()
@@ -343,7 +346,9 @@ def changes(db: Session, *, firewall_id: int | None = None, rule_name: str = "",
 
 def sync_status(db: Session) -> list[dict]:
     names = {f.id: f.name for f in db.scalars(select(Firewall))}
+    fw_scope = vpn_settings.scope_ids(db)
     return [{"firewall_id": s.firewall_id, "firewall": names.get(s.firewall_id, f"#{s.firewall_id}"),
              "synced_at": _iso(s.synced_at), "status": s.status, "error": s.error,
              "summary": json.loads(s.summary_json or "{}"), "duration_ms": s.duration_ms}
-            for s in db.scalars(select(VpnSync).where(VpnSync.kind == "rules").order_by(VpnSync.firewall_id))]
+            for s in db.scalars(select(VpnSync).where(VpnSync.kind == "rules").order_by(VpnSync.firewall_id))
+            if fw_scope is None or s.firewall_id in fw_scope]

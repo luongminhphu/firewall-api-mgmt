@@ -105,6 +105,31 @@ chk("ghi audit vpn_sync (người thực hiện)", audit and audit[0]["actor"] =
 chk("đồng bộ không gửi lệnh ghi nào lên firewall", mk.get("/_stats").json()["set_requests"] == 0,
     mk.get("/_stats").json())
 
+# ---------------------------------------------------------- chọn firewall có VPN (Cài đặt › VPN)
+chk("mặc định: chưa chọn firewall có VPN (= mọi firewall đang bật)",
+    c.get("/api/vpn/settings", headers=V).json()["firewall_ids"] == [])
+r = c.put("/api/vpn/settings", headers=V, json={"firewall_ids": [fid]})
+chk("viewer không chọn được firewall có VPN", r.status_code == 403, r.status_code)
+r = c.put("/api/vpn/settings", headers=H, json={"firewall_ids": [fid, 999999]})
+chk("chọn firewall không tồn tại → 400", r.status_code == 400 and "999999" in r.json()["detail"], r.text[:200])
+r = c.put("/api/vpn/settings", headers=H, json={"firewall_ids": [fid]})
+chk("chọn chỉ FW-VPN là firewall có VPN", r.status_code == 200 and r.json()["firewall_ids"] == [fid], r.text[:200])
+r = c.post("/api/vpn/sync", headers=H, json={}).json()
+chk("Đồng bộ ngay (không chỉ định) → chỉ đọc firewall có VPN, bỏ FW-DOWN",
+    [x["firewall"] for x in r["results"]] == ["FW-VPN"], r.get("results"))
+r = c.post("/api/vpn/sync", headers=H, json={"firewall_ids": [bad]})
+chk("chỉ định firewall chưa chọn là có VPN → 400", r.status_code == 400 and "Cài đặt › VPN" in r.json()["detail"],
+    r.text[:200])
+st = [x["firewall"] for x in c.get("/api/vpn/accounts", headers=H).json()["syncs"]]
+chk("trạng thái đồng bộ chỉ hiện firewall có VPN", st == ["FW-VPN"], st)
+r = c.put("/api/vpn/settings", headers=H, json={"firewall_ids": [bad]})
+chk("đổi sang chỉ FW-DOWN", r.status_code == 200 and r.json()["firewall_ids"] == [bad])
+chk("dữ liệu firewall bỏ chọn được giữ nhưng ẩn khỏi danh sách tài khoản",
+    c.get("/api/vpn/accounts", headers=H).json()["total"] == 0)
+r = c.put("/api/vpn/settings", headers=H, json={"firewall_ids": []})
+chk("bỏ chọn hết → quay về mọi firewall đang bật, dữ liệu FW-VPN hiện lại", r.json()["firewall_ids"] == []
+    and c.get("/api/vpn/accounts", headers=H).json()["total"] > 0)
+
 # ---------------------------------------------------------- không lộ bí mật
 blob = json.dumps([c.get(f"/api/vpn/accounts?scope=all&state=all", headers=H).json(),
                    c.get("/api/audit?limit=2000", headers=H).json()], ensure_ascii=False)

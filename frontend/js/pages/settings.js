@@ -1,6 +1,6 @@
 /* Tab Cài đặt (quản trị viên):
    - Tự động chặn từ Teams (autoblock-settings.js): Graph, tài khoản SOC, whitelist, khung giờ, ngưỡng, chu kỳ đọc.
-   - VPN: ngưỡng "sắp hết hạn", Rule Group được đọc (trong whitelist).
+   - VPN: ngưỡng "sắp hết hạn", Rule Group được đọc (trong whitelist), firewall có VPN cần đồng bộ.
    - SMTP: máy chủ / bảo mật / tài khoản (mật khẩu không bao giờ hiển thị lại), người gửi, gửi thử.
    - Thông báo: bật/tắt, email Infra, mốc nhắc, báo hằng tuần rule hết hạn còn bật.
    - Đại diện team (nhập tay), hàng đợi email + Chạy ngay. */
@@ -9,6 +9,7 @@ import { loadAutoblockSettings } from "./autoblock-settings.js";
 import { setBusy } from "../components/progress.js";
 import { tableMessage } from "../components/table.js";
 import { toast } from "../components/toast.js";
+import { on, state } from "../store.js";
 import { $, $$, esc, fmtTime } from "../util.js";
 
 const say = (el, text, kind) => {
@@ -47,6 +48,17 @@ $("#rs-form").addEventListener("submit", async (e) => {
 });
 
 // ------------------------------------------------------------------ VPN
+let vpnFwIds = [];
+function renderVpnFws() {
+  const fws = state.firewalls || [];
+  $("#vs-fws").innerHTML = fws.length
+    ? fws.map((f) => `<label class="check">
+        <input type="checkbox" value="${f.id}" ${vpnFwIds.includes(f.id) ? "checked" : ""} />
+        <span>${esc(f.name)}${f.enabled ? "" : " (đang tắt)"}</span></label>`).join("")
+    : `<p class="muted tiny">Chưa có firewall nào.</p>`;
+}
+on("firewalls", renderVpnFws);
+
 async function loadVpnSettings() {
   try {
     const s = await api("/api/vpn/settings");
@@ -54,6 +66,8 @@ async function loadVpnSettings() {
     $("#vs-groups").innerHTML = s.allowed_rule_groups.map((g) => `<label class="check">
         <input type="checkbox" value="${esc(g)}" ${s.rule_groups.includes(g) ? "checked" : ""} /> <span>${esc(g)}</span>
       </label>`).join("");
+    vpnFwIds = s.firewall_ids || [];
+    renderVpnFws();
     $("#vs-meta").textContent = s.updated_by
       ? `Sửa lần cuối bởi ${s.updated_by} lúc ${fmtTime(s.updated_at)}`
       : "Đang dùng giá trị mặc định.";
@@ -70,6 +84,7 @@ $("#vs-form").addEventListener("submit", async (e) => {
       body: {
         expiring_days: Number($("#vs-days").value),
         rule_groups: $$("#vs-groups input:checked").map((c) => c.value),
+        firewall_ids: $$("#vs-fws input:checked").map((c) => Number(c.value)),
       },
     });
     say($("#vs-msg"), "Đã lưu cấu hình VPN.", "ok");
