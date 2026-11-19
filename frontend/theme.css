@@ -75,7 +75,7 @@
   --control-lg: 44px;
   --sidebar-w: 240px;
   --topbar-h: 60px;
-  --content-max: 1440px;
+  --content-max: 1680px;  /* nội dung căn trái, sát menu; rộng tối đa trên màn hình lớn */
 
   /* đổ bóng — chỉ cho lớp nổi (toast, dialog, menu điện thoại) */
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);

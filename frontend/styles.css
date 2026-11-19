@@ -132,7 +132,7 @@ code { font-size: 0.9em; padding: 1px 5px; border-radius: 4px; background: var(-
 .role-chip { font-size: 11px; color: var(--text-muted); }
 
 /* ---- nội dung */
-.main { flex: 1; width: 100%; max-width: var(--content-max); margin: 0 auto; padding: var(--s6) var(--s6) var(--s10); }
+.main { flex: 1; width: 100%; max-width: var(--content-max); margin: 0; padding: var(--s6) var(--s6) var(--s10); }
 .panel { display: none; }
 .panel.is-active { display: grid; gap: var(--s5); align-content: start; animation: fade var(--t-base) var(--ease); }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
