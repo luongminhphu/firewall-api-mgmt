@@ -800,8 +800,8 @@ Ví dụ:
               <fieldset class="field">
                 <legend>Trả lời kết quả vào group chat</legend>
                 <p class="muted tiny">Sau mỗi IP chặn thành công, app gửi vào group chat: <code class="ab-syntax">INFRA ĐÃ BLOCK &lt;ip&gt; THEO YÊU CẦU LÚC &lt;thời điểm&gt;</code>.
-                  Microsoft Graph không cho app gửi tin vào chat bằng quyền ứng dụng, nên dùng <strong>Teams Workflows</strong>: trong group chat chọn
-                  <em>… › Workflows › Post to a chat when a webhook request is received</em>, rồi dán URL webhook vào đây. URL chứa chữ ký bí mật — được mã hóa, không hiển thị lại.</p>
+                  Microsoft Graph không cho app gửi tin vào chat bằng quyền ứng dụng, nên dùng <strong>Teams Workflows</strong>: ở thanh bên trái Teams mở app <em>Workflows</em> (hoặc <em>Apps › Workflows</em>) › <em>Create</em> ›
+                  mẫu <em>Send webhook alerts to a chat</em> › <em>Post in: Group chat</em>, chọn đúng group chat, rồi dán URL webhook vào đây. URL chứa chữ ký bí mật — được mã hóa, không hiển thị lại.</p>
                 <label class="check"><input type="checkbox" id="abs-reply" /> <span>Bật trả lời vào group chat</span></label>
                 <div class="row">
                   <label class="field ab-grow"><span>URL webhook Teams Workflows</span>

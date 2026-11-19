@@ -161,7 +161,7 @@ Mã lỗi hay gặp: `502` object trùng tên · `526` không tồn tại · `53
 | **App đọc group chat** | Tự động chặn | App registration **riêng**, tạo *client secret*. Cấp quyền đọc chat theo **một** trong hai cách (bảng dưới). Ghi lại Tenant ID, Client ID, secret |
 | **Nhóm Entra** *(tùy chọn)* | Thành viên HSC được ủy quyền (vd team IT Security), SOC nội bộ / khách B2B | Security group chứa những người được gửi lệnh (vd `IT-Security`); app đọc chat cần thêm quyền ứng dụng `GroupMember.Read.All`. Không dùng nhóm thì khai báo từng tài khoản |
 | **Chat ID** | Tự động chặn | Mở group chat trên Teams web, sao chép phần `19:…@thread.v2` trên thanh địa chỉ |
-| **Teams Workflows** | Trả lời `INFRA ĐÃ BLOCK …` vào chat | Trong group chat chọn **… › Workflows › "Post to a chat when a webhook request is received"**, chọn đúng chat, sao chép **URL webhook** |
+| **Teams Workflows** | Trả lời `INFRA ĐÃ BLOCK …` vào chat | Teams mới không còn Workflows trong menu "…" của group chat. Mở app **Workflows** (thanh bên trái, hoặc **Apps › Workflows**) › **Create** › mẫu **"Send webhook alerts to a chat"** (bản cũ: *"Post to a chat when a webhook request is received"*) › **Post in: Group chat**, chọn đúng chat › sao chép **URL webhook**. Cũng tạo được ở make.powerautomate.com với cùng mẫu. Mở mạng ra host trong URL (thường `*.environment.api.powerplatform.com` hoặc `*.logic.azure.com`) |
 
 Quyền đọc group chat cho app đọc chat (Microsoft Graph, quyền ứng dụng):
 

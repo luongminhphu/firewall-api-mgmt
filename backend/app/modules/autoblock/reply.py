@@ -4,7 +4,8 @@
 
 Microsoft Graph KHÔNG cho app gửi tin vào chat bằng quyền ứng dụng (chỉ có quyền thay mặt người dùng đăng nhập, hoặc
 Teamwork.Migrate.All dành cho di chuyển dữ liệu). Vì vậy app gọi webhook của Teams Workflows — mẫu
-"Post to a chat when a webhook request is received": workflow đăng tin vào đúng group chat đã chọn khi tạo.
+"Send webhook alerts to a chat" (tên cũ "Post to a chat when a webhook request is received"): workflow đăng tin vào
+đúng group chat đã chọn khi tạo.
 Payload theo định dạng mẫu đó (message + Adaptive Card một dòng chữ); có thêm trường `text`, `ip`, `blocked_at`
 cho workflow tự dựng. URL webhook chứa chữ ký (sig=…) nên lưu mã hóa bằng MASTER_KEY.
 
