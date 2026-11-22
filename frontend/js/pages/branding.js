@@ -1,4 +1,5 @@
 /* Logo hiển thị: hiện ở màn hình đăng nhập + thanh trên; quản trị viên tải lên / gỡ (thẻ trong tab Người dùng). */
+import { confirmAction } from "../components/modal.js";
 import { api, API } from "../api.js";
 import { toast } from "../components/toast.js";
 import { $, $$, esc } from "../util.js";
@@ -81,7 +82,7 @@ $("#logo-save").addEventListener("click", async () => {
   }
 });
 $("#logo-remove").addEventListener("click", async () => {
-  if (!confirm("Gỡ logo và dùng lại biểu tượng mặc định?")) return;
+  if (!(await confirmAction({ title: "Gỡ logo?", ok: "Gỡ logo", html: "<p>Dùng lại biểu tượng mặc định trên giao diện và báo cáo.</p>" }))) return;
   try {
     await api("/api/branding/logo", { method: "DELETE" });
     logoMsg("Đã gỡ logo.", "ok");

@@ -3,6 +3,7 @@
      (Thu hồi / điều chỉnh bắt buộc lý do). Quản trị viên thấy thêm phạm vi Infra và quyết định thay được.
    - viewer trở lên: danh sách đợt, tiến độ theo team, CSV bằng chứng / cần xử lý, kiểm tra chuỗi băm;
      quản trị viên: mở / đóng đợt. */
+import { confirmAction } from "../components/modal.js";
 import { API, api, errorBox } from "../api.js";
 import { toast } from "../components/toast.js";
 import { can, state } from "../store.js";
@@ -178,7 +179,7 @@ async function loadCampaigns() {
 
 $("#rv-camps").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-close]");
-  if (!b || !confirm("Đóng đợt rà soát? Mục chưa quyết định sẽ ghi 'Không phản hồi' và không sửa được nữa.")) return;
+  if (!b || !(await confirmAction({ title: "Đóng đợt rà soát?", ok: "Đóng đợt", html: "<p>Mục chưa quyết định sẽ ghi <strong>Không phản hồi</strong> và không sửa được nữa.</p>" }))) return;
   try {
     await api(`/api/review/campaigns/${b.dataset.close}/close`, { method: "POST" });
     toast("Đã đóng đợt rà soát", "ok");
@@ -189,7 +190,7 @@ $("#rv-camps").addEventListener("click", async (e) => {
 });
 
 $("#rv-open").addEventListener("click", async () => {
-  if (!confirm("Mở đợt rà soát mới? Ảnh chụp rule VPN + tài khoản hiện tại sẽ được gửi cho đại diện team và Infra.")) return;
+  if (!(await confirmAction({ title: "Mở đợt rà soát mới?", ok: "Mở đợt rà soát", danger: false, html: "<p>Ảnh chụp rule VPN và tài khoản hiện tại sẽ được gửi cho đại diện team và Infra.</p>" }))) return;
   try {
     const c = await api("/api/review/campaigns", { method: "POST", body: {} });
     toast(`Đã mở ${c.name}: ${c.totals.total} mục`, "ok");

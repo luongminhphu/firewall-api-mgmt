@@ -1,6 +1,7 @@
 /* Trang Chặn nhanh: nguồn IP (dán Teams / nhập tay / CSV), danh sách IP, chọn firewall, chặn (công việc nền + tiến độ), kết quả. */
 import { api, errorBox, runJob } from "../api.js";
 import { resultChip, statusChip } from "../components/badge.js";
+import { confirmAction } from "../components/modal.js";
 import { progressBox, reduceMotion, setBusy } from "../components/progress.js";
 import { toast } from "../components/toast.js";
 import { can, emit, on, state } from "../store.js";
@@ -58,6 +59,8 @@ $("#source-seg").addEventListener("click", (e) => {
   );
 });
 
+state.allowWl = new Set(); // IP thuộc whitelist người dùng đã chủ động bấm "Vẫn chặn"
+state.rejected = [];
 let parseTimer;
 $("#paste-text").addEventListener("input", () => {
   clearTimeout(parseTimer);
@@ -73,12 +76,13 @@ async function parseText(text, { replace = true } = {}) {
     return;
   }
   try {
-    const r = await api("/api/parse", { method: "POST", body: { text } });
-    const incoming = r.accepted.map((a) => ({ value: a.value, kind: a.kind, object: a.object }));
+    const r = await api("/api/parse", { method: "POST", body: { text, allow_whitelist: [...state.allowWl] } });
+    const incoming = r.accepted.map((a) => ({ value: a.value, kind: a.kind, object: a.object, whitelist: a.whitelist }));
     state.candidates = replace
       ? incoming
       : [...state.candidates, ...incoming.filter((i) => !state.candidates.some((c) => c.value === i.value))];
-    renderCandidates(r.rejected);
+    state.rejected = replace ? r.rejected : [...state.rejected.filter((x) => !r.rejected.some((y) => y.value === x.value)), ...r.rejected];
+    renderCandidates(state.rejected);
   } catch (ex) {
     toast(ex.message, "err");
   }
@@ -95,6 +99,7 @@ function renderCandidates(rejected = []) {
         (c, i) => `<div class="cand">
           <span class="chip ${c.kind === "Network" ? "chip--info" : ""}">${c.kind === "Network" ? "CIDR" : "IP"}</span>
           <span class="cand__ip">${esc(c.value)}</span>
+          ${c.whitelist ? `<span class="chip chip--warn" title="Đã xác nhận ghi đè whitelist ${esc(c.whitelist)}">Whitelist · ${esc(c.whitelist.split(":")[0])}</span>` : ""}
           ${
             c.object && c.object !== c.value // từ v1.4 tên object = chính IP → chỉ hiện khi khác
               ? `<span class="cand__obj" title="Tên object trên firewall">${esc(c.object)}</span>`
@@ -111,7 +116,10 @@ function renderCandidates(rejected = []) {
       `<strong>Đã loại ${rejected.length} mục:</strong><br />` +
       rejected
         .slice(0, 12)
-        .map((r) => `<code>${esc(r.value)}</code> — ${esc(r.reason)}`)
+        .map((r) => `<span class="rej"><code>${esc(r.value)}</code> — ${esc(r.reason)}${
+          r.whitelist && can("operator")
+            ? ` <button class="btn btn--ghost btn--sm" type="button" data-allow="${esc(r.value)}">Vẫn chặn</button>`
+            : ""}</span>`)
         .join("<br />") +
       (rejected.length > 12 ? `<br />… và ${rejected.length - 12} mục khác` : "");
     rbox.classList.remove("hidden");
@@ -124,12 +132,26 @@ function renderCandidates(rejected = []) {
 $("#candidate-list").addEventListener("click", (e) => {
   const btn = e.target.closest(".cand__x");
   if (!btn) return;
-  state.candidates.splice(Number(btn.dataset.i), 1);
-  renderCandidates();
+  const [gone] = state.candidates.splice(Number(btn.dataset.i), 1);
+  state.allowWl.delete(gone.value);
+  renderCandidates(state.rejected);
+});
+
+// IP thuộc whitelist: chỉ vào danh sách chặn khi người dùng chủ động ghi đè (ghi vào lý do để audit)
+$("#rejected-box").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-allow]");
+  if (!b) return;
+  const r = state.rejected.find((x) => x.value === b.dataset.allow);
+  state.allowWl.add(r.value);
+  state.rejected = state.rejected.filter((x) => x !== r);
+  state.candidates.push({ value: r.value, kind: r.kind, object: r.value, whitelist: r.whitelist });
+  renderCandidates(state.rejected);
 });
 
 $("#clear-list").addEventListener("click", () => {
   state.candidates = [];
+  state.rejected = [];
+  state.allowWl.clear();
   $("#paste-text").value = "";
   $("#csv-info").textContent = "";
   renderCandidates([]);
@@ -188,14 +210,7 @@ $("#do-block").addEventListener("click", async () => {
   const ids = selectedFwIds();
   const dry = $("#dry-run").checked;
   const fwNames = state.firewalls.filter((f) => ids.includes(f.id)).map((f) => f.name);
-  if (
-    !dry &&
-    !confirm(
-      `Chặn ${state.candidates.length} IP trên ${ids.length} firewall (${fwNames.join(", ")})?\n` +
-        `IP Host Group: ${state.blockGroup}`
-    )
-  )
-    return;
+  if (!dry && !(await confirmBlock(ids.length, fwNames))) return;
 
   const btn = $("#do-block");
   const box = $("#block-result");
@@ -212,6 +227,7 @@ $("#do-block").addEventListener("click", async () => {
         reason: $("#block-reason").value.trim(),
         source: state.source === "paste" ? "teams-paste" : state.source,
         dry_run: dry,
+        allow_whitelist: state.candidates.filter((c) => c.whitelist).map((c) => c.value),
       },
       (job) => {
         if (job.status === "running") box.innerHTML = progressBox(job, dry) + renderBlockResult(job);
@@ -235,6 +251,26 @@ $("#do-block").addEventListener("click", async () => {
   refreshBlockButton();
   loadFirewalls();
 });
+
+/** Màn xác nhận trước khi ghi lên firewall thật: liệt kê đúng những gì sẽ đẩy đi. */
+function confirmBlock(nFw, fwNames) {
+  const c = state.candidates;
+  const addrs = c.reduce((n, x) => n + (x.kind === "Network" ? 2 ** (32 - Number(x.value.split("/")[1])) : 1), 0);
+  const wl = c.filter((x) => x.whitelist);
+  const reason = $("#block-reason").value.trim();
+  return confirmAction({
+    title: "Chặn trên firewall đang chạy",
+    ok: `Chặn ${c.length} IP trên ${nFw} firewall`,
+    html: `<dl class="confirm-facts">
+        <dt>Firewall</dt><dd>${fwNames.map(esc).join(", ")}</dd>
+        <dt>IP Host Group</dt><dd class="mono">${esc(state.blockGroup)}</dd>
+        <dt>Số địa chỉ</dt><dd>${c.length} mục${addrs > c.length ? ` · ${addrs.toLocaleString("vi-VN")} địa chỉ (có dải CIDR)` : ""}</dd>
+        <dt>Lý do / ticket</dt><dd>${reason ? esc(reason) : '<span class="text-warn">Chưa nhập — audit sẽ không có lý do</span>'}</dd>
+      </dl>
+      ${wl.length ? `<p class="alert alert--warn">Ghi đè whitelist: ${wl.map((x) => `<strong class="mono">${esc(x.value)}</strong> (${esc(x.whitelist)})`).join(", ")}</p>` : ""}
+      <div class="confirm-ips">${c.map((x) => `<span class="mono${x.whitelist ? " is-wl" : ""}">${esc(x.value)}</span>`).join("")}</div>`,
+  });
+}
 
 /** Tóm tắt cuối cùng ở đầu kết quả: tổng thêm / đã có / lỗi trên mọi firewall. */
 function blockSummary(r, dry) {

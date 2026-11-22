@@ -1,6 +1,7 @@
 /* Tab Cài đặt › Tự động chặn từ Teams (quản trị viên): kết nối Microsoft Graph (secret không bao giờ hiển thị lại),
    người được ủy quyền gửi lệnh (từng tài khoản kèm tenant / nhóm Entra), khung giờ, ngưỡng IP/giờ, chu kỳ đọc Teams, email nhóm Admin,
    firewall đích, nút Kiểm tra kết nối (liệt kê thành viên group chat để ủy quyền từng người). */
+import { confirmAction } from "../components/modal.js";
 import { api } from "../api.js";
 import { setBusy } from "../components/progress.js";
 import { toast } from "../components/toast.js";
@@ -168,11 +169,11 @@ $("#abs-wl").addEventListener("input", (e) => {
     $(`[data-wl-count="${i}"]`).textContent = `${lineCount(t.value)} dòng`;
   }
 });
-$("#abs-wl").addEventListener("click", (e) => {
+$("#abs-wl").addEventListener("click", async (e) => {
   const d = e.target.closest("[data-wl-del]");
   if (!d) return;
   const w = cfg.wl[Number(d.dataset.wlDel)];
-  if (w.text.trim() && !confirm(`Xóa danh sách whitelist "${w.name}"?`)) return;
+  if (w.text.trim() && !(await confirmAction({ title: "Xóa danh sách whitelist?", ok: "Xóa danh sách", html: `<p>Xóa <strong>${esc(w.name)}</strong> (${lineCount(w.text)} dòng). Thay đổi có hiệu lực sau khi bấm Lưu.</p>` }))) return;
   cfg.wl.splice(Number(d.dataset.wlDel), 1);
   renderWhitelists();
 });

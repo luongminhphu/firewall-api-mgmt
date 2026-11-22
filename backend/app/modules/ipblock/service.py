@@ -471,11 +471,12 @@ def _unblock_locked(db: Session, fw: Firewall, cli: SophosClient, targets: list[
     }
 
 
-def normalize_entries(values: list[str], extra_safe: list[str] | None = None) -> tuple[list[dict], list[dict]]:
+def normalize_entries(values: list[str], extra_safe: list[str] | None = None, whitelist=None,
+                      allow=None) -> tuple[list[dict], list[dict]]:
     ok, bad = [], []
     seen = set()
     for v in values:
-        info = classify(v, extra_safe)
+        info = classify(v, extra_safe, whitelist, allow)
         if not info["valid"] or info["excluded"]:
             bad.append(info)
             continue

@@ -1,4 +1,5 @@
 /* Trang IP Host Group: tổng quan cache theo firewall, danh sách thành viên SCANPORT GROUP (cache + quét lại), bỏ chặn. */
+import { confirmAction } from "../components/modal.js";
 import { api, errorBox, runJob } from "../api.js";
 import { resultChip } from "../components/badge.js";
 import { progressBox, setBusy } from "../components/progress.js";
@@ -253,7 +254,7 @@ $("#do-unblock").addEventListener("click", async () => {
   const fwId = Number($("#g-fw").value);
   const group = state.blockGroup;
   const fw = state.firewalls.find((f) => f.id === fwId);
-  if (!confirm(`Bỏ chặn ${targets.length} object khỏi group ${group} trên ${fw.name}?`)) return;
+  if (!(await confirmAction({ title: "Bỏ chặn trên firewall?", ok: `Bỏ chặn ${targets.length} object`, html: `<dl class="confirm-facts"><dt>Firewall</dt><dd>${esc(fw.name)}</dd><dt>IP Host Group</dt><dd class="mono">${esc(group)}</dd></dl><div class="confirm-ips">${targets.map((t) => `<span class="mono">${esc(t)}</span>`).join("")}</div>` }))) return;
   const btn = $("#do-unblock");
   setBusy(btn, true, "Đang bỏ chặn…");
   const out = $("#unblock-result");

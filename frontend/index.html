@@ -1100,6 +1100,14 @@ Ví dụ:
         </div>
         <div id="modal-body"></div>
       </dialog>
+      <dialog id="confirm-dialog" class="dialog dialog--confirm" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+        <h2 id="confirm-title"></h2>
+        <div id="confirm-body" class="confirm-body"></div>
+        <div class="row row--tight dialog-actions">
+          <button class="btn btn--ghost" type="button" id="confirm-cancel">Hủy</button>
+          <button class="btn btn--primary" type="button" id="confirm-ok"></button>
+        </div>
+      </dialog>
       <dialog id="pass-dialog" class="dialog">
         <form id="pass-form" method="dialog" autocomplete="off">
           <h2>Đổi mật khẩu</h2>

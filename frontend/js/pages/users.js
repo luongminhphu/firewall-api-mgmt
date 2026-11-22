@@ -1,4 +1,5 @@
 /* Trang Người dùng (quản trị viên): thêm/sửa/khóa/xóa, quyền Write/Readonly, đặt lại mật khẩu; hộp thoại tự đổi mật khẩu. */
+import { confirmAction } from "../components/modal.js";
 import { api } from "../api.js";
 import { tableMessage } from "../components/table.js";
 import { toast } from "../components/toast.js";
@@ -131,7 +132,7 @@ $("#u-table").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-uact]"); if (!b) return;
   const u = userState.list.find((x) => String(x.id) === b.dataset.id); if (!u) return;
   if (b.dataset.uact === "edit") return editUser(u);
-  if (!confirm(`Xóa người dùng ${u.username}? Phiên đăng nhập hiện tại của người này bị vô hiệu ngay.`)) return;
+  if (!(await confirmAction({ title: "Xóa người dùng?", ok: "Xóa người dùng", html: `<p>Xóa <strong>${esc(u.username)}</strong>. Phiên đăng nhập hiện tại của người này bị vô hiệu ngay.</p>` }))) return;
   try {
     await api(`/api/users/${u.id}`, { method: "DELETE" });
     toast(`Đã xóa ${u.username}`, "ok");

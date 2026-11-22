@@ -37,6 +37,7 @@ code { font-size: 0.9em; padding: 1px 5px; border-radius: 4px; background: var(-
 .nowrap { white-space: nowrap; }
 .text-ok { color: var(--ok); }
 .text-err { color: var(--danger); }
+.text-warn { color: var(--warn); }
 .sep { border: 0; border-top: 1px solid var(--border); margin: var(--s5) 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .ic { flex: none; }
@@ -661,6 +662,16 @@ progress::-moz-progress-bar { background: var(--primary-text); border-radius: 99
 .dialog__head h2 { overflow-wrap: anywhere; }
 .dialog__sub { margin: var(--s4) 0 var(--s2); font-size: var(--fs-sm); }
 .dialog-actions { justify-content: flex-end; margin-top: var(--s4); }
+.dialog--confirm { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
+.confirm-body { display: grid; gap: var(--s3); font-size: var(--fs-sm); }
+.confirm-body p { margin: 0; }
+.confirm-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s1) var(--s4); margin: 0; }
+.confirm-facts dt { color: var(--text-muted); }
+.confirm-facts dd { margin: 0; overflow-wrap: anywhere; }
+.confirm-ips { display: flex; flex-wrap: wrap; gap: var(--s1); max-height: 168px; overflow: auto; padding: var(--s2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.confirm-ips .mono { font-size: var(--fs-xs); padding: 2px var(--s2); border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border); }
+.confirm-ips .is-wl { border-color: var(--line-warn); background: var(--tint-warn); }
 
 /* ============================================================ TOOLTIP === */
 .tip {
@@ -827,3 +838,6 @@ progress::-moz-progress-bar { background: var(--primary-text); border-radius: 99
     padding: var(--s3) var(--s4); border-radius: 0 0 var(--radius) var(--radius); }
   .st-savebar .btn { width: 100%; }
 }
+
+/* Chặn nhanh: mục bị loại có nút "Vẫn chặn" (ghi đè whitelist có chủ đích) */
+#rejected-box .rej { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s2); min-height: 32px; }

@@ -291,6 +291,20 @@ chk("IP thuộc whitelist Akamai / Đối tác / HSC → KHÔNG tự chặn, ch�
     and ra["whitelist"] == "Akamai: 23.32.0.0/11" and rp["whitelist"] == "Đối tác: 203.113.88.9"
     and "23.33.1.1" not in group_hosts(), (ra, rp))
 chk("lý do chờ nêu rõ danh sách", "whitelist Akamai" in ra["pending_reason"] and "Approve" in ra["pending_reason"])
+# Chặn nhanh (tab Chặn nhanh) dùng CÙNG whitelist: bị loại, chỉ chặn khi ghi đè có chủ đích (ghi vào lý do)
+pr = c.post("/api/parse", headers=H, json={"text": "chặn 23.32.9.9, 999.1.1.1 và 45.77.1.2"}).json()
+rej = {x["value"]: x for x in pr["rejected"]}
+chk("Chặn nhanh: IP thuộc whitelist Akamai bị loại, nêu tên danh sách", [a["value"] for a in pr["accepted"]] == ["45.77.1.2"]
+    and rej.get("23.32.9.9", {}).get("whitelist") == "Akamai: 23.32.0.0/11" and "whitelist Akamai" in rej["23.32.9.9"]["reason"], pr)
+chk("Chặn nhanh: IP sai (999.1.1.1) được báo, không bỏ im lặng", "999.1.1.1" in rej and "0–255" in rej["999.1.1.1"]["reason"])
+fw_ids = [f["id"] for f in c.get("/api/firewalls", headers=H).json()][:1]
+r = c.post("/api/block", headers=H, json={"values": ["23.32.9.9"], "firewall_ids": fw_ids, "dry_run": True})
+chk("Chặn nhanh: chặn IP whitelist không ghi đè → 400 nêu whitelist", r.status_code == 400 and "Akamai" in r.json()["detail"], r.text[:200])
+r = c.post("/api/block", headers=H, json={"values": ["23.32.9.9"], "firewall_ids": fw_ids, "dry_run": True,
+                                          "reason": "SOC ticket", "allow_whitelist": ["23.32.9.9"]})
+chk("Chặn nhanh: ghi đè có chủ đích → chạy được", r.status_code in (200, 202), r.text[:200])
+pr = c.post("/api/parse", headers=H, json={"text": "23.32.9.9", "allow_whitelist": ["23.32.9.9"]}).json()
+chk("Chặn nhanh: IP đã ghi đè vẫn mang nhãn whitelist", pr["accepted"] and pr["accepted"][0]["whitelist"] == "Akamai: 23.32.0.0/11", pr)
 post(f"<p>{CMD} 203.113.88.9</p>")  # SOC gửi lại IP whitelist khi đang chờ → vẫn chỉ quản trị viên Approve
 poll()
 rp2 = next(x for x in reqs() if x["id"] == rp["id"])

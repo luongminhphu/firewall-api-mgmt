@@ -24,3 +24,34 @@ $("#modal").addEventListener("close", () => {
   returnFocus?.focus?.();
   returnFocus = null;
 });
+
+/** Xác nhận trong app thay cho confirm() của trình duyệt: nêu rõ sẽ làm gì, nút chính ghi đúng hành động.
+    danger=true → nút đỏ, focus mặc định ở Hủy (Enter vô tình không thực thi). Esc / bấm nền = Hủy. */
+export function confirmAction({ title, html, ok, danger = true }) {
+  const dlg = $("#confirm-dialog");
+  $("#confirm-title").textContent = title;
+  $("#confirm-body").innerHTML = html;
+  const okBtn = $("#confirm-ok");
+  okBtn.textContent = ok;
+  okBtn.className = `btn ${danger ? "btn--danger" : "btn--primary"}`;
+  const back = document.activeElement;
+  return new Promise((resolve) => {
+    let result = false;
+    const done = (v) => {
+      result = v;
+      dlg.close();
+    };
+    const onClick = (e) => {
+      if (e.target === okBtn) done(true);
+      else if (e.target.closest("#confirm-cancel") || e.target === dlg) done(false);
+    };
+    dlg.addEventListener("click", onClick);
+    dlg.addEventListener("close", () => {
+      dlg.removeEventListener("click", onClick);
+      back?.focus?.();
+      resolve(result);
+    }, { once: true });
+    dlg.showModal();
+    (danger ? $("#confirm-cancel") : okBtn).focus();
+  });
+}

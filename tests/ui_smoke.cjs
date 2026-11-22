@@ -52,6 +52,12 @@ const tab = async (page, name) => {
   await page.click(`.tab[data-tab="${name}"]`);
 };
 const visible = (page, sel) => page.isVisible(sel);
+// hộp xác nhận trong app (thay confirm() của trình duyệt): chờ mở rồi bấm nút hành động
+const confirmOk = async (page) => {
+  await page.waitForSelector("#confirm-dialog[open]");
+  await page.click("#confirm-ok");
+  await page.waitForSelector("#confirm-dialog:not([open])", { state: "attached" });
+};
 
 (async () => {
   const browser = await pw.chromium.launch();
@@ -117,6 +123,18 @@ const visible = (page, sel) => page.isVisible(sel);
     chk("chạy thử → tổng kết 'Chạy thử xong'", (await page.textContent("#block-result")).includes("Chạy thử xong"));
     await page.uncheck("#dry-run");
     await page.click("#do-block");
+    await page.waitForSelector("#confirm-dialog[open]");
+    chk("chặn thật → màn xác nhận trong app liệt kê IP, firewall, lý do; nút ghi đúng hành động",
+      (await page.textContent("#confirm-body")).includes("185.220.101.0/24")
+      && (await page.textContent("#confirm-body")).includes("UI smoke")
+      && /^Chặn 2 IP trên \d+ firewall$/.test((await page.textContent("#confirm-ok")).trim())
+      && (await page.evaluate(() => document.activeElement.id)) === "confirm-cancel",
+      await page.textContent("#confirm-ok"));
+    await page.keyboard.press("Escape");
+    chk("Esc ở màn xác nhận → hủy, không chặn", !(await visible(page, "#confirm-dialog"))
+      && !/Đã chặn xong/.test(await page.textContent("#block-result")));
+    await page.click("#do-block");
+    await confirmOk(page);
     await page.waitForFunction(() => /Đã chặn xong/.test(document.querySelector("#block-result")?.textContent || ""),
       null, { timeout: 30000 });
     chk("chặn thật → 'Đã chặn xong'", true);
@@ -130,6 +148,7 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.waitForFunction(() => document.querySelectorAll("#g-table tbody input[type=checkbox]").length === 1);
     await page.check("#g-table tbody input[type=checkbox]");
     await page.click("#do-unblock");
+    await confirmOk(page);
     await page.waitForFunction(() => /đã bỏ/.test(document.querySelector("#unblock-result")?.textContent || ""),
       null, { timeout: 30000 });
     chk("bỏ chặn → kết quả 'đã bỏ'", true);
@@ -326,9 +345,11 @@ const visible = (page, sel) => page.isVisible(sel);
     if (!/Đã báo Teams/.test(await page.textContent("#ab-all"))) { await page.selectOption("#ab-status", ""); await page.waitForTimeout(800); }
     chk("Tự động chặn: cột ghi chú hiện 'Đã báo Teams'", /Đã báo Teams/.test(await page.textContent("#ab-all")));
     await page.click("#ab-pending [data-approve]");
+    await confirmOk(page);
     await page.waitForFunction(() => !/23\.33\.1\.1/.test(document.querySelector("#ab-pending").textContent), null, { timeout: 20000 });
     chk("Tự động chặn: quản trị viên Approve IP whitelist → rời danh sách chờ", true);
     await page.click("#ab-off");
+    await confirmOk(page);
     await page.waitForSelector("#ab-banner .alert--warn");
     chk("Tự động chặn: Tắt khẩn cấp → banner cảnh báo, hiện nút Bật lại", await visible(page, "#ab-on"));
     await page.click("#ab-on");
@@ -371,6 +392,7 @@ const visible = (page, sel) => page.isVisible(sel);
     await tab(page, "review");
     await page.waitForSelector("#panel-review.is-active");
     await page.click("#rv-open");
+    await confirmOk(page);
     await page.waitForFunction(() => /Đang mở/.test(document.querySelector("#rv-camps")?.textContent || ""));
     chk("Rà soát: admin mở đợt", (await page.$$("#rv-scopes .rv-scope")).length === 2);
     await page.waitForSelector("#rv-list .rv-item");
@@ -399,6 +421,7 @@ const visible = (page, sel) => page.isVisible(sel);
     await page.waitForFunction(() => [...document.querySelectorAll(".js-brand-logo")].some((i) => !i.hidden && i.src));
     chk("tải logo → hiện ở giao diện", true);
     await page.click("#logo-remove");
+    await confirmOk(page);
     await page.waitForFunction(() => [...document.querySelectorAll(".js-brand-logo")].every((i) => i.hidden));
     chk("gỡ logo → về biểu tượng mặc định", true);
 

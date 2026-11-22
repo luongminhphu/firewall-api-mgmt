@@ -1,4 +1,5 @@
 /* Trang Firewall: danh sách, kiểm tra kết nối, thêm/sửa/xóa (quản trị viên). loadFirewalls() phát sự kiện "firewalls" cho các trang khác. */
+import { confirmAction } from "../components/modal.js";
 import { api } from "../api.js";
 import { statusChip } from "../components/badge.js";
 import { toast } from "../components/toast.js";
@@ -64,7 +65,7 @@ $("#fw-list").addEventListener("click", async (e) => {
   } else if (btn.dataset.act === "edit") {
     fillFwForm(fw);
   } else if (btn.dataset.act === "del") {
-    if (!confirm(`Xóa firewall "${fw.name}" khỏi mini app? (Không ảnh hưởng cấu hình trên firewall)`)) return;
+    if (!(await confirmAction({ title: "Xóa firewall khỏi app?", ok: "Xóa khỏi app", html: `<p>Xóa <strong>${esc(fw.name)}</strong> khỏi danh sách của app. Cấu hình trên firewall <strong>không</strong> bị ảnh hưởng.</p>` }))) return;
     try {
       await api(`/api/firewalls/${id}`, { method: "DELETE" });
       toast("Đã xóa", "ok");

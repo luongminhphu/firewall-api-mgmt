@@ -30,10 +30,24 @@ def safe_networks() -> list[ipaddress.IPv4Network]:
     return nets
 
 
-def classify(entry: str, extra_safe: list[str] | None = None) -> dict:
-    """Trả về thông tin phân loại một IP/CIDR: hợp lệ, loại, có bị loại trừ không."""
+def whitelist_networks(whitelists: list[dict] | None) -> list[tuple[str, str, ipaddress.IPv4Network]]:
+    """Whitelist của Cài đặt › Tự động chặn (HSC, Akamai, đối tác…) → [(tên, dòng, mạng)]."""
+    out = []
+    for wl in whitelists or []:
+        for e in wl.get("entries", []):
+            try:
+                out.append((wl["name"], e, ipaddress.ip_network(e, strict=False)))
+            except ValueError:
+                continue
+    return out
+
+
+def classify(entry: str, extra_safe: list[str] | None = None, whitelist=None, allow=None) -> dict:
+    """Trả về thông tin phân loại một IP/CIDR: hợp lệ, loại, có bị loại trừ không.
+    whitelist: kết quả whitelist_networks(); IP chạm whitelist bị loại (whitelist="Akamai: 23.32.0.0/11")
+    trừ khi người dùng chủ động ghi đè (giá trị nằm trong allow)."""
     entry = entry.strip()
-    out = {"value": entry, "valid": False, "kind": "", "excluded": False, "reason": ""}
+    out = {"value": entry, "valid": False, "kind": "", "excluded": False, "reason": "", "whitelist": ""}
     try:
         if "/" in entry:
             net = ipaddress.ip_network(entry, strict=False)
@@ -66,6 +80,14 @@ def classify(entry: str, extra_safe: list[str] | None = None) -> dict:
             out.update(excluded=True, reason=f"Nằm trong safe-list ({net})")
             return out
 
+    for name, line, net in whitelist or []:
+        if probe.overlaps(net):
+            out["whitelist"] = f"{name}: {line}"
+            if out["value"] not in (allow or ()):
+                out.update(excluded=True, reason=f"Thuộc whitelist {name} ({line}) — cần xác nhận ghi đè mới chặn")
+                return out
+            break
+
     addr0 = probe.network_address
     if not settings.ALLOW_PRIVATE and (
         addr0.is_private or addr0.is_loopback or addr0.is_link_local or addr0.is_multicast
@@ -74,7 +96,7 @@ def classify(entry: str, extra_safe: list[str] | None = None) -> dict:
     return out
 
 
-def extract(text: str, extra_safe: list[str] | None = None) -> dict:
+def extract(text: str, extra_safe: list[str] | None = None, whitelist=None, allow=None) -> dict:
     """Bóc IP từ text thô. Trả về danh sách hợp lệ (đã loại trùng) và danh sách bị loại."""
     accepted: list[dict] = []
     rejected: list[dict] = []
@@ -82,10 +104,14 @@ def extract(text: str, extra_safe: list[str] | None = None) -> dict:
 
     for m in _IP_RE.finditer(text or ""):
         octets = [m.group(i) for i in range(1, 5)]
-        if any(int(o) > 255 for o in octets):
-            continue
         raw = ".".join(octets) + (m.group(5) or "")
-        info = classify(raw, extra_safe)
+        if any(int(o) > 255 for o in octets):  # vd 999.1.1.1: báo ra thay vì bỏ im lặng
+            if raw not in seen:
+                seen.add(raw)
+                rejected.append({"value": raw, "valid": False, "kind": "", "excluded": False,
+                                 "reason": "Không phải IPv4 hợp lệ (mỗi phần 0–255)", "whitelist": ""})
+            continue
+        info = classify(raw, extra_safe, whitelist, allow)
         key = info["value"]
         if key in seen:
             continue

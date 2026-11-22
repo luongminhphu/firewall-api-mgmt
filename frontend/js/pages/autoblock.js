@@ -4,7 +4,7 @@
    - Write: duyệt / từ chối, gỡ chặn (từng IP hoặc cả ca), TẮT KHẨN CẤP.
    - Quản trị viên: bật lại công tắc, mở lại sau khi vượt ngưỡng, đọc Teams ngay. */
 import { API, api, errorBox, runJob } from "../api.js";
-import { openModal } from "../components/modal.js";
+import { openModal, confirmAction } from "../components/modal.js";
 import { pageSlice, renderPager } from "../components/pagination.js";
 import { tableMessage } from "../components/table.js";
 import { resultChip } from "../components/badge.js";
@@ -94,7 +94,7 @@ $("#ab-banner").addEventListener("click", async (e) => {
 });
 
 async function setSwitch(on) {
-  if (!on && !confirm("TẮT KHẨN CẤP tự động chặn?\n\nApp vẫn đọc Teams nhưng mọi lệnh của SOC sẽ chuyển sang chờ duyệt.")) return;
+  if (!on && !(await confirmAction({ title: "Tắt khẩn cấp tự động chặn?", ok: "Tắt tự động chặn", html: "<p>App vẫn đọc Teams nhưng <strong>mọi lệnh của SOC chuyển sang chờ duyệt</strong> cho tới khi bật lại.</p>" }))) return;
   try {
     renderStatus((ab.status = await api("/api/autoblock/switch", { method: "POST", body: { on } })));
     toast(on ? "Đã bật lại tự động chặn" : "Đã TẮT tự động chặn", on ? "ok" : "");
@@ -107,7 +107,7 @@ $("#ab-on").addEventListener("click", () => setSwitch(true));
 
 $("#ab-today").addEventListener("click", async () => {
   const on = $("#ab-today").dataset.on === "1";
-  if (on && !confirm("Tự chặn cả ngày hôm nay (ngày lễ / nghỉ đột xuất)?\n\nLệnh SOC gửi trong hôm nay sẽ được chặn ngay, không chờ duyệt.")) return;
+  if (on && !(await confirmAction({ title: "Tự chặn cả ngày hôm nay?", ok: "Tự chặn cả hôm nay", html: "<p>Dùng cho ngày lễ / nghỉ đột xuất: lệnh SOC gửi trong hôm nay được <strong>chặn ngay, không chờ duyệt</strong>.</p>" }))) return;
   try {
     renderStatus((ab.status = await api("/api/autoblock/holiday-today", { method: "POST", body: { on } })));
     toast(on ? "Đã bật tự chặn cả ngày hôm nay" : "Đã tắt tự chặn cả ngày hôm nay", "ok");
@@ -169,8 +169,7 @@ $("#ab-pending").addEventListener("change", (e) => {
 });
 
 async function approve(ids, wl = "") {
-  const warn = wl ? `\n\nCẢNH BÁO: IP thuộc whitelist ${wl} (HSC / Akamai / đối tác) — chặn có thể gây gián đoạn dịch vụ.` : "";
-  if (!confirm(`Approve: chặn ${ids.length} IP trên mọi firewall đích?${warn}`)) return;
+  if (!(await confirmAction({ title: "Approve lệnh chặn?", ok: `Chặn ${ids.length} IP`, html: `<p>Chặn <strong>${ids.length} IP</strong> trên mọi firewall đích của tự động chặn.</p>${wl ? `<p class="alert alert--warn">IP thuộc whitelist <strong>${esc(wl)}</strong> (HSC / Akamai / đối tác) — chặn có thể gây gián đoạn dịch vụ.</p>` : ""}` }))) return;
   try {
     const job = await runJob("/api/autoblock/approve", { ids });
     const errs = (job.results || []).filter((r) => !r.ok).length;
@@ -225,7 +224,7 @@ const unblockBtn = (r) => ["blocked", "failed"].includes(r.status)
   ? `<button class="btn btn--danger-ghost btn--sm" type="button" data-unblock="${r.id}" data-ip="${esc(r.ip)}">Gỡ chặn</button>` : "";
 
 async function unblock(body, label) {
-  if (!confirm(`Gỡ chặn ${label} khỏi SCANPORT GROUP trên mọi firewall đích?`)) return;
+  if (!(await confirmAction({ title: "Gỡ chặn?", ok: "Gỡ chặn", html: `<p>Gỡ <strong>${esc(label)}</strong> khỏi <span class="mono">SCANPORT GROUP</span> trên mọi firewall đích.</p>` }))) return;
   try {
     await runJob("/api/autoblock/unblock", body);
     toast(`Đã gỡ chặn ${label}`, "ok");

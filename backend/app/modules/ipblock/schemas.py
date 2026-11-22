@@ -13,6 +13,7 @@ class _In(BaseModel):
 class ParseIn(_In):
     text: str | None = None
     extra_safe: list[str] | None = None
+    allow_whitelist: list[str] | None = None  # IP thuộc whitelist người dùng chủ động ghi đè
 
 
 class BlockIn(_In):
@@ -24,6 +25,7 @@ class BlockIn(_In):
     reason: str | None = None
     source: str | None = None
     dry_run: Any = None
+    allow_whitelist: list[str] | None = None  # ghi đè whitelist có chủ đích (ghi vào lý do để audit)
 
 
 class UnblockIn(_In):

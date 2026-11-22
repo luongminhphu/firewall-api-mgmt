@@ -17,7 +17,8 @@ from ...core.models import Firewall
 from ...integrations.sophos.policy import BLOCK_GROUP
 from ..shared import enforce_group_audited
 from . import group_cache as gc
-from .parse import extract, host_object_name
+from ..autoblock import settings as ab_settings
+from .parse import extract, host_object_name, whitelist_networks
 from .schemas import BlockIn, ParseIn, UnblockIn
 from .service import block_on_firewall, derive_host, normalize_entries, unblock_on_firewall
 
@@ -160,11 +161,16 @@ def group_cache_overview(db: Session = Depends(get_session), user: str = Depends
             "daily_at": settings.GROUP_CACHE_DAILY_AT, "firewalls": out}
 
 
+def _whitelist(db: Session):
+    """Cùng whitelist với Tự động chặn — một quy tắc an toàn cho mọi đường chặn."""
+    return whitelist_networks(ab_settings.raw(db).get("whitelists"))
+
+
 @router.post("/api/parse")
-def parse_text(payload: ParseIn = Body(...), user: str = Depends(current_user)):
+def parse_text(payload: ParseIn = Body(...), db: Session = Depends(get_session), user: str = Depends(current_user)):
     text = payload.text or ""
     extra_safe = payload.extra_safe or []
-    res = extract(text, extra_safe)
+    res = extract(text, extra_safe, _whitelist(db), payload.allow_whitelist)
     for item in res["accepted"]:
         item["object"] = host_object_name(item["value"])
     return res
@@ -194,17 +200,25 @@ def block(
     user = p["user"]
     locked_group(db, request, payload.group, user)
     values: list[str] = [str(v) for v in (payload.values or [])]
+    wl = _whitelist(db)
+    allow = payload.allow_whitelist or []
     if payload.text:
-        values += [i["value"] for i in extract(payload.text, payload.extra_safe)["accepted"]]
-    entries, rejected = normalize_entries(values, payload.extra_safe)
+        values += [i["value"] for i in extract(payload.text, payload.extra_safe, wl, allow)["accepted"]]
+    entries, rejected = normalize_entries(values, payload.extra_safe, wl, allow)
     if not entries:
-        raise HTTPException(400, "Không có IP hợp lệ nào để chặn")
+        held = [r for r in rejected if r.get("whitelist")]
+        raise HTTPException(400, (f"IP thuộc whitelist ({', '.join(r['value'] + ' · ' + r['whitelist'] for r in held[:5])}) "
+                                  "— xác nhận ghi đè trước khi chặn") if held else "Không có IP hợp lệ nào để chặn")
     if len(entries) > 500:
         raise HTTPException(400, "Tối đa 500 IP mỗi lần để tránh treo firewall")
 
     fws = selected_firewalls(db, payload.firewall_ids)
     ip = client_ip_of(request)
     reason = payload.reason or ""
+    overridden = [e["value"] for e in entries if e["value"] in allow]
+    if overridden:  # ghi đè whitelist có chủ đích → lưu vào lý do (audit + description trên firewall)
+        reason = (f"{reason} · " if reason else "") + "Ghi đè whitelist: " + ", ".join(overridden)
+        reason = reason[:500]
     source = payload.source or "manual"
     dry = bool(payload.dry_run)
 
