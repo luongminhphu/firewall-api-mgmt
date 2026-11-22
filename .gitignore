@@ -7,3 +7,6 @@ dist/
 
 # Cấu hình riêng của site (không đưa lên Git)
 deploy/k8s/overlays/prod/local-config.yaml
+
+# Impeccable: trạng thái chạy cục bộ (máy chủ quét tạm), không commit
+.impeccable/live/
