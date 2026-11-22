@@ -35,6 +35,9 @@ export function fwMessage(msg) {
   const rules = [
     [/^Host group "?(.+?)"? has been updated successfully\.?$/i, (g) => `Đã cập nhật group ${g}`],
     [/^Configuration applied successfully\.?$/i, () => "Đã áp dụng cấu hình"],
+    [/^Host "?(.+?)"? has been added successfully\.?$/i, (h) => `Đã thêm object ${h}`],
+    [/^Host "?(.+?)"? has been (deleted|removed) successfully\.?$/i, (h) => `Đã xóa object ${h}`],
+    [/^Host has been deleted successfully\.?$/i, () => "Đã xóa object"],
     [/^Authentication Successful\.?$/i, () => "Đăng nhập API thành công"],
     [/^Operation Successful\.?$/i, () => "Thao tác thành công"],
     [/^Entity having same name already exists\.?$/i, () => "Đã có object cùng tên"],

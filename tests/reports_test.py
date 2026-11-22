@@ -81,7 +81,7 @@ chk("theo ngày: đủ 7 ngày, hôm nay có 6 IP", len(j["daily"]) == 7 and j["
 ips = {i["ip"]: i for i in j["ips"]}
 chk("danh sách IP: phương thức + người / nguồn + thời gian thực hiện",
     ips["195.178.110.102"]["method_label"] == "Tự động" and "Tự động chặn (Teams)" in ips["195.178.110.102"]["actors"]
-    and ips["23.33.1.1"]["method_label"] == "Thủ công" and "Approve lệnh SOC (Teams)" in ips["23.33.1.1"]["sources"]
+    and ips["23.33.1.1"]["method_label"] == "Thủ công" and "Duyệt lệnh SOC (Teams)" in ips["23.33.1.1"]["sources"]
     and ips["45.155.204.88"]["sources"] == ["Dán từ Teams"] and ips["45.155.204.88"]["first"], ips.get("23.33.1.1"))
 chk("IP đã gỡ có trạng thái 'Đã gỡ'", ips["91.92.109.4"]["status"] == "Đã gỡ" and ips["45.155.204.88"]["status"] == "Đang chặn")
 ab = j["autoblock"]

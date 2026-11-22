@@ -391,7 +391,7 @@ def _pending_reason(db: Session, cfg: dict, st: dict, ip: str, sent: dt.datetime
     """'' = đủ điều kiện tự chặn; ngược lại là lý do chuyển chờ duyệt. Trả kèm whitelist khớp (nếu có)."""
     hit = cfgmod.whitelist_hit(cfg, ip)
     if hit:
-        return f"Thuộc whitelist {hit[0]} ({hit[1]}) — chờ quản trị viên Approve", hit
+        return f"Thuộc whitelist {hit[0]} ({hit[1]}) — chờ quản trị viên duyệt", hit
     if not cfg["auto_enabled"]:
         return "Công tắc tự động chặn đang TẮT", None
     if lag > cfgmod.stale_after(cfg):
@@ -529,12 +529,12 @@ def approve(db: Session, ids: list[int], *, p: dict, client_ip: str) -> str | No
         raise AppError(409, "Không có yêu cầu nào đang chờ duyệt trong danh sách đã chọn")
     wl = [r.ip for r in reqs if r.needs_admin]
     if wl and p.get("role") != "admin":
-        raise AppError(403, f"IP thuộc whitelist chỉ quản trị viên được Approve: {', '.join(wl)}")
+        raise AppError(403, f"IP thuộc whitelist chỉ quản trị viên được duyệt: {', '.join(wl)}")
     now = _now()
     for r in reqs:
         r.status, r.decided_by, r.decided_at = "blocking", p["user"], now
         audit(db, action="autoblock_decision", fw=None, target=r.ip, result="ok", actor=p["user"],
-              client_ip=client_ip, message=f"Approve chặn yêu cầu #{r.id}"
+              client_ip=client_ip, message=f"Duyệt chặn yêu cầu #{r.id}"
               + (f" — IP thuộc whitelist {r.whitelist}" if r.whitelist else ""))
     db.commit()
     for r in reqs:

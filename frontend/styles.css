@@ -927,3 +927,48 @@ h1, h2, h3 { text-wrap: balance; }
 /* Huy hiệu số lệnh chờ duyệt trên menu trái */
 .tab-badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--warn);
   color: var(--bg); font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; flex: none; }
+
+/* Chặn nhanh: công tắc Chặn thật / Chạy thử ngay cạnh nút */
+.block-actions { align-items: center; }
+.mode-seg { display: inline-flex; padding: 3px; gap: 2px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); margin-right: auto; }
+.mode-opt { position: relative; display: inline-flex; }
+.mode-opt input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.mode-opt span { display: inline-flex; align-items: center; min-height: 32px; padding: 0 var(--s3); border-radius: var(--radius-sm);
+  font-size: var(--fs-sm); font-weight: 500; color: var(--text-muted); }
+.mode-opt input:checked + span { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); border: 1px solid var(--border); }
+.mode-opt input#dry-run:checked + span { color: var(--warn); border-color: var(--line-warn); }
+.mode-opt input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.block-sum { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.block-sum:empty { display: none; }
+.block-actions .block-hint { margin: 0; flex-basis: 100%; order: 9; text-align: right; }
+
+/* Tự động chặn: dòng chờ duyệt thuộc whitelist có nền cảnh báo, nút ghi đè không phải nút chính */
+#ab-pending tr.is-wl td { background: var(--tint-warn); }
+.btn--warn-ghost { background: transparent; border-color: var(--line-warn); color: var(--warn); font-weight: 600; }
+.btn--warn-ghost:hover:not(:disabled) { background: var(--tint-warn); border-color: var(--warn); }
+
+.intro-toggle { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--border-strong);
+  border-radius: 50%; background: transparent; color: var(--text-muted); font: 700 12px/1 var(--font-sans, inherit); font-style: italic;
+  cursor: pointer; vertical-align: middle; }
+.intro-toggle[aria-expanded="true"], .intro-toggle:hover { color: var(--primary-text); border-color: var(--primary-text); }
+.intro-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+@media (max-width: 720px) {
+  /* thanh "N IP · N firewall · Chặn" luôn trong tầm tay, không phải cuộn qua danh sách loại */
+  #panel-block.is-active { padding-bottom: 132px; }
+  .block-actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: var(--z-sticky, 20); margin: 0;
+    padding: var(--s3) var(--s4) calc(var(--s3) + env(safe-area-inset-bottom)); background: var(--surface);
+    border-top: 1px solid var(--border-strong); box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.12); }
+  .block-actions .block-hint { text-align: left; }
+  .block-actions #clear-list { display: none; }
+}
+
+/* chỉ một <h1> (tiêu đề trang); tên app ở sidebar giữ nguyên hình thức */
+.brand__name { margin: 0; font-size: var(--fs-md); font-weight: 700; letter-spacing: -0.01em; color: var(--text); }
+/* IP Host Group: chip OK trên nút cache đang chọn (nền tint) đạt ≥ 4.5:1 */
+.fw-cache.is-current .chip--ok { background: var(--surface); }
+/* Chặn nhanh: dòng "Đã loại" thẳng hàng — IP | lý do | nút */
+#rejected-box .rej { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: var(--s2); }
+#rejected-box .rej .btn { margin-left: 0; }
+/* Huy hiệu chờ duyệt: cần người xử lý → màu khẩn ở cả hai theme */
+.tab-badge { background: var(--danger-solid); color: #fff; }

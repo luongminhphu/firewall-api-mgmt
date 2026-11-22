@@ -290,7 +290,7 @@ chk("IP thuộc whitelist Akamai / Đối tác / HSC → KHÔNG tự chặn, ch�
     all(x["status"] == "pending" and x["needs_admin"] for x in (ra, rp, rh))
     and ra["whitelist"] == "Akamai: 23.32.0.0/11" and rp["whitelist"] == "Đối tác: 203.113.88.9"
     and "23.33.1.1" not in group_hosts(), (ra, rp))
-chk("lý do chờ nêu rõ danh sách", "whitelist Akamai" in ra["pending_reason"] and "Approve" in ra["pending_reason"])
+chk("lý do chờ nêu rõ danh sách", "whitelist Akamai" in ra["pending_reason"] and "duyệt" in ra["pending_reason"])
 # Chặn nhanh (tab Chặn nhanh) dùng CÙNG whitelist: bị loại, chỉ chặn khi ghi đè có chủ đích (ghi vào lý do)
 pr = c.post("/api/parse", headers=H, json={"text": "chặn 23.32.9.9, 999.1.1.1 và 45.77.1.2"}).json()
 rej = {x["value"]: x for x in pr["rejected"]}
