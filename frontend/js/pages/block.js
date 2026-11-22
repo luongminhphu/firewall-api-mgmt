@@ -62,6 +62,9 @@ $("#pick-all-fw").addEventListener("click", () => {
   saveFws();
   refreshBlockButton();
 });
+$("#block-actions").addEventListener("change", (e) => {
+  if (e.target.name === "block-mode") refreshBlockButton();
+});
 $("#fw-picker").addEventListener("change", () => {
   saveFws();
   refreshBlockButton();
@@ -181,6 +184,15 @@ $("#clear-list").addEventListener("click", () => {
 });
 
 function refreshBlockButton() {
+  const dry = $("#dry-run").checked;
+  const btn = $("#do-block");
+  if (btn.getAttribute("aria-busy") !== "true") {
+    // Nút nói đúng điều sẽ xảy ra: chạy thử là nút trung tính, chặn thật là nút chính
+    btn.textContent = dry ? "Chạy thử (không ghi lên firewall)" : "Chặn ngay";
+    btn.className = `btn ${dry ? "" : "btn--primary"}`;
+  }
+  const n = state.candidates.length, f = selectedFwIds().length;
+  $("#block-sum").textContent = n || f ? `${n} IP · ${f} firewall` : "";
   const why = !can("operator") ? "Tài khoản Chỉ xem không chặn được IP."
     : !state.candidates.length ? "Chưa có IP nào — dán nội dung chat hoặc nhập tay."
       : !selectedFwIds().length ? "Chọn firewall cần chặn ở mục 2 · Đích cấu hình — lần sau app nhớ lựa chọn này."
@@ -277,7 +289,7 @@ $("#do-block").addEventListener("click", async () => {
     box.innerHTML = errorBox(ex, dry ? "Chạy thử không thành công" : "Chặn IP không thành công");
     toast(ex.message, "err");
   }
-  setBusy(btn, false, "Chặn ngay");
+  setBusy(btn, false);
   $("#clear-list").disabled = false;
   refreshBlockButton();
   loadFirewalls();
@@ -368,9 +380,9 @@ function renderBlockResult(r) {
       const head = `<div class="result-fw__head">
           <span>${esc(fw.firewall)}</span>
           ${fw.ok ? '<span class="chip chip--ok">OK</span>' : '<span class="chip chip--err">Có lỗi</span>'}
-          <span class="muted tiny">thêm ${s.added || 0} · đã có ${s.existed || 0} · lỗi ${s.error || 0}${
-            s.dry_run ? ` · chạy thử ${s.dry_run}` : ""
-          }</span>
+          <span class="muted tiny">${s.dry_run !== undefined && !s.added
+            ? `sẽ tạo ${s.dry_run || 0} · đã có ${s.existed || 0}`
+            : `mới ${s.added || 0} · đã có ${s.existed || 0}`}${s.error ? ` · lỗi ${s.error}` : ""}</span>
         </div>`;
       if (fw.error) {
         return `<div class="result-fw">${head}<div class="result-row result-row--err">${esc(fw.error)}</div></div>`;
@@ -389,7 +401,7 @@ function renderBlockResult(r) {
       const list = `<details class="result-rows"${open ? " open" : ""}>
           <summary>Chi tiết ${(fw.rows || []).length} IP</summary>${rows}</details>`;
       const xml = fw.group_xml
-        ? `<details class="xml-preview"${s.dry_run ? " open" : ""}>
+        ? `<details class="xml-preview">
             <summary>Payload IPHostGroup ${s.dry_run ? "dự kiến" : "đã gửi"} ·
               <span class="mono">Set operation="${esc(fw.group_operation)}"</span> · ${esc(fw.ip_family || "IPv4")}</summary>
             <pre class="mono">${esc(fw.group_xml)}</pre>

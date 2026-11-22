@@ -140,8 +140,10 @@ async function loadPending() {
     $("#ab-approve-sel").disabled = true;
     if (!items.length) return tableMessage(tb, cols, "empty", "Không có lệnh nào chờ duyệt.");
     const op = can("operator");
-    tb.innerHTML = items.map((r) => `<tr>
-      ${op ? `<td><input type="checkbox" class="ab-pick" value="${r.id}" aria-label="Chọn ${esc(r.ip)}"${r.needs_admin && !can("admin") ? " disabled" : ""} /></td>` : ""}
+    tb.innerHTML = items.map((r) => `<tr${r.needs_admin ? ' class="is-wl"' : ""}>
+      ${op ? `<td>${r.needs_admin
+        ? `<span class="sr-only">IP whitelist — duyệt riêng từng dòng</span>`
+        : `<input type="checkbox" class="ab-pick" value="${r.id}" aria-label="Chọn ${esc(r.ip)}" />`}</td>` : ""}
       <td class="mono" data-label="SOC gửi lúc">${esc(hhmm(r.requested_at || r.created_at))}</td><td class="mono" data-label="IP"><strong>${esc(r.ip)}</strong></td>
       <td data-label="SOC gửi">${esc(r.sender)}</td>
       <td class="tiny" data-label="Lý do chờ">${r.whitelist ? `<span class="chip chip--info">Whitelist · ${esc(r.whitelist)}</span> ` : ""}${esc(r.pending_reason)}</td>
@@ -154,9 +156,10 @@ async function loadPending() {
 
 // IP thuộc whitelist (HSC / Akamai / đối tác): chỉ quản trị viên duyệt — server kiểm lại
 const approveBtn = (r) => (r.needs_admin && !can("admin")
-  ? `<button class="btn btn--sm" type="button" disabled title="IP thuộc whitelist — chỉ quản trị viên duyệt được">Duyệt</button>`
-  : `<button class="btn btn--primary btn--sm" type="button" data-approve="${r.id}" data-ip="${esc(r.ip)}"${r.needs_admin
-    ? ` data-wl="${esc(r.whitelist)}"` : ""}>Duyệt</button>`);
+  ? `<button class="btn btn--sm" type="button" disabled title="IP thuộc whitelist — chỉ quản trị viên duyệt được">Duyệt (ghi đè whitelist)</button>`
+  : r.needs_admin // IP whitelist: không là nút chính, ghi rõ đang ghi đè; không nằm trong duyệt hàng loạt
+    ? `<button class="btn btn--sm btn--warn-ghost" type="button" data-approve="${r.id}" data-ip="${esc(r.ip)}" data-wl="${esc(r.whitelist)}">Duyệt (ghi đè whitelist)</button>`
+    : `<button class="btn btn--primary btn--sm" type="button" data-approve="${r.id}" data-ip="${esc(r.ip)}">Duyệt</button>`);
 
 const picked = () => $$("#ab-pending .ab-pick:checked").map((x) => Number(x.value));
 $("#ab-pending").addEventListener("change", (e) => {

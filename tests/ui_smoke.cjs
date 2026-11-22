@@ -119,10 +119,12 @@ const confirmOk = async (page) => {
     for (const b of boxes) if (!(await b.isChecked())) await b.check();
     await page.fill("#block-reason", "UI smoke");
     await page.check("#dry-run");
+    chk("Chạy thử: nút đổi nhãn 'Chạy thử (không ghi lên firewall)', không còn là 'Chặn ngay'",
+      /^Chạy thử/.test((await page.textContent("#do-block")).trim()));
     await page.click("#do-block");
     await page.waitForSelector("#block-result .result-summary", { timeout: 30000 });
     chk("chạy thử → tổng kết 'Chạy thử xong'", (await page.textContent("#block-result")).includes("Chạy thử xong"));
-    await page.uncheck("#dry-run");
+    await page.check("#mode-real");
     await page.click("#do-block");
     await page.waitForSelector("#confirm-dialog[open]");
     chk("chặn thật → màn xác nhận trong app liệt kê IP, firewall, lý do; nút ghi đúng hành động",
@@ -153,9 +155,9 @@ const confirmOk = async (page) => {
     await page.check("#g-table tbody input[type=checkbox]");
     await page.click("#do-unblock");
     await confirmOk(page);
-    await page.waitForFunction(() => /đã bỏ/.test(document.querySelector("#unblock-result")?.textContent || ""),
+    await page.waitForFunction(() => /đã gỡ/.test(document.querySelector("#unblock-result")?.textContent || ""),
       null, { timeout: 30000 });
-    chk("bỏ chặn → kết quả 'đã bỏ'", true);
+    chk("gỡ chặn → kết quả 'đã gỡ'", true);
 
     // Lịch sử thay đổi + kiểm tra chuỗi băm
     await tab(page, "changes");
@@ -486,9 +488,9 @@ const confirmOk = async (page) => {
       await p2.waitForSelector("#app:not(.hidden)");
       await p2.waitForSelector("#panel-block.is-active");
       chk("viewer mở #users → về tab Chặn nhanh", !(await visible(p2, "#panel-users")));
-      await p2.fill("#paste-text", "45.155.204.88");
-      await p2.waitForFunction(() => document.querySelectorAll("#candidate-list .cand").length === 1);
-      chk("viewer không bấm được Chặn ngay", await p2.isDisabled("#do-block"));
+      chk("viewer không bấm được Chặn ngay", await p2.isDisabled("#do-block")
+        && /Chỉ xem/.test(await p2.textContent("#block-hint")));
+      chk("viewer: banner Chỉ xem ở đầu Chặn nhanh, ô dán bị khóa", await visible(p2, "#block-ro") && await p2.isDisabled("#paste-text"));
       await tab(p2, "vpn");
       await p2.waitForSelector("#panel-vpn.is-active");
       chk("viewer xem được tab VPN nhưng không có nút Đồng bộ", !(await visible(p2, "#v-sync")));

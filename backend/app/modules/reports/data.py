@@ -101,7 +101,7 @@ def method_of(ch: GroupChange) -> str:
 
 def source_of(ch: GroupChange) -> str:
     if ch.source == "teams-auto" and ch.actor != "autoblock":
-        return "Approve lệnh SOC (Teams)"
+        return "Duyệt lệnh SOC (Teams)"
     return SOURCE_LABEL.get(ch.source or "", ch.source)
 
 
@@ -255,7 +255,7 @@ def executive(rep: dict) -> dict:
                           f"{s['removed_in_period']} lượt gỡ chặn trong kỳ.")
     if ab["requests"]:
         highlights.append(f"Nhận {ab['requests']} lệnh SOC qua Teams: {ab['auto']} tự chặn ngay, {ab['approved']} được "
-                          f"Approve sau khi chờ duyệt, {ab['rejected']} bị từ chối.")
+                          f"được duyệt sau khi chờ, {ab['rejected']} bị từ chối.")
     if ab["latency_avg"] is not None:
         highlights.append(f"Thời gian từ lúc SOC gửi lệnh tới lúc chặn xong: trung bình {fmt_dur(ab['latency_avg'])}, "
                           f"lâu nhất {fmt_dur(ab['latency_max'])}.")

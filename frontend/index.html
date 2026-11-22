@@ -39,7 +39,7 @@
               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
           <div>
-            <h1>SOC Rapid Block</h1>
+            <p class="brand__name">SOC Rapid Block</p>
             <p class="muted">Chặn IP dò quét trên nhiều Sophos Firewall trong vài giây</p>
           </div>
         </div>
@@ -140,6 +140,8 @@
       <main class="main">
         <!-- ---------------------------------------------------- TAB: BLOCK -->
         <section class="panel is-active" data-panel="block" id="panel-block" role="tabpanel" aria-labelledby="tab-block">
+          <p class="alert alert--info" id="block-ro" hidden>Bạn có quyền <strong>Chỉ xem</strong>: trang này chỉ để xem.
+            Cần chặn IP thì liên hệ người có quyền Thao tác hoặc quản trị viên.</p>
           <div class="grid grid--block">
             <div class="card">
               <div class="card-head">
@@ -200,10 +202,6 @@ Ví dụ:
                   <input id="block-reason" placeholder="Tết 2026 - brute force SSH" />
                 </label>
               </div>
-              <label class="check">
-                <input type="checkbox" id="dry-run" />
-                <span>Chạy thử (dry-run) — chỉ xem sẽ tạo gì, không ghi lên firewall</span>
-              </label>
             </div>
 
             <div class="card">
@@ -215,8 +213,13 @@ Ví dụ:
                 <p class="empty">Chưa có IP nào. Dán nội dung chat hoặc nhập tay ở mục 1 · Nguồn IP.</p>
               </div>
               <div id="rejected-box" class="alert alert--warn hidden"></div>
-              <div class="actions">
+              <div class="actions block-actions" id="block-actions">
+                <div class="mode-seg" role="radiogroup" aria-label="Chế độ: chặn thật hay chạy thử">
+                  <label class="mode-opt"><input type="radio" name="block-mode" id="mode-real" value="real" checked /><span>Chặn thật</span></label>
+                  <label class="mode-opt"><input type="radio" name="block-mode" id="dry-run" value="dry" /><span>Chạy thử</span></label>
+                </div>
                 <p class="muted tiny block-hint" id="block-hint" aria-live="polite"></p>
+                <span class="block-sum tiny" id="block-sum"></span>
                 <button class="btn btn--ghost" id="clear-list" type="button">Xóa danh sách</button>
                 <button class="btn btn--primary" id="do-block" type="button" disabled aria-describedby="block-hint">
                   Chặn ngay
@@ -235,7 +238,7 @@ Ví dụ:
                 <h2>Tổng quan cache theo firewall</h2>
                 <p class="muted tiny" id="g-ov-note">Danh sách được lưu cache để hiển thị tức thì; tự quét lại sau mỗi lần chặn/bỏ chặn.</p>
               </div>
-              <button class="btn btn--ghost btn--sm" id="g-ov-reload" type="button">Làm mới</button>
+              <button class="btn btn--sm" id="g-ov-reload" type="button">Làm mới</button>
             </div>
             <div class="fw-cache-list" id="g-overview"></div>
           </div>
@@ -243,11 +246,11 @@ Ví dụ:
             <div class="card-head">
               <h2>IP Host Group <span class="mono js-block-group">SCANPORT GROUP</span></h2>
               <div class="row row--tight">
-                <select id="g-fw" class="select"></select>
-                <input id="g-search" placeholder="Tìm IP / tên object…" />
-                <button class="btn" id="g-reload" type="button" title="Quét lại trực tiếp từ firewall và cập nhật cache">
+                <select id="g-fw" class="select" aria-label="Firewall"></select>
+                <input id="g-search" type="search" placeholder="Tìm IP / tên object…" aria-label="Tìm IP hoặc tên object" />
+                <button class="btn" id="g-reload" type="button" title="Đọc lại trực tiếp từ firewall và cập nhật cache">
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-                  Quét lại</button>
+                  Đồng bộ ngay</button>
               </div>
             </div>
             <div id="g-meta" class="meta-row"></div>
@@ -255,7 +258,7 @@ Ví dụ:
               <table class="table" id="g-table">
                 <thead>
                   <tr>
-                    <th class="w-check"><input type="checkbox" id="g-check-all" /></th>
+                    <th class="w-check"><input type="checkbox" id="g-check-all" aria-label="Chọn tất cả object đang hiện" /></th>
                     <th>Object</th>
                     <th>Loại</th>
                     <th>Giá trị</th>
@@ -271,7 +274,7 @@ Ví dụ:
                 <span>Xóa luôn IP Host object sau khi bỏ khỏi group</span>
               </label>
               <button class="btn btn--outline" id="do-unblock" type="button" disabled>
-                Bỏ chặn mục đã chọn
+                Gỡ chặn mục đã chọn
               </button>
             </div>
             <div id="unblock-result" class="result" aria-live="polite"></div>
@@ -353,8 +356,8 @@ Ví dụ:
               </div>
               <div class="row row--tight">
                 <button class="btn" id="c-sync" type="button" title="Đọc lại group trên các firewall đang bật để phát hiện thay đổi ngoài app">Đồng bộ &amp; dò thay đổi ngoài app</button>
-                <button class="btn btn--ghost" id="c-verify" type="button">Kiểm tra toàn vẹn log</button>
-                <a class="btn btn--ghost" id="c-export" href="#">Xuất CSV</a>
+                <button class="btn" id="c-verify" type="button">Kiểm tra toàn vẹn log</button>
+                <a class="btn" id="c-export" href="#">Xuất CSV</a>
               </div>
             </div>
             <details class="filter-box" data-filter-box>
@@ -390,7 +393,7 @@ Ví dụ:
                 <select id="a-action" class="select">
                   <option value="">Tất cả hành động</option>
                   <option value="block">Chặn</option>
-                  <option value="unblock">Bỏ chặn</option>
+                  <option value="unblock">Gỡ chặn</option>
                   <option value="test">Kiểm tra kết nối</option>
                   <option value="firewall_cud">Thay đổi firewall</option>
                   <option value="login">Đăng nhập</option>
@@ -398,8 +401,8 @@ Ví dụ:
                   <option value="policy_violation">Vi phạm chính sách</option>
                 </select>
                 <input id="a-search" placeholder="Tìm IP, firewall, lý do…" />
-                <button class="btn" id="a-reload" type="button">Tải lại</button>
-                <a class="btn btn--ghost" id="a-export" href="#">Xuất CSV</a>
+                <button class="btn" id="a-reload" type="button">Làm mới</button>
+                <a class="btn" id="a-export" href="#">Xuất CSV</a>
               </div>
             </div>
             <div class="table-wrap">
@@ -426,7 +429,7 @@ Ví dụ:
               </div>
               <div class="row row--tight">
                 <button class="btn" id="v-sync" type="button" title="Đọc lại tài khoản và rule VPN trên các firewall đang bật">Đồng bộ ngay</button>
-                <a class="btn btn--ghost" id="vr-export" href="#" download>Xuất CSV cần xử lý</a>
+                <a class="btn" id="vr-export" href="#" download>Xuất CSV cần xử lý</a>
               </div>
             </div>
             <div id="v-sync-status" class="sync-status" aria-live="polite"></div>
@@ -438,7 +441,7 @@ Ví dụ:
 
             <div data-vview="rules">
               <div id="vr-cards" class="vr-cards" role="group" aria-label="Lọc theo trạng thái"></div>
-              <details class="filter-box" data-filter-box>
+              <details class="filter-box" data-filter-box data-collapsed>
                 <summary>Lọc <span class="filter-count muted tiny"></span></summary>
               <div class="filters">
                 <label class="field"><span>Firewall</span><select id="vr-fw" class="select"><option value="">Tất cả</option></select></label>
@@ -495,7 +498,7 @@ Ví dụ:
 
             <div data-vview="history" class="hidden">
               <div class="row row--tight vh-tools">
-                <button class="btn btn--ghost" id="vh-verify" type="button">Kiểm tra toàn vẹn lịch sử</button>
+                <button class="btn" id="vh-verify" type="button">Kiểm tra toàn vẹn lịch sử</button>
                 <span id="vh-verify-msg" class="tiny"></span>
               </div>
               <div id="vh-list" class="timeline"></div>
@@ -529,7 +532,7 @@ Ví dụ:
                 <p class="muted tiny">Tự mở đầu mỗi quý (cấu hình ở tab Cài đặt). Đóng đợt: mục chưa quyết định ghi "Không phản hồi". CSV bằng chứng dùng cho audit ISO 27001.</p>
               </div>
               <div class="row row--tight">
-                <button class="btn btn--ghost" id="rv-verify" type="button">Kiểm tra toàn vẹn</button>
+                <button class="btn" id="rv-verify" type="button">Kiểm tra toàn vẹn</button>
                 <button class="btn" id="rv-open" type="button">Mở đợt rà soát</button>
               </div>
             </div>
@@ -692,7 +695,7 @@ Ví dụ:
                     <option value="rejected">Từ chối</option><option value="invalid">Không hợp lệ</option>
                     <option value="duplicate">Trùng</option>
                   </select>
-                  <button class="btn btn--ghost" id="ab-verify" type="button">Kiểm tra toàn vẹn nhật ký</button>
+                  <button class="btn" id="ab-verify" type="button">Kiểm tra toàn vẹn nhật ký</button>
                 </div>
               </div>
               <div class="table-wrap">

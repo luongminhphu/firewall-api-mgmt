@@ -29,7 +29,7 @@ export async function loadAudit() {
     }
     const actionLabel = {
       block: "Chặn",
-      unblock: "Bỏ chặn",
+      unblock: "Gỡ chặn",
       test: "Kiểm tra kết nối",
       firewall_cud: "Sửa firewall",
       login: "Đăng nhập",

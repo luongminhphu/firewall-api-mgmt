@@ -4,7 +4,7 @@ import { esc } from "../util.js";
 const RESULT = {
   added: ["chip--ok", "đã thêm"],
   existed: ["chip--info", "đã có"],
-  removed: ["chip--ok", "đã bỏ"],
+  removed: ["chip--ok", "đã gỡ"],
   not_found: ["chip--warn", "không thấy"],
   error: ["chip--err", "lỗi"],
   "dry-run": ["chip--warn", "chạy thử"],

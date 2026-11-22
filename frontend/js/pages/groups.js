@@ -254,9 +254,9 @@ $("#do-unblock").addEventListener("click", async () => {
   const fwId = Number($("#g-fw").value);
   const group = state.blockGroup;
   const fw = state.firewalls.find((f) => f.id === fwId);
-  if (!(await confirmAction({ title: "Bỏ chặn — khôi phục truy cập?", ok: `Bỏ chặn ${targets.length} object trên ${fw.name}`, danger: false, html: `<dl class="confirm-facts"><dt>Firewall</dt><dd>${esc(fw.name)}</dd><dt>IP Host Group</dt><dd class="mono">${esc(group)}</dd></dl><div class="confirm-ips">${targets.map((t) => `<span class="mono">${esc(t)}</span>`).join("")}</div>` }))) return;
+  if (!(await confirmAction({ title: "Gỡ chặn — khôi phục truy cập?", ok: `Gỡ chặn ${targets.length} object trên ${fw.name}`, danger: false, html: `<dl class="confirm-facts"><dt>Firewall</dt><dd>${esc(fw.name)}</dd><dt>IP Host Group</dt><dd class="mono">${esc(group)}</dd></dl><div class="confirm-ips">${targets.map((t) => `<span class="mono">${esc(t)}</span>`).join("")}</div>` }))) return;
   const btn = $("#do-unblock");
-  setBusy(btn, true, "Đang bỏ chặn…");
+  setBusy(btn, true, "Đang gỡ chặn…");
   const out = $("#unblock-result");
   out.innerHTML = progressBox({ total: 1, firewalls: [{ id: fwId, name: fw.name }], results: [] }, false);
   try {
@@ -266,7 +266,7 @@ $("#do-unblock").addEventListener("click", async () => {
         firewall_ids: [fwId],
         targets,
         delete_object: $("#delete-object").checked,
-        reason: "Bỏ chặn từ mini app",
+        reason: "Gỡ chặn từ mini app",
       },
       (job) => {
         if (job.status === "running") out.innerHTML = progressBox(job, false);
@@ -293,9 +293,9 @@ $("#do-unblock").addEventListener("click", async () => {
     if (r.cache_refresh?.length) watchCache(r.cache_refresh);
     await loadMembers({ quiet: true });
   } catch (ex) {
-    out.innerHTML = errorBox(ex, "Bỏ chặn không thành công");
+    out.innerHTML = errorBox(ex, "Gỡ chặn không thành công");
     toast(ex.message, "err");
   }
-  setBusy(btn, false, "Bỏ chặn mục đã chọn");
+  setBusy(btn, false, "Gỡ chặn mục đã chọn");
   refreshUnblockButton();
 });

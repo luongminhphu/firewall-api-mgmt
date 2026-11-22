@@ -105,7 +105,7 @@ const filterCount = (box) => {
   box.querySelector(".filter-count").textContent = n ? `· ${n} đang áp dụng` : "";
 };
 $$("[data-filter-box]").forEach((box) => {
-  box.open = window.matchMedia("(min-width: 721px)").matches;
+  box.open = !box.hasAttribute("data-collapsed") && window.matchMedia("(min-width: 721px)").matches;
   ["input", "change"].forEach((ev) => box.addEventListener(ev, () => filterCount(box)));
   filterCount(box);
 });
@@ -172,6 +172,11 @@ $("#theme-toggle").addEventListener("click", () => {
 // ------------------------------------------------------------ phân quyền
 function applyRole() {
   const viewer = !can("operator");
+  // Chỉ xem: nói rõ ngay đầu trang Chặn nhanh và khóa form, thay vì để điền xong mới biết
+  $("#block-ro").hidden = !viewer;
+  $$("#panel-block textarea, #panel-block input, #panel-block .seg-btn, #manual-add, #dropzone").forEach((el) => {
+    el.disabled = viewer;
+  });
   const fwFormCard = $("#fw-form")?.closest(".card");
   if (fwFormCard) fwFormCard.hidden = !can("admin");
   $("#test-all").hidden = viewer;
@@ -226,3 +231,24 @@ function applyRole() {
   // 4) SSO Microsoft tự động: đã xác thực ở App Proxy → Entra trả về ngay, không hỏi mật khẩu/MFA lần 2
   autoSso(modes);
 })();
+
+// Đoạn giới thiệu dài ở đầu thẻ: thu gọn thành nút ⓘ cạnh tiêu đề (bấm để đọc) — trạng thái trước, giải thích khi cần
+$$(".card-head > div:first-child > p.muted.tiny:not([id])").forEach((p, i) => {
+  if (p.textContent.trim().length < 90) return;
+  const h = p.parentElement.querySelector("h2, h3");
+  if (!h) return;
+  p.id = p.id || `card-intro-${i}`;
+  p.hidden = true;
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "intro-toggle";
+  b.setAttribute("aria-expanded", "false");
+  b.setAttribute("aria-controls", p.id);
+  b.setAttribute("aria-label", `Giải thích: ${h.textContent.trim().slice(0, 60)}`);
+  b.textContent = "i";
+  b.addEventListener("click", () => {
+    p.hidden = !p.hidden;
+    b.setAttribute("aria-expanded", String(!p.hidden));
+  });
+  h.append(b);
+});

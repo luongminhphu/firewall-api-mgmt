@@ -269,7 +269,7 @@ def build_pdf(rep: dict, *, generated_by: str, generated_at: str,
     ab_rows = [["Chỉ số", "Giá trị", "Chỉ số", "Giá trị"],
                ["Lệnh SOC nhận được", ab["requests"], "Thời gian SOC gửi → chặn xong (trung bình)", fmt_dur(ab["latency_avg"])],
                ["Tự chặn ngay", ab["auto"], "Thời gian SOC gửi → chặn xong (trung vị)", fmt_dur(ab["latency_median"])],
-               ["Chờ duyệt rồi được Approve", ab["approved"], "Thời gian SOC gửi → chặn xong (lâu nhất)", fmt_dur(ab["latency_max"])],
+               ["Chờ rồi được duyệt", ab["approved"], "Thời gian SOC gửi → chặn xong (lâu nhất)", fmt_dur(ab["latency_max"])],
                ["Đang chờ duyệt", ab["pending"], "Đề xuất chặn IP thuộc whitelist", ab["whitelist"]],
                ["Bị từ chối", ab["rejected"], "Không hợp lệ / trùng", ab["invalid"] + ab["duplicate"]]]
     story.append(KeepTogether(_grid(ab_rows, [W * 0.3, W * 0.12, W * 0.43, W * 0.15], align_right=(1, 3))))
