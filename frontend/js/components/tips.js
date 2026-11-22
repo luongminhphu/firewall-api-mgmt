@@ -181,6 +181,8 @@ export function initTips() {
     b.setAttribute("aria-expanded", "false");
     b.innerHTML = ICON;
     at.append(b);
+    const host = el.closest("label");
+    if (host && el.id && el.matches("input, select, textarea")) host.htmlFor = el.id;
   }
   return $$(".tip").length;
 }

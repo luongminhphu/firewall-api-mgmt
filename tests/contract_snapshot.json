@@ -737,7 +737,8 @@
      "object": "*",
      "reason": "*",
      "valid": "*",
-     "value": "*"
+     "value": "*",
+     "whitelist": "*"
     }
    ],
    "count": "*",
@@ -747,7 +748,8 @@
      "kind": "*",
      "reason": "*",
      "valid": "*",
-     "value": "*"
+     "value": "*",
+     "whitelist": "*"
     }
    ],
    "rejected_count": "*"

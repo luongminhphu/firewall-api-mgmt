@@ -184,7 +184,9 @@ const confirmOk = async (page) => {
     await page.waitForFunction(() => document.querySelectorAll("#vr-table tbody tr[data-rule]").length === 8,
       null, { timeout: 30000 });
     chk("VPN: đồng bộ → bảng rule thời hạn (8 rule trong group VPN)", true);
-    chk("VPN: thẻ đếm theo trạng thái", (await page.$$("#vr-cards .status-card")).length === 8);
+    chk("VPN: 'Cần xử lý' + 5 thẻ việc cần làm + 3 chip trạng thái (8 mục lọc)",
+      (await page.$$("#vr-cards .status-card")).length === 5 && (await page.$$("#vr-cards [data-status]")).length === 8
+      && /Cần xử lý|Không có rule nào cần xử lý/.test(await page.textContent("#vr-cards .vr-todo")));
     await page.click('#vr-cards [data-status="unreadable"]');
     await page.waitForFunction(() => document.querySelectorAll("#vr-table tbody tr[data-rule]").length === 1);
     chk("VPN: bấm thẻ → lọc theo trạng thái", (await page.getAttribute('#vr-cards [data-status="unreadable"]', "aria-pressed")) === "true");

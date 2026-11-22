@@ -65,7 +65,7 @@ function renderStatus(s) {
   const win = s.window_enabled ? (s.in_window ? "ĐANG TỰ CHẶN" : "GIỜ HÀNH CHÍNH") : "24/7";
   const cards = [
     [s.auto_enabled ? "BẬT" : "TẮT", "Công tắc tự động chặn", s.auto_enabled ? "ok" : "err"],
-    [`${s.auto_last_hour}/${s.hourly_limit}`, "IP tự chặn trong 60 phút",
+    [String(s.auto_last_hour), `IP tự chặn trong 60 phút · giới hạn ${s.hourly_limit}`,
      s.breaker_tripped_at ? "err" : s.auto_last_hour >= s.hourly_limit * 0.8 ? "warn" : ""],
     [win, s.window_enabled ? (s.in_window ? s.window_reason : "Lệnh SOC chờ duyệt") : "Tự chặn mọi lúc",
      s.in_window ? "ok" : "warn", s.window_enabled ? `Lịch tự chặn: ${s.schedule}` : ""],

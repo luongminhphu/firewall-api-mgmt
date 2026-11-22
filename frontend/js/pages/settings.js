@@ -57,7 +57,8 @@ function showGroup(name) {
   items.forEach((b) => {
     const on = b.dataset.st === valid;
     b.classList.toggle("is-active", on);
-    b.setAttribute("aria-pressed", String(on));
+    if (on) b.setAttribute("aria-current", "true");
+    else b.removeAttribute("aria-current");
   });
   $$("[data-st-group]").forEach((g) => { g.hidden = g.dataset.stGroup !== valid; });
   try {

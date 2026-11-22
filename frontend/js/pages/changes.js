@@ -41,7 +41,7 @@ function diffList(b) {
     ...b.removed.map((i) => ({ ...i, s: "−", c: "rm" })),
   ];
   if (!lines.length) return "";
-  const row = (l, extra) => `<li class="${l.c}${extra ? " extra hidden" : ""}"><span class="sg">${l.s}</span><span>${esc(l.value || "(không rõ IP)")}</span><span class="ob">${esc(l.object)}</span></li>`;
+  const row = (l, extra) => `<li class="${l.c}${extra ? " extra hidden" : ""}"><span class="sg">${l.s}</span><span>${esc(l.value || "(không rõ IP)")}</span><span class="ob">${l.object && l.object !== l.value ? esc(l.object) : ""}</span></li>`;
   const head = lines.slice(0, DIFF_PREVIEW).map((l) => row(l, false)).join("");
   const rest = lines.slice(DIFF_PREVIEW);
   return `<ul class="diff">${head}${

@@ -21,15 +21,18 @@ const debounce = (fn) => () => {
 };
 
 // Thứ tự + màu thẻ trạng thái: việc cần xử lý trước, màu luôn đi kèm chữ (không chỉ dựa vào màu)
-const CARDS = [
-  ["expiring", "Sắp hết hạn", "warn"],
+// Việc cần xử lý (theo mức nghiêm trọng) hiện dạng thẻ; trạng thái chỉ để tham khảo gom thành hàng chip.
+const TODO = [
   ["expired_enabled", "Hết hạn nhưng vẫn bật", "err"],
   ["user_gone", "User không còn / bị khóa", "err"],
-  ["unreadable", "Không đọc được tên", "warn"],
+  ["expiring", "Sắp hết hạn", "warn"],
   ["mismatch", "Lệch thời hạn", "warn"],
-  ["no_expiry", "Không có hạn", ""],
-  ["active", "Còn hạn", "ok"],
-  ["expired_disabled", "Hết hạn (đã tắt)", ""],
+  ["unreadable", "Không đọc được tên", "warn"],
+];
+const INFO = [
+  ["active", "Còn hạn"],
+  ["no_expiry", "Không có hạn"],
+  ["expired_disabled", "Hết hạn (đã tắt)"],
 ];
 const STATUS_CHIP = {
   active: "chip--ok", expiring: "chip--warn", expired_enabled: "chip--err", user_gone: "chip--err",
@@ -122,11 +125,18 @@ function ruleParams() {
 }
 
 function renderCards(summary) {
-  $("#vr-cards").innerHTML = CARDS.map(([key, label, tone]) => `
-    <button type="button" class="status-card${tone ? " status-card--" + tone : ""}${vs.status === key ? " is-active" : ""}"
-      data-status="${key}" aria-pressed="${vs.status === key}">
-      <b>${summary[key] ?? 0}</b><span>${label}</span>
-    </button>`).join("");
+  const n = (k) => summary[k] ?? 0;
+  const todo = TODO.reduce((t, [k]) => t + n(k), 0);
+  const pressed = (k) => `data-status="${k}" aria-pressed="${vs.status === k}"`;
+  $("#vr-cards").innerHTML = `
+    <p class="vr-todo"><strong>${todo ? `Cần xử lý: ${todo} rule` : "Không có rule nào cần xử lý"}</strong>
+      <span class="muted tiny">Bấm một mục để lọc bảng; bấm lại để bỏ lọc.</span></p>
+    <div class="status-cards vr-todo-cards">${TODO.map(([k, label, tone]) => `
+      <button type="button" class="status-card${n(k) ? " status-card--" + tone : " is-zero"}${vs.status === k ? " is-active" : ""}" ${pressed(k)}>
+        <b>${n(k)}</b><span>${label}</span>
+      </button>`).join("")}</div>
+    <div class="vr-info">${INFO.map(([k, label]) => `
+      <button type="button" class="chip-btn${vs.status === k ? " is-active" : ""}" ${pressed(k)}>${label} <b>${n(k)}</b></button>`).join("")}</div>`;
 }
 
 function statusCell(x) {
