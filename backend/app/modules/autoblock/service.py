@@ -655,6 +655,7 @@ def status(db: Session) -> dict:
                        for g in cfg["soc_groups"]],
         "legacy_tenants": len(cfg["legacy_tenants"]), "group_error": st.get("group_error", ""),
         "night": {"start": start.isoformat(), "end": end.isoformat()}, "syntax": f"{parser.PREFIX} <ip>",
+        "targets": list(db.scalars(select(Firewall.name).where(Firewall.id.in_(_targets(db, cfg))).order_by(Firewall.id))),
         "reply_enabled": bool(cfg["reply_enabled"] and cfg["reply_url_enc"]),
         "reply_syntax": reply.TEMPLATE.format(ip="<ip>", ts="<thời điểm>"),
     }

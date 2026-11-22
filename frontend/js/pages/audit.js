@@ -2,7 +2,7 @@
 import { api } from "../api.js";
 import { resultChip } from "../components/badge.js";
 import { tableMessage } from "../components/table.js";
-import { $, esc, fmtTime } from "../util.js";
+import { $, esc, fmtTime, actorLabel, fwMessage } from "../util.js";
 
 // ------------------------------------------------------------------ audit
 $("#a-reload").addEventListener("click", loadAudit);
@@ -53,13 +53,13 @@ export async function loadAudit() {
       .map(
         (row) => `<tr>
           <td class="mono nowrap">${esc(fmtTime(row.ts))}</td>
-          <td class="nowrap">${esc(row.actor)}</td>
+          <td class="nowrap">${esc(actorLabel(row.actor))}</td>
           <td class="nowrap">${esc(actionLabel[row.action] || row.action)}</td>
           <td class="nowrap">${esc(row.firewall_name || "—")}</td>
           <td class="mono">${esc(row.group_name || "—")}</td>
           <td class="mono">${esc(row.target)}</td>
           <td>${resultChip(row.result === "ok" ? okAs[row.action] || "ok" : row.result)}</td>
-          <td class="muted"${row.status_code ? ` title="Mã phản hồi firewall: ${esc(row.status_code)}"` : ""}>${esc(row.message)}${
+          <td class="muted"${row.status_code ? ` title="Mã phản hồi firewall: ${esc(row.status_code)} · ${esc(row.message)}"` : ""}>${esc(fwMessage(row.message))}${
             row.reason ? `<br /><em>${esc(row.reason)}</em>` : ""
           }</td>
         </tr>`

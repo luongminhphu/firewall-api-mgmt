@@ -133,14 +133,15 @@ const confirmOk = async (page) => {
       await page.textContent("#confirm-ok"));
     await page.keyboard.press("Escape");
     chk("Esc ở màn xác nhận → hủy, không chặn", !(await visible(page, "#confirm-dialog"))
-      && !/Đã chặn xong/.test(await page.textContent("#block-result")));
+      && !/Đã chặn \d+ IP/.test(await page.textContent("#block-result")));
     await page.focus("#block-reason");
     await page.keyboard.press("Control+Enter");
     chk("Phím tắt: Ctrl+Enter mở màn xác nhận chặn", await visible(page, "#confirm-dialog"));
     await confirmOk(page);
-    await page.waitForFunction(() => /Đã chặn xong/.test(document.querySelector("#block-result")?.textContent || ""),
+    await page.waitForFunction(() => /Đã chặn 2 IP trên/.test(document.querySelector("#block-result")?.textContent || ""),
       null, { timeout: 30000 });
-    chk("chặn thật → 'Đã chặn xong'", true);
+    chk("chặn thật → câu chốt 'Đã chặn 2 IP trên … firewall' + nút Gỡ chặn / Chặn tiếp",
+      !!(await page.$('#block-result [data-after="undo"]')) && !!(await page.$('#block-result [data-after="again"]')));
 
     // IP Host Group: thấy IP, bỏ chặn
     await tab(page, "groups");

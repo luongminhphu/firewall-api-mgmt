@@ -95,7 +95,7 @@
           <div class="nav-group" role="presentation">
             <p class="nav-label" aria-hidden="true">Vận hành</p>
             <button type="button" role="tab" id="tab-block" aria-controls="panel-block" aria-selected="true" class="tab is-active" data-tab="block"><svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 9 6 6"/><path d="m15 9-6 6"/></svg><span>Chặn nhanh</span></button>
-            <button type="button" role="tab" id="tab-autoblock" aria-controls="panel-autoblock" aria-selected="false" class="tab" data-tab="autoblock"><svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg><span>Tự động chặn</span></button>
+            <button type="button" role="tab" id="tab-autoblock" aria-controls="panel-autoblock" aria-selected="false" class="tab" data-tab="autoblock"><svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg><span>Tự động chặn</span><span class="tab-badge" id="ab-badge" hidden></span></button>
             <button type="button" role="tab" id="tab-groups" aria-controls="panel-groups" aria-selected="false" class="tab" data-tab="groups"><svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg><span>IP Host Group</span></button>
             <button type="button" role="tab" id="tab-firewalls" aria-controls="panel-firewalls" aria-selected="false" class="tab" data-tab="firewalls"><svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01"/><path d="M6 18h.01"/></svg><span>Firewall</span></button>
           </div>
@@ -212,7 +212,7 @@ Ví dụ:
                 <span class="chip" id="count-chip">0 IP</span>
               </div>
               <div class="list-scroll" id="candidate-list">
-                <p class="empty">Chưa có IP nào. Dán nội dung chat hoặc nhập tay ở cột bên trái.</p>
+                <p class="empty">Chưa có IP nào. Dán nội dung chat hoặc nhập tay ở mục 1 · Nguồn IP.</p>
               </div>
               <div id="rejected-box" class="alert alert--warn hidden"></div>
               <div class="actions">
@@ -357,6 +357,8 @@ Ví dụ:
                 <a class="btn btn--ghost" id="c-export" href="#">Xuất CSV</a>
               </div>
             </div>
+            <details class="filter-box" data-filter-box>
+              <summary>Lọc <span class="filter-count muted tiny"></span></summary>
             <div class="filters">
               <label class="field"><span>Firewall</span><select id="c-fw" class="select"><option value="">Tất cả</option></select></label>
               <label class="field"><span>Loại</span>
@@ -372,6 +374,7 @@ Ví dụ:
               <label class="field"><span>Từ ngày</span><input id="c-from" type="date" /></label>
               <label class="field"><span>Đến ngày</span><input id="c-to" type="date" /></label>
             </div>
+            </details>
             <div id="c-stats" class="stats"></div>
             <p id="c-verify-msg" class="alert hidden"></p>
             <div id="c-list" class="timeline"></div>
@@ -435,6 +438,8 @@ Ví dụ:
 
             <div data-vview="rules">
               <div id="vr-cards" class="vr-cards" role="group" aria-label="Lọc theo trạng thái"></div>
+              <details class="filter-box" data-filter-box>
+                <summary>Lọc <span class="filter-count muted tiny"></span></summary>
               <div class="filters">
                 <label class="field"><span>Firewall</span><select id="vr-fw" class="select"><option value="">Tất cả</option></select></label>
                 <label class="field"><span>Team</span><select id="vr-team" class="select"><option value="">Tất cả</option></select></label>
@@ -443,6 +448,7 @@ Ví dụ:
                 <label class="field"><span>Rule / mã user / đích</span><input id="vr-q" type="search" placeholder="CHAU.NB hoặc Factset" /></label>
                 <label class="field" title="Xem trạng thái tại một ngày khác (mặc định hôm nay, giờ Việt Nam)"><span>Xem tại ngày</span><input id="vr-asof" type="date" /></label>
               </div>
+              </details>
               <p id="vr-note" class="muted tiny"></p>
               <div class="table-wrap">
                 <table class="table" id="vr-table">
@@ -456,6 +462,8 @@ Ví dụ:
             </div>
 
             <div data-vview="accounts" class="hidden">
+            <details class="filter-box" data-filter-box>
+              <summary>Lọc <span class="filter-count muted tiny"></span></summary>
             <div class="filters">
               <label class="field"><span>Firewall</span><select id="v-fw" class="select"><option value="">Tất cả</option></select></label>
               <label class="field"><span>Phạm vi</span>
@@ -473,6 +481,7 @@ Ví dụ:
               </label>
               <label class="field"><span>Tài khoản / tên / nhóm</span><input id="v-q" type="search" placeholder="chau.nb hoặc RMS RESEARCH" /></label>
             </div>
+            </details>
             <div id="v-stats" class="stats"></div>
             <div class="table-wrap">
               <table class="table" id="v-table">
@@ -660,7 +669,7 @@ Ví dụ:
                 <div><h3 id="ab-night-title">Ca ngoài giờ</h3>
                   <p class="muted tiny">IP app đã tự chặn trong ca ngoài giờ gần nhất (đêm, cuối tuần, ngày lễ) — rà soát khi vào ca, gỡ ngay nếu chặn nhầm.</p></div>
                 <div class="row row--tight ab-op" hidden>
-                  <button class="btn btn--danger-ghost btn--sm" id="ab-night-undo" type="button">Gỡ tất cả IP của ca</button>
+                  <button class="btn btn--sm" id="ab-night-undo" type="button">Gỡ tất cả IP của ca</button>
                 </div>
               </div>
               <div class="table-wrap">
@@ -725,16 +734,16 @@ Ví dụ:
                   <p class="muted tiny">Đọc group chat với SOC qua Microsoft Graph, nhận lệnh <code>ĐỀ XUẤT CỦA SOC: BLOCK IP &lt;ip&gt;</code> và chặn trên firewall theo lịch.</p></div>
                 <span id="ab-cfg-state" class="chip"></span>
               </div>
-              <nav class="st-index" aria-label="Các bước cấu hình tự động chặn">
-                <button type="button" class="st-index__item" data-goto="abs-sec-1"><span class="st-step" aria-hidden="true">1</span>Kết nối</button>
-                <button type="button" class="st-index__item" data-goto="abs-sec-2"><span class="st-step" aria-hidden="true">2</span>Người gửi lệnh</button>
-                <button type="button" class="st-index__item" data-goto="abs-sec-3"><span class="st-step" aria-hidden="true">3</span>Lịch &amp; giới hạn</button>
-                <button type="button" class="st-index__item" data-goto="abs-sec-4"><span class="st-step" aria-hidden="true">4</span>Whitelist</button>
-                <button type="button" class="st-index__item" data-goto="abs-sec-5"><span class="st-step" aria-hidden="true">5</span>Trả lời Teams</button>
-                <button type="button" class="st-index__item" data-goto="abs-sec-6"><span class="st-step" aria-hidden="true">6</span>Cảnh báo &amp; firewall</button>
+              <nav class="st-index" aria-label="Các mục cấu hình tự động chặn">
+                <button type="button" class="st-index__item" data-goto="abs-sec-1">Kết nối</button>
+                <button type="button" class="st-index__item" data-goto="abs-sec-2">Người gửi lệnh</button>
+                <button type="button" class="st-index__item" data-goto="abs-sec-3">Lịch &amp; giới hạn</button>
+                <button type="button" class="st-index__item" data-goto="abs-sec-4">Whitelist</button>
+                <button type="button" class="st-index__item" data-goto="abs-sec-5">Trả lời Teams</button>
+                <button type="button" class="st-index__item" data-goto="abs-sec-6">Cảnh báo &amp; firewall</button>
               </nav>
               <section class="st-sec" id="abs-sec-1" aria-labelledby="abs-sec-1-t">
-                <h3 class="st-sec__title" id="abs-sec-1-t"><span class="st-step" aria-hidden="true">1</span>Kết nối Microsoft Graph</h3>
+                <h3 class="st-sec__title" id="abs-sec-1-t">Kết nối Microsoft Graph</h3>
                 <p class="muted tiny st-sec__desc">App registration đọc group chat (chỉ đọc): quyền <code>Chat.Read.All</code> hoặc <code>ChatMessage.Read.Chat</code>, thêm <code>ChatMember.Read.All</code> để liệt kê thành viên. Bấm <strong>Kiểm tra kết nối</strong> sau khi nhập.</p>
               <label class="check"><input type="checkbox" id="abs-enabled" /> <span>Bật đọc Teams và tự động chặn</span></label>
               <div class="row row--2">
@@ -752,7 +761,7 @@ Ví dụ:
               <div id="abs-test-out" class="ab-test-out"></div>
               </section>
               <section class="st-sec" id="abs-sec-2" aria-labelledby="abs-sec-2-t">
-                <h3 class="st-sec__title" id="abs-sec-2-t"><span class="st-step" aria-hidden="true">2</span>Người được gửi lệnh</h3>
+                <h3 class="st-sec__title" id="abs-sec-2-t">Người được gửi lệnh</h3>
               <fieldset class="field">
                 <legend class="sr-only">Người được gửi lệnh (team SOC trực 24/7, IT Security)</legend>
                 <p class="muted tiny">Chỉ <strong>những người được khai báo cụ thể</strong> mới ra lệnh được — app <strong>không</strong> tin cậy cả tenant của đối tác SOC (vd HPT), vì đối tác có thể có người khác trong group chat. Tin của người chưa được ủy quyền bị bỏ qua và ghi nhật ký. Bấm <strong>Kiểm tra kết nối</strong> để thấy thành viên group chat kèm tenant, rồi bấm <strong>+ Ủy quyền</strong> cạnh từng người.</p>
@@ -794,7 +803,7 @@ Ví dụ:
               </fieldset>
               </section>
               <section class="st-sec" id="abs-sec-3" aria-labelledby="abs-sec-3-t">
-                <h3 class="st-sec__title" id="abs-sec-3-t"><span class="st-step" aria-hidden="true">3</span>Lịch tự chặn &amp; giới hạn</h3>
+                <h3 class="st-sec__title" id="abs-sec-3-t">Lịch tự chặn &amp; giới hạn</h3>
               <fieldset class="field">
                 <legend class="sr-only">Lịch tự chặn (ngoài giờ / ca đêm)</legend>
                 <p class="muted tiny">Trong lịch: app tự chặn. Ngoài lịch (giờ hành chính, Infra có mặt): lệnh của SOC chuyển sang chờ duyệt. Bỏ tick = tự chặn 24/7.</p>
@@ -829,7 +838,7 @@ Ví dụ:
               </div>
               </section>
               <section class="st-sec" id="abs-sec-4" aria-labelledby="abs-sec-4-t">
-                <h3 class="st-sec__title" id="abs-sec-4-t"><span class="st-step" aria-hidden="true">4</span>Whitelist</h3>
+                <h3 class="st-sec__title" id="abs-sec-4-t">Whitelist</h3>
               <fieldset class="field">
                 <legend class="sr-only">Whitelist — IP của HSC, Akamai, đối tác…</legend>
                 <p class="muted tiny">SOC đề xuất chặn IP thuộc các danh sách này → <strong>không tự chặn</strong>, chuyển sang chờ duyệt và chỉ quản trị viên bấm <strong>Duyệt</strong> được. Mỗi dòng một IPv4 hoặc CIDR (vd <code>23.32.0.0/11</code>); dán được cả danh sách, phần sau dấu <code>#</code> là ghi chú.</p>
@@ -838,7 +847,7 @@ Ví dụ:
               </fieldset>
               </section>
               <section class="st-sec" id="abs-sec-5" aria-labelledby="abs-sec-5-t">
-                <h3 class="st-sec__title" id="abs-sec-5-t"><span class="st-step" aria-hidden="true">5</span>Trả lời vào group chat</h3>
+                <h3 class="st-sec__title" id="abs-sec-5-t">Trả lời vào group chat</h3>
               <fieldset class="field">
                 <legend class="sr-only">Trả lời kết quả vào group chat</legend>
                 <p class="muted tiny">Sau mỗi IP chặn thành công, app gửi vào group chat: <code class="ab-syntax">INFRA ĐÃ BLOCK &lt;ip&gt; THEO YÊU CẦU LÚC &lt;thời điểm&gt;</code>.
@@ -853,7 +862,7 @@ Ví dụ:
               </fieldset>
               </section>
               <section class="st-sec" id="abs-sec-6" aria-labelledby="abs-sec-6-t">
-                <h3 class="st-sec__title" id="abs-sec-6-t"><span class="st-step" aria-hidden="true">6</span>Cảnh báo &amp; firewall đích</h3>
+                <h3 class="st-sec__title" id="abs-sec-6-t">Cảnh báo &amp; firewall đích</h3>
               <label class="field"><span>Email nhóm Admin (cảnh báo vượt ngưỡng, chờ duyệt, báo cáo khi hết ca ngoài giờ) — để trống = mọi quản trị viên có email</span>
                 <textarea id="abs-admins" rows="2" placeholder="infra-admin@hsc.com.vn"></textarea></label>
               <fieldset class="field">

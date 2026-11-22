@@ -2,7 +2,7 @@
 import { api, API } from "../api.js";
 import { toast } from "../components/toast.js";
 import { state } from "../store.js";
-import { $, esc, fmtTime } from "../util.js";
+import { $, esc, fmtTime, actorLabel } from "../util.js";
 
 // ===================================================== LỊCH SỬ THAY ĐỔI
 const KIND = {
@@ -11,7 +11,6 @@ const KIND = {
   baseline: ["", "Bắt đầu theo dõi"],
   create_group: ["chip--info", "Tạo group"],
 };
-const SOURCE = { "teams-paste": "Dán từ Teams", paste: "Dán từ Teams", manual: "Nhập tay", csv: "File CSV/TXT", unblock: "Bỏ chặn" };
 const METHOD = { "entra-oidc": "Entra ID + MFA", "entra-header": "Entra App Proxy", local: "Mật khẩu app", drift: "Phát hiện tự động", system: "Hệ thống" };
 const DIFF_PREVIEW = 12;
 
@@ -51,11 +50,16 @@ function diffList(b) {
 
 function renderChanges(r) {
   const t = r.totals;
-  $("#c-stats").innerHTML = `
+  const callout = t.drift
+    ? `<div class="alert alert--warn drift-callout" role="status"><span><strong>${t.drift} lần sửa trực tiếp trên firewall (ngoài app)</strong>
+        — không qua app, không có người duyệt. Kiểm tra ai đã sửa và vì sao.</span>
+        <button class="btn btn--sm" type="button" data-drift>Chỉ xem các lần này</button></div>`
+    : "";
+  $("#c-stats").innerHTML = callout + `
     <div class="stat"><b>${t.batches}</b><span>lần thay đổi</span></div>
     <div class="stat stat--add"><b>${t.added ? "+" + t.added : 0}</b><span>IP đưa vào group chặn (tính theo từng firewall)</span></div>
     <div class="stat stat--rm"><b>${t.removed ? "−" + t.removed : 0}</b><span>IP gỡ khỏi group (tính theo từng firewall)</span></div>
-    <div class="stat stat--drift"><b>${t.drift}</b><span>lần sửa ngoài app</span></div>`;
+    <div class="stat${t.drift ? " stat--drift" : ""}"><b>${t.drift}</b><span>lần sửa ngoài app</span></div>`;
   const box = $("#c-list");
   if (!r.batches.length) {
     box.innerHTML = `<p class="empty">Không có thay đổi nào khớp bộ lọc. Lịch sử bắt đầu ghi từ phiên bản 1.2 — thao tác chặn/bỏ chặn đầu tiên sẽ xuất hiện tại đây.</p>`;
@@ -71,8 +75,8 @@ function renderChanges(r) {
     return `<article class="cb cb--${b.kind}">
       <div class="cb__head">
         <span class="cb__time">${esc(fmtTime(b.ts))}</span>
-        <span class="cb__who">${esc(b.actor_name || b.actor)}${
-          b.actor && b.actor !== b.actor_name ? `<small>${esc(b.actor)}</small>` : ""
+        <span class="cb__who">${esc(actorLabel(b.actor_name || b.actor))}${
+          b.actor && b.actor !== b.actor_name && actorLabel(b.actor) === b.actor ? `<small>${esc(b.actor)}</small>` : ""
         }</span>
         <span class="chip ${cls}">${label}</span>
         <span class="cb__target">${esc(b.firewall_name)} › ${esc(b.group_name)}</span>
@@ -80,7 +84,7 @@ function renderChanges(r) {
       </div>
       <div class="cb__meta">
         ${b.reason ? `<span>Lý do: <strong>${esc(b.reason)}</strong></span>` : ""}
-        ${b.source ? `<span>Nguồn: ${esc(SOURCE[b.source] || b.source)}</span>` : ""}
+        ${b.source ? `<span>Nguồn: ${esc(actorLabel(b.source))}</span>` : ""}
         ${b.auth_method ? `<span>Xác thực: ${esc(METHOD[b.auth_method] || b.auth_method)}</span>` : ""}
         ${b.client_ip ? `<span>IP client: <span class="mono">${esc(b.client_ip)}</span></span>` : ""}
         <span class="mono" title="Mã lô thao tác">#${esc(b.batch_id)}</span>
@@ -154,4 +158,10 @@ $("#c-verify").addEventListener("click", async () => {
     el.textContent = ex.message;
     el.className = "alert alert--error";
   }
+});
+
+$("#c-stats").addEventListener("click", (e) => {
+  if (!e.target.closest("[data-drift]")) return;
+  $("#c-type").value = "drift";
+  $("#c-type").dispatchEvent(new window.Event("change", { bubbles: true }));
 });

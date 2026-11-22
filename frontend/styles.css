@@ -896,3 +896,34 @@ kbd { display: inline-block; min-width: 1.6em; padding: 1px var(--s2); border: 1
 /* Chữ: không để một từ lẻ trơ trọi ở dòng cuối; tiêu đề cân hai dòng */
 p, li, .muted { text-wrap: pretty; }
 h1, h2, h3 { text-wrap: balance; }
+
+/* Chặn nhanh: câu chốt sau khi chặn + việc tiếp theo */
+.result-verdict { display: grid; gap: var(--s2); padding: var(--s4); border: 1px solid var(--line-ok); border-radius: var(--radius);
+  background: var(--tint-ok); }
+.result-verdict.is-warn { border-color: var(--line-warn); background: var(--tint-warn); }
+.result-verdict__title { margin: 0; font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.result-verdict__meta { margin: 0; font-size: var(--fs-xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.result-verdict__acts { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+/* "Lọc": gom bộ lọc */
+.filter-box { margin-bottom: var(--s3); }
+.filter-box > summary { list-style: none; display: inline-flex; align-items: center; gap: var(--s2); min-height: 40px; padding: 0 var(--s3);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text);
+  font-size: var(--fs-sm); font-weight: 600; cursor: pointer; }
+.filter-box > summary::-webkit-details-marker { display: none; }
+.filter-box > summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg); transition: transform var(--t-fast) var(--ease); }
+.filter-box[open] > summary { margin-bottom: var(--s3); }
+.filter-box[open] > summary::before { transform: rotate(45deg); }
+.filter-box > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+#c-stats .drift-callout { grid-column: 1 / -1; }
+.drift-callout { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s4); }
+
+/* Rà soát: quyết định đang chọn mang màu theo nghĩa (giống bảng kết quả) */
+.rv-dec[aria-pressed="true"][data-dec="keep"] { background: var(--tint-ok); border-color: var(--ok); color: var(--ok); font-weight: 600; }
+.rv-dec[aria-pressed="true"][data-dec="revoke"] { background: var(--tint-danger); border-color: var(--danger); color: var(--danger); font-weight: 600; }
+.rv-dec[aria-pressed="true"][data-dec="change"] { background: var(--tint-warn); border-color: var(--warn); color: var(--warn); font-weight: 600; }
+
+/* Huy hiệu số lệnh chờ duyệt trên menu trái */
+.tab-badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--warn);
+  color: var(--bg); font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; flex: none; }

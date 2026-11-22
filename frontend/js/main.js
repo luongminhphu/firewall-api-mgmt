@@ -62,6 +62,22 @@ async function boot() {
   await loadFirewalls();
   loadBranding();
   showInitial(); // deep link #tab (tab không được phép → Chặn nhanh)
+  refreshPendingBadge();
+  window.clearInterval(boot._badge);
+  boot._badge = window.setInterval(refreshPendingBadge, 60000);
+}
+
+async function refreshPendingBadge() {
+  if (!state.token) return;
+  try {
+    const s = await api("/api/autoblock/status");
+    const b = $("#ab-badge");
+    b.hidden = !s.pending;
+    b.textContent = s.pending > 99 ? "99+" : String(s.pending || "");
+    b.setAttribute("aria-label", `${s.pending} lệnh chờ duyệt`);
+  } catch {
+    /* không đọc được trạng thái (mất mạng / hết phiên): giữ huy hiệu cũ */
+  }
 }
 setAfterLogin(boot);
 initTips(); // nút ⓘ hướng dẫn cạnh các mục cấu hình
@@ -81,6 +97,17 @@ document.addEventListener("keydown", (e) => {
     setNav(false);
     $("#nav-toggle").focus();
   }
+});
+
+// Bộ lọc gom trong "Lọc": desktop mở sẵn; điện thoại thu gọn để bảng không bị đẩy xuống. Đếm bộ lọc đang áp dụng.
+const filterCount = (box) => {
+  const n = [...box.querySelectorAll("input, select")].filter((el) => el.value && el.type !== "checkbox").length;
+  box.querySelector(".filter-count").textContent = n ? `· ${n} đang áp dụng` : "";
+};
+$$("[data-filter-box]").forEach((box) => {
+  box.open = window.matchMedia("(min-width: 721px)").matches;
+  ["input", "change"].forEach((ev) => box.addEventListener(ev, () => filterCount(box)));
+  filterCount(box);
 });
 
 // Phím tắt cho người dùng thường xuyên (ca trực): Ctrl/⌘+Enter chặn, "/" tìm/lọc, "?" bảng phím tắt
@@ -117,7 +144,7 @@ document.addEventListener("keydown", (e) => {
 
 initRouter((tab) => {
   const btn = $(`.tab[data-tab="${tab}"]`);
-  $("#page-title").textContent = btn?.textContent.trim() || "";
+  $("#page-title").textContent = btn?.querySelector("span")?.textContent.trim() || btn?.textContent.trim() || ""; // bỏ huy hiệu số
   document.title = `${$("#page-title").textContent} · SOC Rapid Block`;
   setNav(false);
   if (tab === "audit") loadAudit();

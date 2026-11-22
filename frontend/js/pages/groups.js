@@ -254,7 +254,7 @@ $("#do-unblock").addEventListener("click", async () => {
   const fwId = Number($("#g-fw").value);
   const group = state.blockGroup;
   const fw = state.firewalls.find((f) => f.id === fwId);
-  if (!(await confirmAction({ title: "Bỏ chặn trên firewall?", ok: `Bỏ chặn ${targets.length} object`, html: `<dl class="confirm-facts"><dt>Firewall</dt><dd>${esc(fw.name)}</dd><dt>IP Host Group</dt><dd class="mono">${esc(group)}</dd></dl><div class="confirm-ips">${targets.map((t) => `<span class="mono">${esc(t)}</span>`).join("")}</div>` }))) return;
+  if (!(await confirmAction({ title: "Bỏ chặn — khôi phục truy cập?", ok: `Bỏ chặn ${targets.length} object trên ${fw.name}`, danger: false, html: `<dl class="confirm-facts"><dt>Firewall</dt><dd>${esc(fw.name)}</dd><dt>IP Host Group</dt><dd class="mono">${esc(group)}</dd></dl><div class="confirm-ips">${targets.map((t) => `<span class="mono">${esc(t)}</span>`).join("")}</div>` }))) return;
   const btn = $("#do-unblock");
   setBusy(btn, true, "Đang bỏ chặn…");
   const out = $("#unblock-result");

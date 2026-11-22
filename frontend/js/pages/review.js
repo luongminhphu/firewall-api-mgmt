@@ -90,9 +90,9 @@ function itemCard(it) {
   const sel = editing ? rv.editing.dec : it.decision; // nút đang chọn (kể cả khi đang nhập lý do)
   const actions = rv.camp?.status === "open" ? `
     <div class="rv-actions" role="group" aria-label="Quyết định cho ${esc(it.title)}">
-      <button class="btn btn--sm${sel === "keep" ? " btn--primary" : ""}" aria-pressed="${sel === "keep"}" type="button" data-dec="keep" data-id="${it.id}">Còn cần</button>
-      <button class="btn btn--sm${sel === "revoke" ? " btn--primary" : ""}" aria-pressed="${sel === "revoke"}" type="button" data-dec="revoke" data-id="${it.id}">Thu hồi</button>
-      <button class="btn btn--sm${sel === "change" ? " btn--primary" : ""}" aria-pressed="${sel === "change"}" type="button" data-dec="change" data-id="${it.id}">Cần điều chỉnh</button>
+      <button class="btn btn--sm rv-dec" aria-pressed="${sel === "keep"}" type="button" data-dec="keep" data-id="${it.id}">Còn cần</button>
+      <button class="btn btn--sm rv-dec" aria-pressed="${sel === "revoke"}" type="button" data-dec="revoke" data-id="${it.id}">Thu hồi</button>
+      <button class="btn btn--sm rv-dec" aria-pressed="${sel === "change"}" type="button" data-dec="change" data-id="${it.id}">Cần điều chỉnh</button>
     </div>
     ${editing ? `<div class="rv-reason">
       <label class="field"><span>Lý do ${rv.editing.dec === "revoke" ? "thu hồi" : "điều chỉnh"} (bắt buộc)</span>

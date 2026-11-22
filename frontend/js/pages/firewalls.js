@@ -4,7 +4,7 @@ import { api } from "../api.js";
 import { statusChip } from "../components/badge.js";
 import { toast } from "../components/toast.js";
 import { can, emit, state } from "../store.js";
-import { $, esc, fmtTime } from "../util.js";
+import { $, esc, fmtTime, fwMessage } from "../util.js";
 
 // ------------------------------------------------------------- firewalls
 export async function loadFirewalls() {
@@ -37,10 +37,10 @@ function renderFwList() {
         <div><dt>Tài khoản</dt><dd>${esc(f.username)}</dd></div>
         <div><dt>IP Host Group</dt><dd>${esc(state.blockGroup)}</dd></div>
         <div><dt>Site</dt><dd>${esc(f.site || "—")}</dd></div>
-        <div><dt>TLS verify</dt><dd>${f.verify_ssl ? "Bật" : "Tắt"}</dd></div>
+        <div><dt>TLS verify</dt><dd>${f.verify_ssl ? "Bật" : '<span class="text-warn" title="Không kiểm chứng chứng chỉ HTTPS của firewall">Tắt — không kiểm chứng chứng chỉ</span>'}</dd></div>
         <div><dt>Kiểm tra lần cuối</dt><dd>${esc(fmtTime(f.last_checked) || "—")}</dd></div>
       </dl>
-      ${f.last_message ? `<p class="tiny muted">${esc(f.last_message)}</p>` : ""}
+      ${f.last_message ? `<p class="tiny muted" title="${esc(f.last_message)}">${esc(fwMessage(f.last_message))}</p>` : ""}
       ${f.note ? `<p class="tiny muted">Ghi chú: ${esc(f.note)}</p>` : ""}
     </article>`
     )

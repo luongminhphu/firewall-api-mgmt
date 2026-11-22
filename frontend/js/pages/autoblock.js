@@ -155,7 +155,7 @@ async function loadPending() {
 // IP thuộc whitelist (HSC / Akamai / đối tác): chỉ quản trị viên duyệt — server kiểm lại
 const approveBtn = (r) => (r.needs_admin && !can("admin")
   ? `<button class="btn btn--sm" type="button" disabled title="IP thuộc whitelist — chỉ quản trị viên duyệt được">Duyệt</button>`
-  : `<button class="btn btn--primary btn--sm" type="button" data-approve="${r.id}"${r.needs_admin
+  : `<button class="btn btn--primary btn--sm" type="button" data-approve="${r.id}" data-ip="${esc(r.ip)}"${r.needs_admin
     ? ` data-wl="${esc(r.whitelist)}"` : ""}>Duyệt</button>`);
 
 const picked = () => $$("#ab-pending .ab-pick:checked").map((x) => Number(x.value));
@@ -166,8 +166,21 @@ $("#ab-pending").addEventListener("change", (e) => {
   $("#ab-approve-sel").disabled = !picked().length;
 });
 
+// Bảng thông tin dùng chung cho màn xác nhận (giống Chặn nhanh): firewall đích, group, danh sách IP
+const facts = (ips) => {
+  const fws = ab.status?.targets || [];
+  return `<dl class="confirm-facts">
+      <dt>Firewall</dt><dd>${fws.length ? fws.map(esc).join(", ") : "—"}</dd>
+      <dt>IP Host Group</dt><dd class="mono">SCANPORT GROUP</dd>
+    </dl>${ips.length ? `<div class="confirm-ips">${ips.map((i) => `<span class="mono">${esc(i)}</span>`).join("")}</div>` : ""}`;
+};
+const nFw = () => (ab.status?.targets || []).length;
+const pendingIp = (id) => $(`#ab-pending .ab-pick[value="${id}"]`)?.getAttribute("aria-label")?.replace(/^Chọn /, "")
+  || $(`#ab-pending [data-approve="${id}"]`)?.dataset.ip || `#${id}`;
+
 async function approve(ids, wl = "") {
-  if (!(await confirmAction({ title: "Duyệt lệnh chặn?", ok: `Chặn ${ids.length} IP`, html: `<p>Chặn <strong>${ids.length} IP</strong> trên mọi firewall đích của tự động chặn.</p>${wl ? `<p class="alert alert--warn">IP thuộc whitelist <strong>${esc(wl)}</strong> (HSC / Akamai / đối tác) — chặn có thể gây gián đoạn dịch vụ.</p>` : ""}` }))) return;
+  if (!(await confirmAction({ title: "Duyệt lệnh chặn trên firewall đang chạy?", ok: `Chặn ${ids.length} IP trên ${nFw()} firewall`,
+    html: `${facts(ids.map(pendingIp))}${wl ? `<p class="alert alert--warn">IP thuộc whitelist <strong>${esc(wl)}</strong> (HSC / Akamai / đối tác) — chặn có thể gây gián đoạn dịch vụ.</p>` : ""}` }))) return;
   try {
     const job = await runJob("/api/autoblock/approve", { ids });
     const errs = (job.results || []).filter((r) => !r.ok).length;
@@ -219,10 +232,11 @@ const evBtn = (r) => (["invalid", "duplicate"].includes(r.status) && !r.requeste
   : `<button class="btn btn--ghost btn--sm" type="button" data-ev="${r.id}" aria-label="Bằng chứng lệnh ${esc(r.ip)}">Bằng chứng</button>`);
 
 const unblockBtn = (r) => ["blocked", "failed"].includes(r.status)
-  ? `<button class="btn btn--danger-ghost btn--sm" type="button" data-unblock="${r.id}" data-ip="${esc(r.ip)}">Gỡ chặn</button>` : "";
+  ? `<button class="btn btn--sm" type="button" data-unblock="${r.id}" data-ip="${esc(r.ip)}">Gỡ chặn</button>` : "";
 
 async function unblock(body, label) {
-  if (!(await confirmAction({ title: "Gỡ chặn?", ok: "Gỡ chặn", html: `<p>Gỡ <strong>${esc(label)}</strong> khỏi <span class="mono">SCANPORT GROUP</span> trên mọi firewall đích.</p>` }))) return;
+  if (!(await confirmAction({ title: "Gỡ chặn — khôi phục truy cập?", ok: body.night ? "Gỡ tất cả IP của ca" : `Gỡ chặn ${label}`, danger: false,
+    html: `<p>IP được gỡ khỏi group sẽ <strong>truy cập lại được</strong> qua các firewall này.</p>${facts(body.night ? [] : [label])}${body.night ? `<p><strong>${esc(label)}</strong></p>` : ""}` }))) return;
   try {
     await runJob("/api/autoblock/unblock", body);
     toast(`Đã gỡ chặn ${label}`, "ok");

@@ -114,7 +114,7 @@ function renderCandidates(rejected = []) {
   const box = $("#candidate-list");
   $("#count-chip").textContent = `${state.candidates.length} IP`;
   if (!state.candidates.length) {
-    box.innerHTML = `<p class="empty">Chưa có IP nào. Dán nội dung chat hoặc nhập tay ở cột bên trái.</p>`;
+    box.innerHTML = `<p class="empty">Chưa có IP nào. Dán nội dung chat hoặc nhập tay ở mục 1 · Nguồn IP.</p>`;
   } else {
     box.innerHTML = state.candidates
       .map(
@@ -183,7 +183,7 @@ $("#clear-list").addEventListener("click", () => {
 function refreshBlockButton() {
   const why = !can("operator") ? "Tài khoản Chỉ xem không chặn được IP."
     : !state.candidates.length ? "Chưa có IP nào — dán nội dung chat hoặc nhập tay."
-      : !selectedFwIds().length ? "Chọn ít nhất 1 firewall ở mục 2 · Đích cấu hình."
+      : !selectedFwIds().length ? "Chọn firewall cần chặn ở mục 2 · Đích cấu hình — lần sau app nhớ lựa chọn này."
         : "";
   $("#do-block").disabled = Boolean(why);
   $("#block-hint").textContent = why;
@@ -260,6 +260,10 @@ $("#do-block").addEventListener("click", async () => {
         if (job.status === "running") box.innerHTML = progressBox(job, dry) + renderBlockResult(job);
       }
     );
+    state.lastBlock = dry ? null : {
+      ips: state.candidates.map((c) => c.value), ids, names: fwNames, at: new Date(),
+      reason: $("#block-reason").value.trim(),
+    };
     box.innerHTML = blockSummary(r, dry) + renderBlockResult(r);
     if (r.cache_refresh?.length) emit("cache-refresh", r.cache_refresh); // trang IP Host Group theo dõi quét lại
     const okCount = r.results.filter((x) => x.ok).length;
@@ -304,17 +308,58 @@ function blockSummary(r, dry) {
   const t = { added: 0, existed: 0, error: 0, dry_run: 0 };
   r.results.forEach((x) => Object.keys(t).forEach((k) => (t[k] += x.summary?.[k] || 0)));
   const fwErr = r.results.filter((x) => !x.ok).length;
-  const cls = fwErr ? "alert--warn" : "alert--ok";
-  const parts = dry
-    ? [`${t.dry_run} sẽ tạo`, `${t.existed} đã có`]
-    : [`${t.added} đã thêm`, `${t.existed} đã có`, `${t.error} lỗi`];
-  return `<div class="alert ${cls} result-summary" role="status">
-    <strong>${dry ? "Chạy thử xong" : fwErr ? `Xong, ${fwErr}/${r.results.length} firewall có lỗi` : "Đã chặn xong"}</strong>
-    <span>${r.results.length} firewall · ${parts.join(" · ")}</span>
-  </div>`;
+  const lb = state.lastBlock;
+  if (dry || !lb) {
+    return `<div class="alert alert--ok result-summary" role="status">
+      <strong>Chạy thử xong</strong><span>${r.results.length} firewall · ${t.dry_run} sẽ tạo · ${t.existed} đã có — chưa ghi gì lên firewall</span></div>`;
+  }
+  const hhmm = lb.at.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  // Câu chốt rõ ràng + việc tiếp theo; chi tiết từng firewall nằm bên dưới, thu gọn trừ khi có lỗi
+  return `<div class="result-verdict ${fwErr ? "is-warn" : "is-ok"}" role="status">
+      <p class="result-verdict__title">${fwErr
+        ? `Xong, ${fwErr}/${r.results.length} firewall có lỗi — xem chi tiết bên dưới`
+        : `Đã chặn ${lb.ips.length} IP trên ${r.results.length} firewall`}</p>
+      <p class="result-verdict__meta">${esc(hhmm)} · ${lb.names.map(esc).join(", ")} · ${t.added} mới, ${t.existed} đã có${t.error ? `, ${t.error} lỗi` : ""}${lb.reason ? ` · ${esc(lb.reason)}` : ""}</p>
+      <div class="result-verdict__acts">
+        <button class="btn btn--sm" type="button" data-after="undo">Gỡ chặn ${lb.ips.length} IP này</button>
+        <button class="btn btn--sm" type="button" data-after="again">Chặn tiếp</button>
+        <a class="btn btn--ghost btn--sm" href="#changes">Xem lịch sử thay đổi</a>
+      </div>
+    </div>`;
 }
 
-const ROWS_OPEN_MAX = 5; // nhiều dòng hơn thì thu gọn (tổng kết đã nằm ở đầu), luôn mở sẵn khi có lỗi
+$("#block-result").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-after]");
+  if (!b) return;
+  if (b.dataset.after === "again") {
+    $("#clear-list").click();
+    $("#paste-text").focus();
+    return;
+  }
+  const lb = state.lastBlock;
+  if (!lb) return;
+  if (!(await confirmAction({
+    title: "Gỡ chặn — khôi phục truy cập?", ok: `Gỡ chặn ${lb.ips.length} IP`, danger: false,
+    html: `<p>Hoàn tác lần chặn lúc vừa rồi: các IP sau <strong>truy cập lại được</strong>.</p>
+      <dl class="confirm-facts"><dt>Firewall</dt><dd>${lb.names.map(esc).join(", ")}</dd>
+        <dt>IP Host Group</dt><dd class="mono">${esc(state.blockGroup)}</dd></dl>
+      <div class="confirm-ips">${lb.ips.map((i) => `<span class="mono">${esc(i)}</span>`).join("")}</div>`,
+  }))) return;
+  setBusy(b, true, "Đang gỡ…");
+  try {
+    const r = await runJob("/api/unblock", { firewall_ids: lb.ids, targets: lb.ips, reason: `Hoàn tác chặn nhanh${lb.reason ? ` (${lb.reason})` : ""}` });
+    const ok = r.results.filter((x) => x.ok).length;
+    toast(`Đã gỡ chặn ${lb.ips.length} IP trên ${ok}/${r.results.length} firewall`, ok === r.results.length ? "ok" : "err");
+    state.lastBlock = null;
+    b.closest(".result-verdict").querySelector(".result-verdict__title").textContent = `Đã gỡ chặn ${lb.ips.length} IP (hoàn tác)`;
+    b.closest(".result-verdict__acts").remove();
+    loadFirewalls();
+  } catch (ex) {
+    toast(ex.message, "err");
+    setBusy(b, false);
+  }
+});
+
 
 function renderBlockResult(r) {
   return (r.results || [])
@@ -340,7 +385,7 @@ function renderBlockResult(r) {
           </div>`
         )
         .join("");
-      const open = (fw.rows || []).length <= ROWS_OPEN_MAX || (s.error || 0) > 0;
+      const open = (s.error || 0) > 0 || !fw.ok; // câu chốt ở trên đã đủ; chi tiết chỉ tự mở khi có lỗi
       const list = `<details class="result-rows"${open ? " open" : ""}>
           <summary>Chi tiết ${(fw.rows || []).length} IP</summary>${rows}</details>`;
       const xml = fw.group_xml
