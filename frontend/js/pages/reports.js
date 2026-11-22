@@ -1,6 +1,6 @@
 /* Tab Báo cáo — thống kê IP bị chặn theo phương thức (thủ công / tự động) và thời gian thực hiện.
    - Kỳ: 7 / 14 / 30 ngày gần nhất hoặc chọn từ ngày – đến ngày trên lịch (tối đa 366 ngày).
-   - Executive Summary (câu tổng quan, thẻ chỉ số, nhận định, cần lưu ý) → chi tiết: biểu đồ theo ngày,
+   - Tóm tắt điều hành (câu tổng quan, thẻ chỉ số, nhận định, cần lưu ý) → chi tiết: biểu đồ theo ngày,
      người thực hiện, danh sách IP.
    - Tải PDF / Excel (theo HSC Design System, có logo); Write trở lên gửi email qua SMTP đã cấu hình. */
 import { API, api, errorBox } from "../api.js";

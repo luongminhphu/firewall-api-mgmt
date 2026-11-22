@@ -1,5 +1,5 @@
 # Chạy: bash tests/run_e2e.sh tests/reports_test.py   (thêm E2E_DATABASE_URL=... để chạy trên PostgreSQL)
-# v2.2 — báo cáo thống kê chặn IP 7 / 14 / 30 ngày: Executive Summary + chi tiết, PDF / Excel, gửi email qua SMTP.
+# v2.2 — báo cáo thống kê chặn IP 7 / 14 / 30 ngày: Tóm tắt điều hành + chi tiết, PDF / Excel, gửi email qua SMTP.
 import datetime as dt
 import email
 import email.policy
@@ -88,7 +88,7 @@ ab = j["autoblock"]
 chk("tự động chặn: 3 lệnh, 2 tự chặn, 1 Approve, 1 whitelist, có thời gian xử lý",
     (ab["requests"], ab["auto"], ab["approved"], ab["whitelist"]) == (3, 2, 1, 1) and ab["latency_avg"] is not None, ab)
 ex = j["executive"]
-chk("Executive Summary: câu tổng quan + nhận định + cần lưu ý", "đã chặn 6 IP" in ex["headline"]
+chk("Tóm tắt điều hành: câu tổng quan + nhận định + cần lưu ý", "đã chặn 6 IP" in ex["headline"]
     and any("Ngày cao điểm" in x for x in ex["highlights"]) and any("whitelist" in x for x in ex["attention"]), ex)
 chk("kỳ 14 / 30 ngày", len(c.get("/api/reports/summary?days=14", headers=V).json()["daily"]) == 14
     and len(c.get("/api/reports/summary?days=30", headers=V).json()["daily"]) == 30)
@@ -135,8 +135,8 @@ try:
 except FileNotFoundError:
     txt = None
 if txt is not None:
-    chk("PDF: trang đầu là Executive Summary, sau đó Nội dung chi tiết + danh sách IP",
-        txt.index("Executive Summary") < txt.index("Nội dung chi tiết") < txt.index("195.178.110.102"), txt[:300])
+    chk("PDF: trang đầu là Tóm tắt điều hành, sau đó Nội dung chi tiết + danh sách IP",
+        txt.index("Tóm tắt điều hành") < txt.index("Nội dung chi tiết") < txt.index("195.178.110.102"), txt[:300])
     chk("PDF: tiếng Việt có dấu hiển thị đúng", "Nhận định nổi bật" in txt and "Cần lưu ý" in txt)
 r = c.get(f"/api/reports/blocks.pdf?from={TODAY - dt.timedelta(days=365)}&to={TODAY}&token={VT}")
 chk("PDF khoảng dài (366 ngày) vẫn dựng được", r.status_code == 200 and r.content[:5] == b"%PDF-", r.status_code)
@@ -159,14 +159,14 @@ if imgs is not None:
 r = c.get(f"/api/reports/blocks.xlsx?days=7&token={VT}")
 chk("tải Excel", r.status_code == 200 and "spreadsheetml" in r.headers["content-type"], r.status_code)
 wb = load_workbook(io.BytesIO(r.content))
-chk("Excel: sheet đầu là Executive Summary, sau đó các sheet chi tiết",
-    wb.sheetnames == ["Executive Summary", "Theo ngày", "Danh sách IP", "Chi tiết lượt chặn", "Người thực hiện"],
+chk("Excel: sheet đầu là Tóm tắt điều hành, sau đó các sheet chi tiết",
+    wb.sheetnames == ["Tóm tắt điều hành", "Theo ngày", "Danh sách IP", "Chi tiết lượt chặn", "Người thực hiện"],
     wb.sheetnames)
-es = [str(x.value) for row in wb["Executive Summary"].iter_rows() for x in row if x.value]
-chk("Excel: Executive Summary có tổng quan, nhận định, cần lưu ý, chỉ số",
+es = [str(x.value) for row in wb["Tóm tắt điều hành"].iter_rows() for x in row if x.value]
+chk("Excel: Tóm tắt điều hành có tổng quan, nhận định, cần lưu ý, chỉ số",
     any("đã chặn 6 IP" in x for x in es) and "Nhận định nổi bật" in es and "Cần lưu ý / hành động" in es
     and "Chỉ số chính" in es)
-chk("Excel có logo ở header sheet Executive Summary", len(wb["Executive Summary"]._images) == 1)
+chk("Excel có logo ở header sheet Tóm tắt điều hành", len(wb["Tóm tắt điều hành"]._images) == 1)
 chk("Excel dùng font Inter (HSC Design System)", wb["Danh sách IP"]["A2"].font.name == "Inter"
     and wb["Danh sách IP"]["A1"].fill.fgColor.rgb.endswith("00468C"))
 wi = wb["Danh sách IP"]
@@ -207,9 +207,9 @@ try:
     chk("thư có 2 file đính kèm PDF + Excel", sorted(att.values()) == [
         "application/pdf", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"], att)
     text = m.get_body(preferencelist=("plain",)).get_content() if m else ""
-    chk("nội dung thư mở đầu bằng Executive Summary + ghi chú người gửi",
-        "EXECUTIVE SUMMARY" in text and "Báo cáo tuần" in text and "Nhận định nổi bật" in text
-        and text.index("EXECUTIVE SUMMARY") < text.index("Nhận định nổi bật"), text[:300])
+    chk("nội dung thư mở đầu bằng Tóm tắt điều hành + ghi chú người gửi",
+        "TÓM TẮT ĐIỀU HÀNH" in text and "Báo cáo tuần" in text and "Nhận định nổi bật" in text
+        and text.index("TÓM TẮT ĐIỀU HÀNH") < text.index("Nhận định nổi bật"), text[:300])
     chk("tiêu đề thư nêu kỳ + số IP", "Báo cáo chặn IP 7 ngày" in str(m["Subject"]) and "6 IP" in str(m["Subject"]))
     r = c.post("/api/reports/email", headers=O, json={**body, "days": None, "date_from": str(TODAY - dt.timedelta(days=2)),
                                                        "date_to": str(TODAY), "formats": ["xlsx"]})

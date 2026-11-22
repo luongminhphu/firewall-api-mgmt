@@ -158,6 +158,7 @@
 Ví dụ:
 [08:12] SOC-Bot: Phát hiện brute-force SSH từ 45.155.204.11 và 185[.]220[.]101[.]45
 [08:13] Hùng: cả subnet 194.26.29.0/24 nữa nhé"></textarea>
+                <button type="button" class="paste-sum tiny" id="paste-sum" hidden aria-live="polite"></button>
                 <p class="muted tiny">
                   App tự bóc IPv4/CIDR, hiểu cả dạng làm mờ <code>1.2.3[.]4</code>, loại trùng và loại IP nội bộ.
                 </p>
@@ -219,7 +220,7 @@ Ví dụ:
                   <label class="mode-opt"><input type="radio" name="block-mode" id="dry-run" value="dry" /><span>Chạy thử</span></label>
                 </div>
                 <p class="muted tiny block-hint" id="block-hint" aria-live="polite"></p>
-                <span class="block-sum tiny" id="block-sum"></span>
+                <button type="button" class="block-sum tiny" id="block-sum" title="Xem danh sách IP"></button>
                 <button class="btn btn--ghost" id="clear-list" type="button">Xóa danh sách</button>
                 <button class="btn btn--primary" id="do-block" type="button" disabled aria-describedby="block-hint">
                   Chặn ngay
@@ -351,7 +352,7 @@ Ví dụ:
           <div class="card">
             <div class="card-head">
               <div>
-                <h2>Lịch sử thay đổi · <span class="mono js-block-group">SCANPORT GROUP</span></h2>
+                <h2>Thay đổi trên <span class="mono js-block-group">SCANPORT GROUP</span></h2>
                 <p class="muted tiny">Mỗi lần thêm/bớt IP được ghi kèm người thực hiện, lý do, số object trước → sau. Thay đổi làm trực tiếp trên firewall được phát hiện và đánh dấu riêng.</p>
               </div>
               <div class="row row--tight">
@@ -424,7 +425,7 @@ Ví dụ:
           <div class="card">
             <div class="card-head">
               <div>
-                <h2>VPN</h2>
+                <h2>Rule &amp; tài khoản VPN</h2>
                 <p class="muted tiny">Đọc từ firewall (chỉ đọc): rule trong Rule Group VPN và hạn truy cập, tài khoản SSL VPN / IPsec. App <strong>không</strong> tắt, sửa hay xóa rule — xuất danh sách cần xử lý để Infra làm trên firewall.</p>
               </div>
               <div class="row row--tight">
@@ -551,8 +552,8 @@ Ví dụ:
           <div class="card">
             <div class="card-head">
               <div>
-                <h2>Báo cáo chặn IP</h2>
-                <p class="muted tiny">Thống kê IP bị chặn theo phương thức (thủ công / tự động) và thời gian thực hiện. Bản PDF / Excel theo HSC Design System, có Executive Summary ở đầu, nội dung chi tiết phía sau.</p>
+                <h2>Thống kê theo kỳ</h2>
+                <p class="muted tiny">Thống kê IP bị chặn theo phương thức (thủ công / tự động) và thời gian thực hiện. Bản PDF / Excel theo HSC Design System, có Tóm tắt điều hành ở đầu, nội dung chi tiết phía sau.</p>
               </div>
               <div class="row row--tight">
                 <a class="btn" id="rp-pdf" href="#" download>Tải PDF</a>
@@ -576,7 +577,7 @@ Ví dụ:
           </div>
 
           <div class="card rp-exec">
-            <div class="card-head"><h2>Executive Summary</h2></div>
+            <div class="card-head"><h2>Tóm tắt điều hành</h2></div>
             <p class="rp-headline" id="rp-headline"></p>
             <div id="rp-cards" class="status-cards rp-cards"></div>
             <div class="grid rp-two">
@@ -616,7 +617,7 @@ Ví dụ:
 
           <form class="card rp-mail" id="rp-mail" autocomplete="off">
             <div class="card-head"><div><h2>Gửi báo cáo qua email</h2>
-              <p class="muted tiny">Gửi ngay qua máy chủ SMTP đã cấu hình ở tab Cài đặt. Nội dung thư là Executive Summary; file đính kèm theo kỳ đang chọn.</p></div></div>
+              <p class="muted tiny">Gửi ngay qua máy chủ SMTP đã cấu hình ở tab Cài đặt. Nội dung thư là Tóm tắt điều hành; file đính kèm theo kỳ đang chọn.</p></div></div>
             <div class="row row--2">
               <label class="field"><span>Người nhận (phân cách dấu phẩy / chấm phẩy)</span>
                 <input id="rp-to-addr" placeholder="ceo@hsc.com.vn; infra@hsc.com.vn" /></label>
@@ -636,7 +637,7 @@ Ví dụ:
           <div class="card">
             <div class="card-head">
               <div>
-                <h2>Tự động chặn từ Teams</h2>
+                <h2>Lệnh chặn của SOC trên Teams</h2>
                 <p class="muted tiny">App đọc group chat với SOC qua Microsoft Graph và tự chặn IP khi gặp đúng dòng
                   <code class="ab-syntax">ĐỀ XUẤT CỦA SOC: BLOCK IP &lt;ip&gt;</code> (IN HOA) do tài khoản SOC gửi. Tin đã sửa bị bỏ qua.
                   Chặn xong, app trả lời <code class="ab-syntax">INFRA ĐÃ BLOCK &lt;ip&gt; THEO YÊU CẦU LÚC &lt;thời điểm&gt;</code> vào group chat.</p>
@@ -656,7 +657,8 @@ Ví dụ:
                 <div><h3>Chờ duyệt <span id="ab-pending-count" class="chip"></span></h3>
                   <p class="muted tiny">Lệnh SOC chưa tự chặn được (whitelist, giờ hành chính, công tắc tắt, vượt ngưỡng hoặc đọc trễ). Duyệt để chặn ngay trên mọi firewall đích; IP thuộc whitelist chỉ quản trị viên duyệt được.</p></div>
                 <div class="row row--tight ab-op" hidden>
-                  <button class="btn btn--primary btn--sm" id="ab-approve-sel" type="button" disabled>Duyệt các mục đã chọn</button>
+                  <span class="muted tiny" id="ab-sel-hint">Tick các dòng cần duyệt (IP whitelist duyệt riêng từng dòng)</span>
+                  <button class="btn btn--primary btn--sm" id="ab-approve-sel" type="button" disabled aria-describedby="ab-sel-hint">Duyệt các mục đã chọn</button>
                 </div>
               </div>
               <div class="table-wrap">

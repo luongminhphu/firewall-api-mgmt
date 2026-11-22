@@ -300,6 +300,13 @@ chk("Chặn nhanh: IP sai (999.1.1.1) được báo, không bỏ im lặng", "99
 fw_ids = [f["id"] for f in c.get("/api/firewalls", headers=H).json()][:1]
 r = c.post("/api/block", headers=H, json={"values": ["23.32.9.9"], "firewall_ids": fw_ids, "dry_run": True})
 chk("Chặn nhanh: chặn IP whitelist không ghi đè → 400 nêu whitelist", r.status_code == 400 and "Akamai" in r.json()["detail"], r.text[:200])
+r = c.post("/api/block", headers=O, json={"values": ["23.32.9.9"], "firewall_ids": fw_ids, "dry_run": True,
+                                          "reason": "SOC ticket", "allow_whitelist": ["23.32.9.9"]})
+chk("Chặn nhanh: quyền Thao tác KHÔNG ghi đè whitelist được (chỉ quản trị viên) → 403", r.status_code == 403
+    and "quản trị viên" in r.json()["detail"], r.text[:200])
+r = c.post("/api/block", headers=H, json={"values": ["23.32.9.9"], "firewall_ids": fw_ids, "dry_run": True,
+                                          "allow_whitelist": ["23.32.9.9"]})
+chk("Chặn nhanh: ghi đè whitelist không có lý do → 400", r.status_code == 400 and "lý do" in r.json()["detail"], r.text[:200])
 r = c.post("/api/block", headers=H, json={"values": ["23.32.9.9"], "firewall_ids": fw_ids, "dry_run": True,
                                           "reason": "SOC ticket", "allow_whitelist": ["23.32.9.9"]})
 chk("Chặn nhanh: ghi đè có chủ đích → chạy được", r.status_code in (200, 202), r.text[:200])

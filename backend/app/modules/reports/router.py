@@ -102,7 +102,7 @@ def email_body(rep: dict, note: str = "", sender: str = "") -> str:
              f"Kỳ: {data.fmt(rep['start'])} → {data.fmt(rep['end'])} (giờ Việt Nam)", ""]
     if note:
         lines += [note.strip(), ""]
-    lines += ["EXECUTIVE SUMMARY", ex["headline"], "", "Chỉ số chính:",
+    lines += ["TÓM TẮT ĐIỀU HÀNH", ex["headline"], "", "Chỉ số chính:",
               f"  - IP bị chặn: {s['unique_ips']} (thủ công {s['manual_ips']}, tự động {s['auto_ips']}, tự động {s['auto_share']}%)",
               f"  - Lượt chặn (IP × firewall): {s['actions']} · IP còn đang chặn: {s['still_blocked']}",
               f"  - SOC gửi → chặn xong (trung bình): {data.fmt_dur(rep['autoblock']['latency_avg'])}", "",

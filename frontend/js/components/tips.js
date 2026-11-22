@@ -53,9 +53,9 @@ const HELP = {
   // ---------------------------------------------------------------- Báo cáo
   "rp-from": "Chọn khoảng ngày bất kỳ (tối đa 366 ngày, giờ Việt Nam). Ngày cuối là hôm nay thì số liệu tính tới hiện tại.",
   "rp-to-addr": "Một hoặc nhiều email (tối đa 20), phân cách dấu phẩy / chấm phẩy. Thư gửi qua máy chủ SMTP ở tab Cài đặt (phải đang bật).",
-  "rp-note": "Lời nhắn đặt trên đầu thư, trước Executive Summary — vd \"Kính gửi anh/chị, báo cáo tuần 47\".",
-  "rp-f-pdf": "PDF: bản trình lãnh đạo — Executive Summary trang đầu, biểu đồ, bảng chi tiết; logo + màu HSC.",
-  "rp-f-xlsx": "Excel: Executive Summary + các sheet chi tiết (theo ngày, danh sách IP, từng lượt chặn, người thực hiện) để lọc / phân tích.",
+  "rp-note": "Lời nhắn đặt trên đầu thư, trước Tóm tắt điều hành — vd \"Kính gửi anh/chị, báo cáo tuần 47\".",
+  "rp-f-pdf": "PDF: bản trình lãnh đạo — Tóm tắt điều hành trang đầu, biểu đồ, bảng chi tiết; logo + màu HSC.",
+  "rp-f-xlsx": "Excel: Tóm tắt điều hành + các sheet chi tiết (theo ngày, danh sách IP, từng lượt chặn, người thực hiện) để lọc / phân tích.",
 
   // ---------------------------------------------------------------- VPN / rà soát
   "vs-days": "Rule còn hạn ≤ số ngày này được đánh dấu \"Sắp hết hạn\" trên dashboard VPN (mặc định 30).",

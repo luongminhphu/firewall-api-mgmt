@@ -216,6 +216,10 @@ def block(
     ip = client_ip_of(request)
     reason = payload.reason or ""
     overridden = [e["value"] for e in entries if e["value"] in allow]
+    if overridden and p.get("role") != "admin":  # như Tự động chặn: chỉ quản trị viên được chặn IP thuộc whitelist
+        raise HTTPException(403, "Chỉ quản trị viên được ghi đè whitelist (HSC / Akamai / đối tác): " + ", ".join(overridden))
+    if overridden and not reason.strip():
+        raise HTTPException(400, "Ghi đè whitelist cần nhập lý do / ticket")
     if overridden:  # ghi đè whitelist có chủ đích → lưu vào lý do (audit + description trên firewall)
         reason = (f"{reason} · " if reason else "") + "Ghi đè whitelist: " + ", ".join(overridden)
         reason = reason[:500]
