@@ -119,11 +119,13 @@ const confirmOk = async (page) => {
     for (const b of boxes) if (!(await b.isChecked())) await b.check();
     await page.fill("#block-reason", "UI smoke");
     await page.check("#dry-run");
-    chk("Chạy thử: nút đổi nhãn 'Chạy thử (không ghi lên firewall)', không còn là 'Chặn ngay'",
+    chk("Chạy thử: nút đổi nhãn 'Chạy thử (không ghi)', không còn là 'Chặn ngay'",
       /^Chạy thử/.test((await page.textContent("#do-block")).trim()));
     await page.click("#do-block");
-    await page.waitForSelector("#block-result .result-summary", { timeout: 30000 });
-    chk("chạy thử → tổng kết 'Chạy thử xong'", (await page.textContent("#block-result")).includes("Chạy thử xong"));
+    await page.waitForSelector("#block-result .result-verdict", { timeout: 30000 });
+    chk("chạy thử → 'Chạy thử xong — KHÔNG ghi lên firewall' (kiểu trung tính) + nút 'Chặn thật N IP này'",
+      (await page.textContent("#block-result")).includes("KHÔNG ghi lên firewall")
+      && !!(await page.$('#block-result .result-verdict.is-dry [data-after="real"]')));
     await page.check("#mode-real");
     await page.click("#do-block");
     await page.waitForSelector("#confirm-dialog[open]");
@@ -190,8 +192,8 @@ const confirmOk = async (page) => {
     await page.waitForFunction(() => document.querySelectorAll("#vr-table tbody tr[data-rule]").length === 8,
       null, { timeout: 30000 });
     chk("VPN: đồng bộ → bảng rule thời hạn (8 rule trong group VPN)", true);
-    chk("VPN: 'Cần xử lý' + 5 thẻ việc cần làm + 3 chip trạng thái (8 mục lọc)",
-      (await page.$$("#vr-cards .status-card")).length === 5 && (await page.$$("#vr-cards [data-status]")).length === 8
+    chk("VPN: 'Cần xử lý' + một dải lọc 8 trạng thái",
+      (await page.$$("#vr-cards .vr-strip [data-status]")).length === 8
       && /Cần xử lý|Không có rule nào cần xử lý/.test(await page.textContent("#vr-cards .vr-todo")));
     await page.click('#vr-cards [data-status="unreadable"]');
     await page.waitForFunction(() => document.querySelectorAll("#vr-table tbody tr[data-rule]").length === 1);
@@ -345,7 +347,8 @@ const confirmOk = async (page) => {
     await page.click("#ab-poll");
     await page.waitForFunction(() => /23\.33\.1\.1/.test(document.querySelector("#ab-pending").textContent));
     chk("Tự động chặn: IP thuộc whitelist Akamai → chờ duyệt, có nhãn whitelist",
-      (await page.textContent("#ab-pending")).includes("Whitelist · Akamai: 23.32.0.0/11"));
+      (await page.textContent("#ab-pending")).includes("Thuộc whitelist Akamai (23.32.0.0/11)")
+      && !!(await page.$("#ab-pending tr.is-wl")));
     await page.waitForFunction(() => /185\.220\.101\.7[\s\S]*Đã chặn/.test(document.querySelector("#ab-all").textContent), null, { timeout: 15000 }).catch(() => {});
     if (!/Đã chặn/.test(await page.textContent("#ab-all"))) {
       await page.selectOption("#ab-status", "blocked");

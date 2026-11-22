@@ -57,11 +57,11 @@ def build_xlsx(rep: dict, *, generated_by: str, generated_at: str,
     normal = next(st for st in wb._named_styles if st.name == "Normal")  # font mặc định toàn workbook = Inter
     normal.font = Font(name=FONT, size=10, color="0B2D5C")
 
-    # ------------------------------------------------------------ Executive Summary
+    # ------------------------------------------------------------ Tóm tắt điều hành
     ex = executive(rep)
     ws = wb.active
-    ws.title = "Executive Summary"
-    ws["A1"] = f"Báo cáo chặn IP — {rep['label']} · Executive Summary"
+    ws.title = "Tóm tắt điều hành"
+    ws["A1"] = f"Báo cáo chặn IP — {rep['label']} · Tóm tắt điều hành"
     ws["A1"].font = TITLE_FONT
     ws["A2"] = f"Kỳ: {fmt(rep['start'])} → {fmt(rep['end'])} (giờ Việt Nam)"
     ws["A3"] = f"Lập bởi {generated_by} lúc {generated_at} · SOC Rapid Block · group SCANPORT GROUP"
@@ -168,7 +168,7 @@ def build_xlsx(rep: dict, *, generated_by: str, generated_at: str,
     wa.auto_filter.ref = f"A1:D{max(end - 1, 1)}"
 
     for w in wb.worksheets:
-        w.sheet_view.showGridLines = w.title != "Executive Summary"
+        w.sheet_view.showGridLines = w.title != "Tóm tắt điều hành"
     wb.properties.title = f"Báo cáo chặn IP {rep['label']}"
     wb.properties.creator = "SOC Rapid Block"
     buf = io.BytesIO()

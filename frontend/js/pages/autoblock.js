@@ -138,6 +138,7 @@ async function loadPending() {
     const { items } = await api("/api/autoblock/requests?view=pending");
     $("#ab-pending-all").checked = false;
     $("#ab-approve-sel").disabled = true;
+    $("#ab-sel-hint").textContent = "Tick các dòng cần duyệt (IP whitelist duyệt riêng từng dòng)";
     if (!items.length) return tableMessage(tb, cols, "empty", "Không có lệnh nào chờ duyệt.");
     const op = can("operator");
     tb.innerHTML = items.map((r) => `<tr${r.needs_admin ? ' class="is-wl"' : ""}>
@@ -146,7 +147,7 @@ async function loadPending() {
         : `<input type="checkbox" class="ab-pick" value="${r.id}" aria-label="Chọn ${esc(r.ip)}" />`}</td>` : ""}
       <td class="mono" data-label="SOC gửi lúc">${esc(hhmm(r.requested_at || r.created_at))}</td><td class="mono" data-label="IP"><strong>${esc(r.ip)}</strong></td>
       <td data-label="SOC gửi">${esc(r.sender)}</td>
-      <td class="tiny" data-label="Lý do chờ">${r.whitelist ? `<span class="chip chip--info">Whitelist · ${esc(r.whitelist)}</span> ` : ""}${esc(r.pending_reason)}</td>
+      <td class="tiny" data-label="Lý do chờ">${esc(r.pending_reason)}</td>
       ${op ? `<td class="nowrap ab-act">${approveBtn(r)}
         <button class="btn btn--ghost btn--sm" type="button" data-reject="${r.id}">Từ chối</button></td>` : ""}</tr>`).join("");
   } catch (ex) {
@@ -166,7 +167,9 @@ $("#ab-pending").addEventListener("change", (e) => {
   if (e.target.id === "ab-pending-all") {
     $$("#ab-pending .ab-pick:not(:disabled)").forEach((x) => (x.checked = e.target.checked));
   }
-  $("#ab-approve-sel").disabled = !picked().length;
+  const n = picked().length;
+  $("#ab-approve-sel").disabled = !n;
+  $("#ab-sel-hint").textContent = n ? `Đã chọn ${n} lệnh` : "Tick các dòng cần duyệt (IP whitelist duyệt riêng từng dòng)";
 });
 
 // Bảng thông tin dùng chung cho màn xác nhận (giống Chặn nhanh): firewall đích, group, danh sách IP

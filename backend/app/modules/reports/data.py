@@ -234,7 +234,7 @@ def to_json(rep: dict, limit: int = 1000) -> dict:
 
 
 def executive(rep: dict) -> dict:
-    """Executive Summary: câu tổng quan + nhận định nổi bật + điểm cần lưu ý, sinh từ số liệu (không đoán)."""
+    """Tóm tắt điều hành: câu tổng quan + nhận định nổi bật + điểm cần lưu ý, sinh từ số liệu (không đoán)."""
     s, ab, days = rep["summary"], rep["autoblock"], rep["days"]
     last = rep["end"] - dt.timedelta(microseconds=1)
     period_txt = f"{rep['start']:%d/%m/%Y} – {last:%d/%m/%Y}"
@@ -254,7 +254,7 @@ def executive(rep: dict) -> dict:
         highlights.append(f"Trung bình {avg:.1f} IP/ngày; {s['still_blocked']} IP vẫn đang bị chặn cuối kỳ, "
                           f"{s['removed_in_period']} lượt gỡ chặn trong kỳ.")
     if ab["requests"]:
-        highlights.append(f"Nhận {ab['requests']} lệnh SOC qua Teams: {ab['auto']} tự chặn ngay, {ab['approved']} được "
+        highlights.append(f"Nhận {ab['requests']} lệnh SOC qua Teams: {ab['auto']} tự chặn ngay, {ab['approved']} "
                           f"được duyệt sau khi chờ, {ab['rejected']} bị từ chối.")
     if ab["latency_avg"] is not None:
         highlights.append(f"Thời gian từ lúc SOC gửi lệnh tới lúc chặn xong: trung bình {fmt_dur(ab['latency_avg'])}, "

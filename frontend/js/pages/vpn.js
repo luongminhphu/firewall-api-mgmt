@@ -126,16 +126,15 @@ function ruleParams() {
 
 function renderCards(summary) {
   const n = (k) => summary[k] ?? 0;
-  const todo = TODO.reduce((t, [k]) => t + n(k), 0);
+  const todo = summary.todo ?? TODO.reduce((t, [k]) => t + n(k), 0); // số rule cần xử lý (không đếm trùng)
   const pressed = (k) => `data-status="${k}" aria-pressed="${vs.status === k}"`;
+  // Một dải lọc duy nhất: việc cần làm (màu theo mức) rồi trạng thái tham khảo; bấm lại để bỏ lọc
   $("#vr-cards").innerHTML = `
     <p class="vr-todo"><strong>${todo ? `Cần xử lý: ${todo} rule` : "Không có rule nào cần xử lý"}</strong>
       <span class="muted tiny">Bấm một mục để lọc bảng; bấm lại để bỏ lọc.</span></p>
-    <div class="status-cards vr-todo-cards">${TODO.map(([k, label, tone]) => `
-      <button type="button" class="status-card${n(k) ? " status-card--" + tone : " is-zero"}${vs.status === k ? " is-active" : ""}" ${pressed(k)}>
-        <b>${n(k)}</b><span>${label}</span>
-      </button>`).join("")}</div>
-    <div class="vr-info">${INFO.map(([k, label]) => `
+    <div class="vr-strip" role="group" aria-label="Lọc theo trạng thái">${TODO.map(([k, label, tone]) => `
+      <button type="button" class="chip-btn${n(k) ? ` chip-btn--${tone}` : " is-zero"}${vs.status === k ? " is-active" : ""}" ${pressed(k)}>${label} <b>${n(k)}</b></button>`).join("")}
+      <span class="vr-strip__sep" aria-hidden="true"></span>${INFO.map(([k, label]) => `
       <button type="button" class="chip-btn${vs.status === k ? " is-active" : ""}" ${pressed(k)}>${label} <b>${n(k)}</b></button>`).join("")}</div>`;
 }
 

@@ -6,7 +6,7 @@ Màu: token HSC chế độ sáng — chữ navy #0B2D5C, brand #2681FF, brand-d
 #0058AF → #00468C, trạng thái sg30 / sr40 / sy50.
 
 Bố cục:
-  1. Executive Summary — câu tổng quan, thẻ chỉ số, nhận định nổi bật, điểm cần lưu ý (trang đầu).
+  1. Tóm tắt điều hành — câu tổng quan, thẻ chỉ số, nhận định nổi bật, điểm cần lưu ý (trang đầu).
   2. Nội dung chi tiết — biểu đồ + bảng theo ngày, tự động chặn, người thực hiện, danh sách IP.
 Chân trang: tên báo cáo · kỳ · "Trang x/y".
 """
@@ -214,7 +214,7 @@ def build_pdf(rep: dict, *, generated_by: str, generated_at: str,
     ex = executive(rep)
     story = []
 
-    # ===================================================== EXECUTIVE SUMMARY
+    # ===================================================== TÓM TẮT ĐIỀU HÀNH
     # Header: dải màu cover HSC, logo trong ô trắng góc phải (logo tải lên hoặc biểu tượng mặc định)
     LW = 46 * mm
     band = Table([[Paragraph(f"Báo cáo chặn IP — {_esc(rep['label'])}", S["title"]), _logo_flowable(logo, LW - 10 * mm, 14 * mm)],
@@ -230,7 +230,7 @@ def build_pdf(rep: dict, *, generated_by: str, generated_at: str,
     story += [
         band,
         Spacer(1, 10),
-        Paragraph("Executive Summary", S["h1"]),
+        Paragraph("Tóm tắt điều hành", S["h1"]),
         Paragraph(_esc(ex["headline"]), S["lead"]),
         Spacer(1, 8),
         _kpis(rep, S, W),

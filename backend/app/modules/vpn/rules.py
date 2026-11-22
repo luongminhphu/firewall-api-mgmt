@@ -311,13 +311,21 @@ def list_rules(db: Session, *, firewall_id: int | None = None, status: str = "",
             teams.add(r.team)
     summary = {s: 0 for s in expiry.STATUSES}
     summary["mismatch"] = 0
+    todo = {"expired_enabled", "user_gone", "expiring", "unreadable"}
+    summary["todo"] = 0
     for x in all_rows:
         summary[x["status"]] += 1
         summary["mismatch"] += 1 if x["expiry_mismatch"] else 0
+        # việc cần xử lý đếm theo MỌI cờ của rule (vd user không còn + hết hạn vẫn bật) để ô số khớp chip trên dòng
+        for f in ("expired_enabled", "user_gone"):
+            if f in x.get("flags", []) and x["status"] != f:
+                summary[f] += 1
+        summary["todo"] += 1 if (todo & ({x["status"]} | set(x.get("flags", []))) or x["expiry_mismatch"]) else 0
     rows = all_rows
     if status:  # nhiều giá trị, phân cách dấu phẩy; "mismatch" = cờ Lệch thời hạn
         wanted = set(status.split(","))
-        rows = [x for x in rows if x["status"] in wanted or ("mismatch" in wanted and x["expiry_mismatch"])]
+        rows = [x for x in rows if x["status"] in wanted or ("mismatch" in wanted and x["expiry_mismatch"])
+                or wanted & {"expired_enabled", "user_gone"} & set(x.get("flags", []))]
     if team:
         rows = [x for x in rows if x["team"].lower() == team.lower()]
     if date_from:

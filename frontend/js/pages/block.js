@@ -62,6 +62,7 @@ $("#pick-all-fw").addEventListener("click", () => {
   saveFws();
   refreshBlockButton();
 });
+$("#block-reason").addEventListener("input", refreshBlockButton);
 $("#block-actions").addEventListener("change", (e) => {
   if (e.target.name === "block-mode") refreshBlockButton();
 });
@@ -116,6 +117,10 @@ async function parseText(text, { replace = true } = {}) {
 function renderCandidates(rejected = []) {
   const box = $("#candidate-list");
   $("#count-chip").textContent = `${state.candidates.length} IP`;
+  // Điện thoại: mục 3 nằm xa dưới — tóm tắt ngay dưới ô dán để biết app đã bóc được gì
+  const ps = $("#paste-sum"), list = state.candidates.map((c) => c.value);
+  ps.hidden = !list.length;
+  ps.textContent = list.length ? `${list.length} IP: ${list.slice(0, 3).join(", ")}${list.length > 3 ? ", …" : ""} — xem danh sách` : "";
   if (!state.candidates.length) {
     box.innerHTML = `<p class="empty">Chưa có IP nào. Dán nội dung chat hoặc nhập tay ở mục 1 · Nguồn IP.</p>`;
   } else {
@@ -142,7 +147,7 @@ function renderCandidates(rejected = []) {
       rejected
         .slice(0, 12)
         .map((r) => `<span class="rej"><code>${esc(r.value)}</code> — ${esc(r.reason)}${
-          r.whitelist && can("operator")
+          r.whitelist && can("admin") // như Tự động chặn: chỉ quản trị viên ghi đè whitelist (server kiểm lại)
             ? ` <button class="btn btn--ghost btn--sm" type="button" data-allow="${esc(r.value)}" aria-label="Vẫn chặn ${esc(r.value)} (ghi đè whitelist)">Vẫn chặn</button>`
             : ""}</span>`)
         .join("") +
@@ -188,14 +193,16 @@ function refreshBlockButton() {
   const btn = $("#do-block");
   if (btn.getAttribute("aria-busy") !== "true") {
     // Nút nói đúng điều sẽ xảy ra: chạy thử là nút trung tính, chặn thật là nút chính
-    btn.textContent = dry ? "Chạy thử (không ghi lên firewall)" : "Chặn ngay";
+    btn.textContent = dry ? "Chạy thử (không ghi)" : "Chặn ngay";
     btn.className = `btn ${dry ? "" : "btn--primary"}`;
   }
   const n = state.candidates.length, f = selectedFwIds().length;
   $("#block-sum").textContent = n || f ? `${n} IP · ${f} firewall` : "";
+  const needReason = state.candidates.some((c) => c.whitelist) && !$("#block-reason").value.trim();
   const why = !can("operator") ? "Tài khoản Chỉ xem không chặn được IP."
     : !state.candidates.length ? "Chưa có IP nào — dán nội dung chat hoặc nhập tay."
       : !selectedFwIds().length ? "Chọn firewall cần chặn ở mục 2 · Đích cấu hình — lần sau app nhớ lựa chọn này."
+        : needReason ? "Có IP ghi đè whitelist — nhập lý do / ticket ở mục 2 trước khi chặn."
         : "";
   $("#do-block").disabled = Boolean(why);
   $("#block-hint").textContent = why;
@@ -322,8 +329,14 @@ function blockSummary(r, dry) {
   const fwErr = r.results.filter((x) => !x.ok).length;
   const lb = state.lastBlock;
   if (dry || !lb) {
-    return `<div class="alert alert--ok result-summary" role="status">
-      <strong>Chạy thử xong</strong><span>${r.results.length} firewall · ${t.dry_run} sẽ tạo · ${t.existed} đã có — chưa ghi gì lên firewall</span></div>`;
+    // Kiểu trung tính (không phải xanh "thành công") để không nhầm với chặn thật; chặn thật ngay từ đây
+    return `<div class="result-verdict is-dry" role="status">
+      <p class="result-verdict__title">Chạy thử xong — KHÔNG ghi lên firewall</p>
+      <p class="result-verdict__meta">${r.results.length} firewall · ${t.dry_run} sẽ tạo · ${t.existed} đã có</p>
+      ${can("operator") ? `<div class="result-verdict__acts">
+        <button class="btn btn--sm btn--primary" type="button" data-after="real">Chặn thật ${state.candidates.length} IP này</button>
+      </div>` : ""}
+    </div>`;
   }
   const hhmm = lb.at.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false });
   // Câu chốt rõ ràng + việc tiếp theo; chi tiết từng firewall nằm bên dưới, thu gọn trừ khi có lỗi
@@ -343,6 +356,12 @@ function blockSummary(r, dry) {
 $("#block-result").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-after]");
   if (!b) return;
+  if (b.dataset.after === "real") {
+    $("#mode-real").checked = true;
+    refreshBlockButton();
+    $("#do-block").click(); // vẫn qua màn xác nhận như chặn thường
+    return;
+  }
   if (b.dataset.after === "again") {
     $("#clear-list").click();
     $("#paste-text").focus();
@@ -410,4 +429,10 @@ function renderBlockResult(r) {
       return `<div class="result-fw">${head}${list}${xml}</div>`;
     })
     .join("");
+}
+
+// Bấm tóm tắt (dưới ô dán / thanh đáy) → cuộn tới danh sách IP ở mục 3
+for (const id of ["#paste-sum", "#block-sum"]) {
+  $(id).addEventListener("click", () =>
+    $("#candidate-list").scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "center" }));
 }

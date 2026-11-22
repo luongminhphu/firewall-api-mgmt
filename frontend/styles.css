@@ -943,7 +943,7 @@ h1, h2, h3 { text-wrap: balance; }
 .block-actions .block-hint { margin: 0; flex-basis: 100%; order: 9; text-align: right; }
 
 /* Tự động chặn: dòng chờ duyệt thuộc whitelist có nền cảnh báo, nút ghi đè không phải nút chính */
-#ab-pending tr.is-wl td { background: var(--tint-warn); }
+#ab-pending tr.is-wl { background: var(--tint-warn); }
 .btn--warn-ghost { background: transparent; border-color: var(--line-warn); color: var(--warn); font-weight: 600; }
 .btn--warn-ghost:hover:not(:disabled) { background: var(--tint-warn); border-color: var(--warn); }
 
@@ -972,3 +972,28 @@ h1, h2, h3 { text-wrap: balance; }
 #rejected-box .rej .btn { margin-left: 0; }
 /* Huy hiệu chờ duyệt: cần người xử lý → màu khẩn ở cả hai theme */
 .tab-badge { background: var(--danger-solid); color: #fff; }
+
+/* VPN: một dải lọc trạng thái (thay ô số + chip) */
+.vr-strip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.vr-strip__sep { width: 1px; align-self: stretch; margin: 0 var(--s1); background: var(--border); }
+.chip-btn--err b { color: var(--danger); }
+.chip-btn--warn b { color: var(--warn); }
+.chip-btn--err { border-color: var(--line-danger); }
+.chip-btn--warn { border-color: var(--line-warn); }
+.chip-btn.is-zero { opacity: 0.6; }
+.cb__fws { margin: 0; padding: var(--s1) var(--s4) 0; font-variant-numeric: tabular-nums; }
+
+/* Kết quả chạy thử: trung tính, khác hẳn hộp xanh của chặn thật */
+.result-verdict.is-dry { border-style: dashed; border-color: var(--border-strong); background: var(--surface-2); }
+/* Hàng nút không nhảy khi đổi chế độ: nút giữ bề rộng cố định */
+#do-block { min-width: 11.5em; }
+
+/* Tóm tắt IP đã bóc ngay dưới ô dán: chỉ cần trên điện thoại (desktop thấy mục 3 ở cột bên) */
+.paste-sum { display: none; }
+button.block-sum { border: 0; background: none; padding: 0; font-family: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+@media (max-width: 1080px) {
+  .paste-sum:not([hidden]) { display: block; width: 100%; margin: var(--s2) 0 0; padding: var(--s2) var(--s3); text-align: left;
+    border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text);
+    font-variant-numeric: tabular-nums; cursor: pointer; min-height: 44px; }
+  button.block-sum { min-height: 44px; }
+}

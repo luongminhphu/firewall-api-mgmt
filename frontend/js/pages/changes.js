@@ -65,7 +65,18 @@ function renderChanges(r) {
     box.innerHTML = `<p class="empty">Không có thay đổi nào khớp bộ lọc. Lịch sử bắt đầu ghi từ phiên bản 1.2 — thao tác chặn/bỏ chặn đầu tiên sẽ xuất hiện tại đây.</p>`;
     return;
   }
-  box.innerHTML = r.batches.map((b) => {
+  // Một thao tác (cùng người, lý do, nguồn, cùng danh sách IP, trong 2 phút) trên nhiều firewall → gộp một thẻ
+  const groups = [];
+  const sig = (b) => [b.kind, b.actor, b.reason, b.source, b.added.map((x) => x.value).sort().join(","),
+    b.removed.map((x) => x.value).sort().join(",")].join("|");
+  for (const b of r.batches) {
+    const g = groups.find((x) => x.sig === sig(b) && b.kind !== "drift"
+      && Math.abs(new Date(x.items[0].ts) - new Date(b.ts)) < 120000);
+    if (g) g.items.push(b);
+    else groups.push({ sig: sig(b), items: [b] });
+  }
+  box.innerHTML = groups.map(({ items }) => {
+    const b = items[0];
     const [cls, label] = KIND[b.kind] || KIND.change;
     const delta = b.kind === "baseline"
       ? `<span class="cb__count">${b.count_after} object</span>`
@@ -79,7 +90,7 @@ function renderChanges(r) {
           b.actor && b.actor !== b.actor_name && actorLabel(b.actor) === b.actor ? `<small>${esc(b.actor)}</small>` : ""
         }</span>
         <span class="chip ${cls}">${label}</span>
-        <span class="cb__target">${esc(b.firewall_name)} › ${esc(b.group_name)}</span>
+        <span class="cb__target">${items.map((x) => esc(x.firewall_name)).join(", ")} › ${esc(b.group_name)}</span>
         <span class="cb__delta">${delta}</span>
       </div>
       <div class="cb__meta">
@@ -87,8 +98,9 @@ function renderChanges(r) {
         ${b.source ? `<span>Nguồn: ${esc(actorLabel(b.source))}</span>` : ""}
         ${b.auth_method ? `<span>Xác thực: ${esc(METHOD[b.auth_method] || b.auth_method)}</span>` : ""}
         ${b.client_ip ? `<span>IP client: <span class="mono">${esc(b.client_ip)}</span></span>` : ""}
-        <span class="mono" title="Mã lô thao tác">#${esc(b.batch_id)}</span>
+        <span class="mono" title="Mã lô thao tác">${items.map((x) => `#${esc(x.batch_id)}`).join(" ")}</span>
       </div>
+      ${items.length > 1 ? `<p class="cb__fws tiny muted">${items.map((x) => `${esc(x.firewall_name)}: ${x.count_before} → ${x.count_after} object`).join(" · ")}</p>` : ""}
       ${diffList(b)}
     </article>`;
   }).join("");
