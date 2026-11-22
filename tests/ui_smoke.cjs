@@ -53,6 +53,7 @@ const tab = async (page, name) => {
 };
 const visible = (page, sel) => page.isVisible(sel);
 // hộp xác nhận trong app (thay confirm() của trình duyệt): chờ mở rồi bấm nút hành động
+const step = (page, n) => page.click(`[data-goto="abs-sec-${n}"]`); // Cài đặt › Tự động chặn: một bước một lúc
 const confirmOk = async (page) => {
   await page.waitForSelector("#confirm-dialog[open]");
   await page.click("#confirm-ok");
@@ -133,7 +134,9 @@ const confirmOk = async (page) => {
     await page.keyboard.press("Escape");
     chk("Esc ở màn xác nhận → hủy, không chặn", !(await visible(page, "#confirm-dialog"))
       && !/Đã chặn xong/.test(await page.textContent("#block-result")));
-    await page.click("#do-block");
+    await page.focus("#block-reason");
+    await page.keyboard.press("Control+Enter");
+    chk("Phím tắt: Ctrl+Enter mở màn xác nhận chặn", await visible(page, "#confirm-dialog"));
     await confirmOk(page);
     await page.waitForFunction(() => /Đã chặn xong/.test(document.querySelector("#block-result")?.textContent || ""),
       null, { timeout: 30000 });
@@ -257,7 +260,8 @@ const confirmOk = async (page) => {
     chk("Tooltip: có nút ⓘ hướng dẫn ở các mục cấu hình", ntip >= 40, ntip);
     await page.click('#st-nav [data-st="autoblock"]');
     await page.click('[data-goto="abs-sec-3"]');
-    chk("Cài đặt: mục lục bước → cuộn tới bước 3 (Lịch & giới hạn)", await visible(page, "#abs-sec-3"));
+    chk("Cài đặt: bấm bước 3 → chỉ hiện bước 3 (Lịch & giới hạn)", await visible(page, "#abs-sec-3")
+      && !(await visible(page, "#abs-sec-1")) && (await page.getAttribute('[data-goto="abs-sec-3"]', "aria-current")) === "step");
     await page.hover('#abs-limit');
     await page.focus('label:has(#abs-limit) .tip');
     await page.waitForSelector("#tip-pop:not([hidden])");
@@ -279,18 +283,21 @@ const confirmOk = async (page) => {
       body: JSON.stringify({ sender_id: SOC, name: "SOC Ca đêm", html }) });
     await fetch(`${G}/_reset`, { method: "POST" });
     await say("<p>Dạ chào các anh</p>");
+    await step(page, 1);
     await page.fill("#abs-tenant", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     await page.fill("#abs-client", "12345678-1234-1234-1234-123456789abc");
     await page.fill("#abs-secret", "graph-secret");
     await page.fill("#abs-chat", "19:mockchat@thread.v2");
     await page.click("#abs-test");
     await page.waitForSelector("#abs-test-out .alert--ok");
+    await step(page, 2);
     await page.waitForSelector(`#abs-seen [data-add="${SOC}"]`);
     chk("Tự động chặn: Kiểm tra kết nối → liệt kê người gửi gần đây", true);
     chk("Tự động chặn: nút Kiểm tra kết nối giữ nhãn sau khi chạy xong",
       (await page.textContent("#abs-test")).trim() === "Kiểm tra kết nối", await page.textContent("#abs-test"));
     await page.click(`#abs-seen [data-add="${SOC}"]`);
     chk("Tự động chặn: chọn tài khoản SOC từ người gửi", (await page.textContent("#abs-senders")).includes(SOC));
+    await step(page, 4);
     chk("Tự động chặn: mặc định có whitelist HSC / Akamai / Đối tác",
       (await page.$$eval("#abs-wl [data-wl-name]", (xs) => xs.map((x) => x.value))).join(",") === "HSC,Akamai,Đối tác");
     await page.fill('#abs-wl [data-wl-text="1"]', "23.32.0.0/11   # Akamai edge\n104.64.0.0/10");
@@ -298,6 +305,7 @@ const confirmOk = async (page) => {
     await page.click("#abs-wl-add");
     await page.fill('#abs-wl [data-wl-name="3"]', "Nhà cung cấp SOC");
     await page.fill('#abs-wl [data-wl-text="3"]', "45.117.80.0/22");
+    await step(page, 5);
     await page.fill("#abs-reply-url", "http://127.0.0.1:4470/_workflow?sig=bi-mat");
     await page.check("#abs-reply");
     await page.click("#abs-reply-test");
@@ -310,10 +318,12 @@ const confirmOk = async (page) => {
       (await page.inputValue("#abs-reply-url")) === "" && (await page.getAttribute("#abs-reply-url", "placeholder")).includes("127.0.0.1"));
     chk("Tự động chặn: lịch mặc định 18:00–08:00 + cả ngày cuối tuần",
       (await page.inputValue("#abs-wstart")) === "18:00" && (await page.isChecked("#abs-weekend")));
+    await step(page, 3);
     await page.click("#abs-hol-add");
     await page.fill('#abs-hol [data-k="name"]', "Nghỉ lễ thử");
     await page.uncheck("#abs-window");
     await page.fill("#abs-poll", "5");
+    await step(page, 1);
     await page.check("#abs-enabled");
     await page.click('#ab-form button[type="submit"]');
     await page.waitForFunction(() => /Đã lưu/.test(document.querySelector("#abs-msg").textContent));
@@ -324,7 +334,11 @@ const confirmOk = async (page) => {
     await say("<p>ĐỀ XUẤT CỦA SOC: BLOCK IP 185.220.101.7</p><p>ĐỀ XUẤT CỦA SOC: BLOCK IP 23.33.1.1</p>");
     await tab(page, "autoblock");
     await page.waitForSelector("#panel-autoblock.is-active");
-    await page.waitForSelector("#ab-cards .ab-card");
+    await page.waitForSelector("#ab-cards .ab-seg");
+    chk("Tự động chặn: một dòng trạng thái thay cho 5 ô số", /Tự động chặn (BẬT|TẮT)/.test(await page.textContent("#ab-cards"))
+      && /giới hạn \d+/.test(await page.textContent("#ab-cards")));
+    chk("Tự động chặn: nhật ký 'Tất cả lệnh' thu gọn mặc định", !(await page.$eval("#ab-all-wrap", (d) => d.open)));
+    await page.click("#ab-all-wrap > summary");
     await page.click("#ab-poll");
     await page.waitForFunction(() => /23\.33\.1\.1/.test(document.querySelector("#ab-pending").textContent));
     chk("Tự động chặn: IP thuộc whitelist Akamai → chờ duyệt, có nhãn whitelist",
@@ -482,7 +496,7 @@ const confirmOk = async (page) => {
       await p2.waitForSelector("#rp-cards .status-card");
       chk("viewer xem được Báo cáo nhưng không có form gửi email", !(await visible(p2, "#rp-mail")));
       await tab(p2, "autoblock");
-      await p2.waitForSelector("#ab-cards .ab-card");
+      await p2.waitForSelector("#ab-cards .ab-seg");
       chk("viewer xem tab Tự động chặn nhưng không có nút Tắt khẩn cấp / Approve / Gỡ chặn",
         !(await visible(p2, "#ab-off")) && !(await p2.$("#ab-pending [data-approve]")) && !(await p2.$("[data-unblock]")));
       chk("viewer không thấy nút Kiểm tra tất cả / Đồng bộ lịch sử / form firewall",

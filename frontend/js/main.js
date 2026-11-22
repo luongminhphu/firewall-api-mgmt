@@ -2,6 +2,7 @@
    khởi động sau đăng nhập (boot), điều hướng tab, phân quyền giao diện, sáng/tối, trình tự đăng nhập lúc mở trang.
    Nghiệp vụ từng màn hình nằm ở pages/*, dùng chung ở api.js / store.js / components/*. */
 import { API, api } from "./api.js";
+import { openModal } from "./components/modal.js";
 import { initTips } from "./components/tips.js";
 import { toast } from "./components/toast.js";
 import { loadAudit } from "./pages/audit.js";
@@ -82,6 +83,38 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// Phím tắt cho người dùng thường xuyên (ca trực): Ctrl/⌘+Enter chặn, "/" tìm/lọc, "?" bảng phím tắt
+const SHORTCUTS = [
+  ["Ctrl / ⌘ + Enter", "Chặn nhanh: mở màn xác nhận chặn (khi nút Chặn ngay đang bật)"],
+  ["/", "Đưa con trỏ vào ô tìm kiếm / lọc đầu tiên của trang"],
+  ["Esc", "Đóng hộp thoại, tooltip, menu (trên màn xác nhận = Hủy)"],
+  ["?", "Mở bảng phím tắt này"],
+];
+document.addEventListener("keydown", (e) => {
+  if (!state.token || document.querySelector("dialog[open]")) return;
+  const typing = e.target.closest?.("input, textarea, select, [contenteditable]");
+  const panel = $(".panel.is-active");
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && panel?.id === "panel-block") {
+    e.preventDefault();
+    if (!$("#do-block").disabled) $("#do-block").click();
+    else $("#block-hint").focus?.();
+    return;
+  }
+  if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "/") {
+    const f = panel?.querySelector('input[type="search"], .filters input:not([type="date"]):not([type="checkbox"]), textarea');
+    if (f && f.offsetParent) {
+      e.preventDefault();
+      f.focus();
+      f.select?.();
+    }
+  } else if (e.key === "?") {
+    e.preventDefault();
+    openModal("Phím tắt", `<dl class="confirm-facts kbd-list">${SHORTCUTS.map(([k, d]) =>
+      `<dt><kbd>${esc(k)}</kbd></dt><dd>${esc(d)}</dd>`).join("")}</dl>`);
+  }
+});
+
 initRouter((tab) => {
   const btn = $(`.tab[data-tab="${tab}"]`);
   $("#page-title").textContent = btn?.textContent.trim() || "";
@@ -119,7 +152,7 @@ function applyRole() {
   $("#v-sync").hidden = viewer;
   $("#do-block").title = viewer ? "Vai trò Chỉ xem không được chặn IP" : "";
   $("#do-unblock").title = viewer ? "Vai trò Chỉ xem không được bỏ chặn" : "";
-  if (viewer) toast("Bạn đang có quyền Readonly — liên hệ quản trị viên nếu cần quyền Write", "");
+  if (viewer) toast("Bạn đang có quyền Chỉ xem — liên hệ quản trị viên nếu cần quyền Thao tác", "");
 }
 
 // --------------------------------------------------------- khởi động

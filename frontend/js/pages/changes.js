@@ -53,8 +53,8 @@ function renderChanges(r) {
   const t = r.totals;
   $("#c-stats").innerHTML = `
     <div class="stat"><b>${t.batches}</b><span>lần thay đổi</span></div>
-    <div class="stat stat--add"><b>+${t.added}</b><span>IP đưa vào group chặn</span></div>
-    <div class="stat stat--rm"><b>−${t.removed}</b><span>IP gỡ khỏi group</span></div>
+    <div class="stat stat--add"><b>${t.added ? "+" + t.added : 0}</b><span>IP đưa vào group chặn (tính theo từng firewall)</span></div>
+    <div class="stat stat--rm"><b>${t.removed ? "−" + t.removed : 0}</b><span>IP gỡ khỏi group (tính theo từng firewall)</span></div>
     <div class="stat stat--drift"><b>${t.drift}</b><span>lần sửa ngoài app</span></div>`;
   const box = $("#c-list");
   if (!r.batches.length) {

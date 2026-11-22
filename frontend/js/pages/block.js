@@ -10,12 +10,30 @@ import { loadFirewalls } from "./firewalls.js";
 
 on("firewalls", () => renderFwPicker());
 
+// Nhớ firewall đã chọn lần trước (theo người dùng, trên trình duyệt này) — ca đêm không phải tick lại
+const fwKey = () => `sb_block_fws:${state.user}`;
+const savedFws = () => {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(fwKey()) || "[]").map(String));
+  } catch {
+    return new Set();
+  }
+};
+const saveFws = () => {
+  try {
+    localStorage.setItem(fwKey(), JSON.stringify(selectedFwIds()));
+  } catch {
+    /* trình duyệt chặn lưu trữ: vẫn chọn được, chỉ không nhớ */
+  }
+};
+
 function renderFwPicker() {
   const box = $("#fw-picker");
   const list = state.firewalls.filter((f) => f.enabled);
-  const keep = new Set(
-    $$("#fw-picker input[type=checkbox]:checked").map((b) => b.value)
-  );
+  const current = $$("#fw-picker input[type=checkbox]");
+  const keep = current.length
+    ? new Set($$("#fw-picker input[type=checkbox]:checked").map((b) => b.value))
+    : savedFws();
   if (!list.length) {
     box.innerHTML = `<p class="empty">Chưa có firewall nào đang bật. Sang tab <strong>Firewall</strong> để thêm.</p>`;
     return;
@@ -41,9 +59,13 @@ $("#pick-all-fw").addEventListener("click", () => {
   const boxes = $$("#fw-picker input[type=checkbox]");
   const allOn = boxes.every((b) => b.checked);
   boxes.forEach((b) => (b.checked = !allOn));
+  saveFws();
   refreshBlockButton();
 });
-$("#fw-picker").addEventListener("change", refreshBlockButton);
+$("#fw-picker").addEventListener("change", () => {
+  saveFws();
+  refreshBlockButton();
+});
 
 const selectedFwIds = () =>
   $$("#fw-picker input[type=checkbox]:checked").map((b) => Number(b.value));
@@ -113,15 +135,15 @@ function renderCandidates(rejected = []) {
   const rbox = $("#rejected-box");
   if (rejected.length) {
     rbox.innerHTML =
-      `<strong>Đã loại ${rejected.length} mục:</strong><br />` +
+      `<strong>Đã loại ${rejected.length} mục:</strong>` +
       rejected
         .slice(0, 12)
         .map((r) => `<span class="rej"><code>${esc(r.value)}</code> — ${esc(r.reason)}${
           r.whitelist && can("operator")
-            ? ` <button class="btn btn--ghost btn--sm" type="button" data-allow="${esc(r.value)}">Vẫn chặn</button>`
+            ? ` <button class="btn btn--ghost btn--sm" type="button" data-allow="${esc(r.value)}" aria-label="Vẫn chặn ${esc(r.value)} (ghi đè whitelist)">Vẫn chặn</button>`
             : ""}</span>`)
-        .join("<br />") +
-      (rejected.length > 12 ? `<br />… và ${rejected.length - 12} mục khác` : "");
+        .join("") +
+      (rejected.length > 12 ? `<span class="rej">… và ${rejected.length - 12} mục khác</span>` : "");
     rbox.classList.remove("hidden");
   } else {
     rbox.classList.add("hidden");
@@ -159,7 +181,12 @@ $("#clear-list").addEventListener("click", () => {
 });
 
 function refreshBlockButton() {
-  $("#do-block").disabled = !can("operator") || !(state.candidates.length && selectedFwIds().length);
+  const why = !can("operator") ? "Tài khoản Chỉ xem không chặn được IP."
+    : !state.candidates.length ? "Chưa có IP nào — dán nội dung chat hoặc nhập tay."
+      : !selectedFwIds().length ? "Chọn ít nhất 1 firewall ở mục 2 · Đích cấu hình."
+        : "";
+  $("#do-block").disabled = Boolean(why);
+  $("#block-hint").textContent = why;
 }
 
 const addManual = () => {

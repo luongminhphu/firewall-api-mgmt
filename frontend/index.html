@@ -216,8 +216,9 @@ Ví dụ:
               </div>
               <div id="rejected-box" class="alert alert--warn hidden"></div>
               <div class="actions">
+                <p class="muted tiny block-hint" id="block-hint" aria-live="polite"></p>
                 <button class="btn btn--ghost" id="clear-list" type="button">Xóa danh sách</button>
-                <button class="btn btn--primary" id="do-block" type="button" disabled>
+                <button class="btn btn--primary" id="do-block" type="button" disabled aria-describedby="block-hint">
                   Chặn ngay
                 </button>
               </div>
@@ -629,21 +630,21 @@ Ví dụ:
                   Chặn xong, app trả lời <code class="ab-syntax">INFRA ĐÃ BLOCK &lt;ip&gt; THEO YÊU CẦU LÚC &lt;thời điểm&gt;</code> vào group chat.</p>
               </div>
               <div class="row row--tight">
-                <button class="btn btn--danger" id="ab-off" type="button" hidden>Tắt khẩn cấp</button>
-                <button class="btn btn--primary" id="ab-on" type="button" hidden>Bật lại tự động chặn</button>
-                <button class="btn" id="ab-today" type="button" hidden>Tự chặn cả ngày hôm nay</button>
                 <button class="btn" id="ab-poll" type="button" hidden>Đọc Teams ngay</button>
+                <button class="btn" id="ab-today" type="button" hidden>Tự chặn cả ngày hôm nay</button>
+                <button class="btn btn--primary" id="ab-on" type="button" hidden>Bật lại tự động chặn</button>
+                <button class="btn btn--danger-ghost" id="ab-off" type="button" hidden>Tắt khẩn cấp</button>
               </div>
             </div>
             <div id="ab-banner" aria-live="polite"></div>
-            <div id="ab-cards" class="status-cards ab-cards"></div>
+            <p id="ab-cards" class="ab-statusline" aria-live="polite"></p>
 
             <div class="ab-section">
               <div class="card-head">
                 <div><h3>Chờ duyệt <span id="ab-pending-count" class="chip"></span></h3>
-                  <p class="muted tiny">Lệnh của SOC chưa được tự chặn (IP thuộc whitelist, ngoài khung giờ, công tắc tắt hoặc vượt ngưỡng). Approve để chặn ngay trên mọi firewall đích; IP thuộc whitelist chỉ quản trị viên Approve được.</p></div>
+                  <p class="muted tiny">Lệnh SOC chưa tự chặn được (whitelist, giờ hành chính, công tắc tắt, vượt ngưỡng hoặc đọc trễ). Duyệt để chặn ngay trên mọi firewall đích; IP thuộc whitelist chỉ quản trị viên duyệt được.</p></div>
                 <div class="row row--tight ab-op" hidden>
-                  <button class="btn btn--primary btn--sm" id="ab-approve-sel" type="button" disabled>Approve các mục đã chọn</button>
+                  <button class="btn btn--primary btn--sm" id="ab-approve-sel" type="button" disabled>Duyệt các mục đã chọn</button>
                 </div>
               </div>
               <div class="table-wrap">
@@ -670,9 +671,10 @@ Ví dụ:
               </div>
             </div>
 
-            <div class="ab-section">
+            <details class="ab-section ab-log" id="ab-all-wrap">
+              <summary><h3>Tất cả lệnh <span class="muted tiny">· nhật ký, lọc theo trạng thái, bằng chứng</span></h3></summary>
               <div class="card-head">
-                <div><h3>Tất cả lệnh</h3><p class="muted tiny" id="ab-verify-msg"></p></div>
+                <div><p class="muted tiny" id="ab-verify-msg"></p></div>
                 <div class="row row--tight">
                   <select id="ab-status" class="select" aria-label="Lọc trạng thái lệnh">
                     <option value="">Tất cả trạng thái</option>
@@ -691,7 +693,7 @@ Ví dụ:
                 </table>
               </div>
               <div id="ab-pager" class="pager"></div>
-            </div>
+            </details>
           </div>
         </section>
 
@@ -830,7 +832,7 @@ Ví dụ:
                 <h3 class="st-sec__title" id="abs-sec-4-t"><span class="st-step" aria-hidden="true">4</span>Whitelist</h3>
               <fieldset class="field">
                 <legend class="sr-only">Whitelist — IP của HSC, Akamai, đối tác…</legend>
-                <p class="muted tiny">SOC đề xuất chặn IP thuộc các danh sách này → <strong>không tự chặn</strong>, chuyển sang chờ duyệt và chỉ quản trị viên bấm <strong>Approve</strong> được. Mỗi dòng một IPv4 hoặc CIDR (vd <code>23.32.0.0/11</code>); dán được cả danh sách, phần sau dấu <code>#</code> là ghi chú.</p>
+                <p class="muted tiny">SOC đề xuất chặn IP thuộc các danh sách này → <strong>không tự chặn</strong>, chuyển sang chờ duyệt và chỉ quản trị viên bấm <strong>Duyệt</strong> được. Mỗi dòng một IPv4 hoặc CIDR (vd <code>23.32.0.0/11</code>); dán được cả danh sách, phần sau dấu <code>#</code> là ghi chú.</p>
                 <div id="abs-wl" class="ab-wl"></div>
                 <button class="btn btn--ghost btn--sm" id="abs-wl-add" type="button">+ Thêm danh sách</button>
               </fieldset>
@@ -1037,11 +1039,11 @@ Ví dụ:
                 </table>
               </div>
               <details class="hint">
-                <summary>Quyền Write và Readonly khác nhau thế nào?</summary>
+                <summary>Quyền Chỉ xem, Thao tác và Quản trị khác nhau thế nào?</summary>
                 <ul class="tiny">
-                  <li><strong>Readonly</strong>: xem IP Host Group, lịch sử thay đổi, audit log. Không chặn/bỏ chặn được.</li>
-                  <li><strong>Write</strong>: thêm quyền chặn, bỏ chặn IP, kiểm tra kết nối, đồng bộ lịch sử.</li>
-                  <li><strong>Quản trị viên</strong>: Write + quản lý firewall và người dùng.</li>
+                  <li><strong>Chỉ xem</strong>: xem IP Host Group, lịch sử thay đổi, audit log. Không chặn/bỏ chặn được.</li>
+                  <li><strong>Thao tác</strong>: thêm quyền chặn, bỏ chặn IP, kiểm tra kết nối, đồng bộ lịch sử.</li>
+                  <li><strong>Quản trị</strong>: Thao tác + quản lý firewall và người dùng.</li>
                   <li>Khóa, xóa hoặc đổi quyền có hiệu lực ngay ở thao tác kế tiếp của người đó, không cần chờ hết phiên.</li>
                 </ul>
               </details>
@@ -1066,8 +1068,8 @@ Ví dụ:
                 </div>
                 <div class="field"><span>Quyền</span>
                   <div class="seg" id="u-perm">
-                    <button type="button" class="seg-btn" data-v="write">Write</button>
-                    <button type="button" class="seg-btn is-active" data-v="readonly">Readonly</button>
+                    <button type="button" class="seg-btn" data-v="write">Thao tác</button>
+                    <button type="button" class="seg-btn is-active" data-v="readonly">Chỉ xem</button>
                   </div>
                 </div>
                 <div class="row row--2">

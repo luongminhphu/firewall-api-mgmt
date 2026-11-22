@@ -63,20 +63,18 @@ function renderStatus(s) {
   $("#ab-today").textContent = s.holiday_today ? "Tắt tự chặn cả ngày hôm nay" : "Tự chặn cả ngày hôm nay";
   $("#ab-today").dataset.on = s.holiday_today ? "0" : "1";
   const win = s.window_enabled ? (s.in_window ? "ĐANG TỰ CHẶN" : "GIỜ HÀNH CHÍNH") : "24/7";
-  const cards = [
-    [s.auto_enabled ? "BẬT" : "TẮT", "Công tắc tự động chặn", s.auto_enabled ? "ok" : "err"],
-    [String(s.auto_last_hour), `IP tự chặn trong 60 phút · giới hạn ${s.hourly_limit}`,
-     s.breaker_tripped_at ? "err" : s.auto_last_hour >= s.hourly_limit * 0.8 ? "warn" : ""],
-    [win, s.window_enabled ? (s.in_window ? s.window_reason : "Lệnh SOC chờ duyệt") : "Tự chặn mọi lúc",
-     s.in_window ? "ok" : "warn", s.window_enabled ? `Lịch tự chặn: ${s.schedule}` : ""],
-    [String(s.pending), "Lệnh chờ duyệt", s.pending ? "warn" : ""],
-    [s.last_poll_at ? fmtTime(s.last_poll_at).split(" ")[0] : "—",
-     s.enabled ? `Đọc Teams lần cuối · ${s.last_fetched} tin mới · mỗi ${Math.round(s.poll_seconds / 60)} phút` : "Chưa bật đọc Teams",
-     s.last_ok === false ? "err" : ""],
-  ];
-  $("#ab-cards").innerHTML = cards.map(([v, label, tone, title]) =>
-    `<div class="status-card ab-card${tone ? " status-card--" + tone : ""}"${title ? ` title="${esc(title)}"` : ""}>
-      <b>${esc(v)}</b><span>${esc(label)}</span></div>`).join("");
+  // Một dòng trạng thái thay cho 5 ô số: mọi thứ ổn thì yên lặng, có vấn đề thì phần đó đổi màu
+  const seg = (txt, tone = "", title = "") =>
+    `<span class="ab-seg${tone ? " ab-seg--" + tone : ""}"${title ? ` title="${esc(title)}"` : ""}>${txt}</span>`;
+  const near = s.auto_last_hour >= s.hourly_limit * 0.8;
+  $("#ab-cards").innerHTML = [
+    seg(`<strong>Tự động chặn ${s.auto_enabled ? "BẬT" : "TẮT"}</strong>`, s.auto_enabled ? "ok" : "err"),
+    seg(`${esc(win)}${s.window_enabled ? ` · ${esc(s.in_window ? s.window_reason : "lệnh SOC chờ duyệt")}` : ""}`,
+      s.in_window ? "" : "warn", s.window_enabled ? `Lịch tự chặn: ${s.schedule}` : ""),
+    seg(`${s.auto_last_hour} IP tự chặn / 60 phút (giới hạn ${s.hourly_limit})`, s.breaker_tripped_at ? "err" : near ? "warn" : ""),
+    seg(s.enabled ? `Đọc Teams ${s.last_poll_at ? esc(fmtTime(s.last_poll_at).split(" ")[0]) : "—"} · ${s.last_fetched} tin mới · mỗi ${Math.round(s.poll_seconds / 60)} phút`
+      : "Chưa bật đọc Teams", s.last_ok === false ? "err" : ""),
+  ].join('<span class="ab-sep" aria-hidden="true">·</span>');
   const d = (iso) => new Date(iso).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit",
     month: "2-digit", weekday: "short", hour12: false, timeZone: "Asia/Ho_Chi_Minh" });
   $("#ab-night-title").textContent = `Ca ngoài giờ: ${d(s.night.start)} → ${d(s.night.end)}`;
@@ -154,11 +152,11 @@ async function loadPending() {
   }
 }
 
-// IP thuộc whitelist (HSC / Akamai / đối tác): chỉ quản trị viên Approve — server kiểm lại
+// IP thuộc whitelist (HSC / Akamai / đối tác): chỉ quản trị viên duyệt — server kiểm lại
 const approveBtn = (r) => (r.needs_admin && !can("admin")
-  ? `<button class="btn btn--sm" type="button" disabled title="IP thuộc whitelist — chỉ quản trị viên Approve được">Approve</button>`
+  ? `<button class="btn btn--sm" type="button" disabled title="IP thuộc whitelist — chỉ quản trị viên duyệt được">Duyệt</button>`
   : `<button class="btn btn--primary btn--sm" type="button" data-approve="${r.id}"${r.needs_admin
-    ? ` data-wl="${esc(r.whitelist)}"` : ""}>Approve</button>`);
+    ? ` data-wl="${esc(r.whitelist)}"` : ""}>Duyệt</button>`);
 
 const picked = () => $$("#ab-pending .ab-pick:checked").map((x) => Number(x.value));
 $("#ab-pending").addEventListener("change", (e) => {
@@ -169,7 +167,7 @@ $("#ab-pending").addEventListener("change", (e) => {
 });
 
 async function approve(ids, wl = "") {
-  if (!(await confirmAction({ title: "Approve lệnh chặn?", ok: `Chặn ${ids.length} IP`, html: `<p>Chặn <strong>${ids.length} IP</strong> trên mọi firewall đích của tự động chặn.</p>${wl ? `<p class="alert alert--warn">IP thuộc whitelist <strong>${esc(wl)}</strong> (HSC / Akamai / đối tác) — chặn có thể gây gián đoạn dịch vụ.</p>` : ""}` }))) return;
+  if (!(await confirmAction({ title: "Duyệt lệnh chặn?", ok: `Chặn ${ids.length} IP`, html: `<p>Chặn <strong>${ids.length} IP</strong> trên mọi firewall đích của tự động chặn.</p>${wl ? `<p class="alert alert--warn">IP thuộc whitelist <strong>${esc(wl)}</strong> (HSC / Akamai / đối tác) — chặn có thể gây gián đoạn dịch vụ.</p>` : ""}` }))) return;
   try {
     const job = await runJob("/api/autoblock/approve", { ids });
     const errs = (job.results || []).filter((r) => !r.ok).length;

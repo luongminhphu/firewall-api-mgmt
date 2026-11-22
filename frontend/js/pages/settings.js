@@ -82,10 +82,18 @@ showGroup(remembered);
 $("#ab-form").addEventListener("click", (e) => {
   const b = e.target.closest("[data-goto]");
   if (!b) return;
-  const sec = document.getElementById(b.dataset.goto);
-  sec.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-  sec.querySelector("input, select, textarea, button")?.focus({ preventScroll: true });
+  showStep(b.dataset.goto);
+  document.getElementById(b.dataset.goto).querySelector("input, select, textarea, button")?.focus({ preventScroll: true });
 });
+// Một bước một lúc; form vẫn gửi đủ mọi trường khi Lưu (trường ẩn vẫn thuộc form)
+function showStep(id) {
+  $$("#ab-form .st-sec").forEach((s) => { s.hidden = s.id !== id; });
+  $$("#ab-form [data-goto]").forEach((b) => {
+    if (b.dataset.goto === id) b.setAttribute("aria-current", "step");
+    else b.removeAttribute("aria-current");
+  });
+}
+showStep("abs-sec-1");
 
 // ------------------------------------------------------------------ VPN
 let vpnFwIds = [];

@@ -36,21 +36,28 @@ export function confirmAction({ title, html, ok, danger = true }) {
   okBtn.className = `btn ${danger ? "btn--danger" : "btn--primary"}`;
   const back = document.activeElement;
   return new Promise((resolve) => {
-    let result = false;
-    const done = (v) => {
-      result = v;
-      dlg.close();
+    // Kết quả chốt ĐỒNG BỘ ngay lúc bấm / Esc — không dựa vào sự kiện "close" (phát bất đồng bộ: Esc rồi mở lại
+    // ngay thì "close" của lần trước tới trễ và hủy nhầm lần mới)
+    let settled = false;
+    const finish = (v) => {
+      if (settled) return;
+      settled = true;
+      dlg.removeEventListener("click", onClick);
+      dlg.removeEventListener("cancel", onCancel);
+      if (dlg.open) dlg.close();
+      back?.focus?.();
+      resolve(v);
     };
     const onClick = (e) => {
-      if (e.target === okBtn) done(true);
-      else if (e.target.closest("#confirm-cancel") || e.target === dlg) done(false);
+      if (e.target === okBtn) finish(true);
+      else if (e.target.closest("#confirm-cancel") || e.target === dlg) finish(false);
+    };
+    const onCancel = (e) => {
+      e.preventDefault();
+      finish(false);
     };
     dlg.addEventListener("click", onClick);
-    dlg.addEventListener("close", () => {
-      dlg.removeEventListener("click", onClick);
-      back?.focus?.();
-      resolve(result);
-    }, { once: true });
+    dlg.addEventListener("cancel", onCancel);
     dlg.showModal();
     (danger ? $("#confirm-cancel") : okBtn).focus();
   });

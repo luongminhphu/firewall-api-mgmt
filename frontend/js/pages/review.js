@@ -43,7 +43,8 @@ async function renderMine(r) {
   $("#rv-title").textContent = c ? c.name : "Rà soát quyền truy cập VPN";
   if (!c) {
     $("#rv-progress").innerHTML = "";
-    $("#rv-list").innerHTML = `<p class="empty">Hiện không có đợt rà soát nào đang mở.</p>`;
+    $("#rv-list").innerHTML = `<p class="empty">Hiện không có đợt rà soát nào đang mở. Đợt mới mở vào đầu mỗi quý;
+      khi mở, đại diện team nhận email kèm đường link, vào đây chọn <strong>Còn cần / Thu hồi / Cần điều chỉnh</strong> cho từng quyền VPN của team mình.</p>`;
     return;
   }
   const scopes = r.scopes.map((s) => esc(s.name)).join(", ");

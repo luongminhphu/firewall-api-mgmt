@@ -30,9 +30,25 @@ export async function loadAudit() {
     const actionLabel = {
       block: "Chặn",
       unblock: "Bỏ chặn",
-      test: "Kiểm tra",
+      test: "Kiểm tra kết nối",
       firewall_cud: "Sửa firewall",
+      login: "Đăng nhập",
+      settings_cud: "Sửa cài đặt",
+      vpn_sync: "Đồng bộ VPN",
+      review: "Rà soát",
+      autoblock_switch: "Công tắc tự động chặn",
+      autoblock_decision: "Duyệt / từ chối lệnh",
+      smtp_test: "Gửi thư thử",
+      report_email: "Gửi báo cáo",
+      report_export: "Xuất báo cáo",
+      evidence_export: "Tải bằng chứng",
+      policy_violation: "Vi phạm chính sách",
+      branding: "Đổi logo",
+      user_mgmt: "Quản lý người dùng",
+      notify_run: "Chạy hàng đợi email",
     };
+    // "ok" chỉ là "đã thêm" với thao tác chặn; bỏ chặn là "đã bỏ"; mọi hành động khác là "thành công"
+    const okAs = { block: "added", unblock: "removed" };
     tb.innerHTML = r.rows
       .map(
         (row) => `<tr>
@@ -42,8 +58,8 @@ export async function loadAudit() {
           <td class="nowrap">${esc(row.firewall_name || "—")}</td>
           <td class="mono">${esc(row.group_name || "—")}</td>
           <td class="mono">${esc(row.target)}</td>
-          <td>${resultChip(row.result === "ok" ? "added" : row.result)}</td>
-          <td class="muted">${esc(row.status_code ? row.status_code + " · " : "")}${esc(row.message)}${
+          <td>${resultChip(row.result === "ok" ? okAs[row.action] || "ok" : row.result)}</td>
+          <td class="muted"${row.status_code ? ` title="Mã phản hồi firewall: ${esc(row.status_code)}"` : ""}>${esc(row.message)}${
             row.reason ? `<br /><em>${esc(row.reason)}</em>` : ""
           }</td>
         </tr>`

@@ -1,4 +1,4 @@
-/* Trang Người dùng (quản trị viên): thêm/sửa/khóa/xóa, quyền Write/Readonly, đặt lại mật khẩu; hộp thoại tự đổi mật khẩu. */
+/* Trang Người dùng (quản trị viên): thêm/sửa/khóa/xóa, quyền Thao tác / Chỉ xem, đặt lại mật khẩu; hộp thoại tự đổi mật khẩu. */
 import { confirmAction } from "../components/modal.js";
 import { api } from "../api.js";
 import { tableMessage } from "../components/table.js";
@@ -13,10 +13,10 @@ function segSet(id, v) {
   $$(`#${id} .seg-btn`).forEach((b) => b.classList.toggle("is-active", b.dataset.v === v));
 }
 function permChip(u) {
-  if (u.is_admin) return `<span class="chip chip--warn">Quản trị · Write</span>`;
+  if (u.is_admin) return `<span class="chip chip--warn">Quản trị</span>`;
   return u.permission === "write"
-    ? `<span class="chip chip--info">Write</span>`
-    : `<span class="chip">Readonly</span>`;
+    ? `<span class="chip chip--info">Thao tác</span>`
+    : `<span class="chip">Chỉ xem</span>`;
 }
 
 export async function loadUsers() {
@@ -49,7 +49,7 @@ function renderUsers() {
   const tb = $("#u-table tbody");
   if (!rows.length) {
     tableMessage(tb, 6, "empty", userState.list.length ? "Không có kết quả"
-    : "Chưa có người dùng nào — thêm người đầu tiên ở khung bên phải.");
+    : "Chưa khai báo người dùng nào — hiện mọi người đăng nhập theo cấu hình chung (mật khẩu chung / vai trò Entra). Thêm người ở khung bên phải để phân quyền riêng.");
     return;
   }
   tb.innerHTML = rows.map((u) => {

@@ -8,6 +8,8 @@ const RESULT = {
   not_found: ["chip--warn", "không thấy"],
   error: ["chip--err", "lỗi"],
   "dry-run": ["chip--warn", "chạy thử"],
+  ok: ["chip--ok", "thành công"],
+  denied: ["chip--err", "bị từ chối"],
 };
 
 export const resultChip = (res) => {

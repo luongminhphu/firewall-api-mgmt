@@ -14,7 +14,7 @@ export const state = {
 
 export const RANK = { reviewer: -1, viewer: 0, operator: 1, admin: 2 };
 export const can = (role) => (RANK[state.role] ?? -1) >= RANK[role];
-export const ROLE_LABEL = { admin: "Quản trị", operator: "Write", viewer: "Readonly", reviewer: "Rà soát" };
+export const ROLE_LABEL = { admin: "Quản trị", operator: "Thao tác", viewer: "Chỉ xem", reviewer: "Rà soát" };
 
 /** Bộ nhớ trình duyệt cho token (nếu bị chặn thì chỉ giữ trong RAM). */
 export const tokenStore = (() => {
