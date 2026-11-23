@@ -208,6 +208,7 @@ def review_draft_eml(cid: int, scope: str, payload: DraftIn = Body(...), db: Ses
     camp = _camp(db, cid)
     to, cc = _draft_in(payload)
     data = service.draft_eml(to, cc, payload.subject, payload.body)
+    service.record_mail(db, cid, scope.lower(), "mail_eml", to, cc, actor=p["user"])
     name = f"ra-soat-vpn-{camp.period_key}-{scope}".replace(" ", "-")
     name = "".join(ch for ch in name if ch.isalnum() or ch in "-_.")[:120] or "ra-soat-vpn"
     return Response(data, media_type="message/rfc822",
@@ -230,4 +231,5 @@ def review_draft_send(cid: int, scope: str, request: Request, payload: DraftIn =
     audit(db, action="review", fw=None, target=camp.period_key, result="ok", actor=p["user"], client_ip=ip,
           message=f"Gửi email rà soát cho {scope}: {', '.join(to)}" + (f" · Cc {', '.join(cc)}" if cc else ""))
     db.commit()
+    service.record_mail(db, cid, scope.lower(), "mail_smtp", to, cc, actor=p["user"])
     return {"ok": True, "message": f"Đã gửi tới {', '.join(to)}"}

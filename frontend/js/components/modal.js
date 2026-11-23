@@ -20,6 +20,8 @@ export function closeModal() {
 $("#modal").addEventListener("click", (e) => {
   if (e.target.closest("[data-close]") || e.target === e.currentTarget) closeModal(); // nút Đóng / bấm nền
 });
+// Đổi tab (hash) hoặc bấm Back: hộp thoại thuộc trang cũ → đóng, không đè lên trang mới
+window.addEventListener("hashchange", closeModal);
 $("#modal").addEventListener("close", () => {
   returnFocus?.focus?.();
   returnFocus = null;
@@ -44,6 +46,7 @@ export function confirmAction({ title, html, ok, danger = true }) {
       settled = true;
       dlg.removeEventListener("click", onClick);
       dlg.removeEventListener("cancel", onCancel);
+      window.removeEventListener("hashchange", onNav);
       if (dlg.open) dlg.close();
       back?.focus?.();
       resolve(v);
@@ -56,8 +59,10 @@ export function confirmAction({ title, html, ok, danger = true }) {
       e.preventDefault();
       finish(false);
     };
+    const onNav = () => finish(false); // đổi tab giữa chừng = Hủy
     dlg.addEventListener("click", onClick);
     dlg.addEventListener("cancel", onCancel);
+    window.addEventListener("hashchange", onNav, { once: true });
     dlg.showModal();
     (danger ? $("#confirm-cancel") : okBtn).focus();
   });

@@ -7,9 +7,9 @@ import { closeModal, confirmAction, openModal } from "../components/modal.js";
 import { API, api, errorBox } from "../api.js";
 import { toast } from "../components/toast.js";
 import { can, state } from "../store.js";
-import { $, esc, fmtTime } from "../util.js";
+import { $, $$, esc, fmtTime } from "../util.js";
 
-const rv = { items: [], camp: null, isAdmin: false, editing: null };
+const rv = { items: [], camp: null, isAdmin: false, editing: null, openCamp: null };
 const DEC = {
   keep: ["chip--ok", "Còn cần"], revoke: ["chip--err", "Thu hồi"], change: ["chip--warn", "Cần điều chỉnh"],
   pending: ["", "Chưa quyết định"], no_response: ["chip--err", "Không phản hồi"],
@@ -17,10 +17,40 @@ const DEC = {
 const fmtDate = (iso) => (iso ? iso.split("-").reverse().join("/") : "—");
 const chips = (xs) => (xs || []).map((x) => `<span class="chip">${esc(x)}</span>`).join(" ");
 
+// Hai phần, hai nhóm người dùng: "Việc của tôi" (quyết định) và "Quản lý đợt" (tiến độ, email, bằng chứng)
+function setView(v) {
+  const manage = v === "manage" && can("viewer");
+  $$("#rv-views [data-rv-view]").forEach((b) => {
+    const on = b.dataset.rvView === (manage ? "manage" : "mine");
+    b.classList.toggle("is-active", on);
+    b.setAttribute("aria-selected", String(on));
+  });
+  $("#rv-mine").hidden = manage;
+  $("#rv-admin").hidden = !manage;
+  if (!manage) $("#rv-mail").hidden = true;
+  else if (rv.openCamp) loadDrafts(rv.openCamp);
+  try {
+    window.localStorage.setItem("rv_view", manage ? "manage" : "mine");
+  } catch {
+    /* trình duyệt chặn lưu trữ: không nhớ được phần đang xem */
+  }
+}
+$("#rv-views").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-rv-view]");
+  if (b) setView(b.dataset.rvView);
+});
+
 export async function loadReview() {
-  $("#rv-admin").classList.toggle("hidden", !can("viewer"));
+  $("#rv-views").hidden = !can("viewer"); // vai trò Rà soát (đại diện group) chỉ có "Việc của tôi"
+  let v = "mine";
+  try {
+    v = window.localStorage.getItem("rv_view") || "mine";
+  } catch {
+    /* mặc định Việc của tôi */
+  }
   $("#rv-open").classList.toggle("hidden", !can("admin"));
   await Promise.all([loadMine(), can("viewer") ? loadCampaigns() : null]);
+  setView(v);
 }
 
 // ------------------------------------------------------------------ việc của tôi
@@ -158,17 +188,19 @@ async function loadCampaigns() {
     tb.innerHTML = r.campaigns.length ? r.campaigns.map((c) => {
       const t = c.totals;
       return `<tr>
-        <td><strong>${esc(c.name)}</strong><div class="muted tiny">${esc(c.period_key)} · mở bởi ${esc(c.created_by)}</div></td>
-        <td class="nowrap">${c.status === "open" ? `<span class="chip chip--info">Đang mở</span>${can("admin") ? ` <button class="btn btn--sm btn--ghost" type="button" data-close="${c.id}">Đóng đợt</button>` : ""}` : `<span class="chip">Đã đóng</span><div class="muted tiny">${esc(fmtTime(c.closed_at))}</div>`}</td>
-        <td class="nowrap mono">${fmtDate(c.due_date)}</td>
-        <td class="tiny">Còn cần ${t.keep} · Thu hồi ${t.revoke} · Điều chỉnh ${t.change}${t.pending ? ` · <strong>chờ ${t.pending}</strong>` : ""}${t.no_response ? ` · <span class="text-err">không phản hồi ${t.no_response}</span>` : ""}</td>
-        <td class="nowrap tiny"><a href="${API}/api/review/campaigns/${c.id}/evidence.csv?token=${tok}" download>Bằng chứng</a> ·
+        <td data-label="Đợt"><strong>${esc(c.name)}</strong><div class="muted tiny">${esc(c.period_key)} · mở bởi ${esc(c.created_by)}</div></td>
+        <td class="nowrap" data-label="Trạng thái">${c.status === "open" ? `<span class="chip chip--info">Đang mở</span>${can("admin") ? ` <button class="btn btn--sm btn--danger-ghost" type="button" data-close="${c.id}">Đóng đợt</button>` : ""}` : `<span class="chip">Đã đóng</span><div class="muted tiny">${esc(fmtTime(c.closed_at))}</div>`}</td>
+        <td class="nowrap mono" data-label="Hạn">${fmtDate(c.due_date)}</td>
+        <td class="tiny" data-label="Kết quả">Còn cần ${t.keep} · Thu hồi ${t.revoke} · Điều chỉnh ${t.change}${t.pending ? ` · <strong>chờ ${t.pending}</strong>` : ""}${t.no_response ? ` · <span class="text-err">không phản hồi ${t.no_response}</span>` : ""}</td>
+        <td class="nowrap tiny" data-label="Tải CSV"><a href="${API}/api/review/campaigns/${c.id}/evidence.csv?token=${tok}" download>Bằng chứng</a> ·
           <a href="${API}/api/review/campaigns/${c.id}/revocations.csv?token=${tok}" download>Cần xử lý</a></td>
       </tr>`;
     }).join("") : `<tr><td colspan="5"><p class="empty">Chưa có đợt rà soát nào.</p></td></tr>`;
     const open = r.campaigns.find((c) => c.status === "open");
+    rv.openCamp = open || null;
     $("#rv-open").disabled = !!open;
-    loadDrafts(open);
+    $("#rv-open-hint").textContent = open && can("admin") ? `Đang có đợt "${open.name}" mở — đóng đợt đó trước khi mở đợt mới.` : "";
+    if (!$("#rv-admin").hidden) loadDrafts(open);
     $("#rv-scopes").innerHTML = open ? `<div class="rv-scopes">${open.by_scope.map((s) => {
       const done = s.total - s.pending;
       return `<div class="rv-scope"><div class="rv-scope__head"><strong>${esc(s.name)}</strong><span class="tiny muted">${done}/${s.total}</span></div>
@@ -215,11 +247,11 @@ $("#rv-verify").addEventListener("click", async () => {
 });
 
 // ------------------------------------------------------------------ email rà soát theo group (quản trị viên)
-const mail = { cid: null, scope: null };
+const mail = { cid: null, scope: null, sent: null };
 
 async function loadDrafts(open) {
   const sec = $("#rv-mail");
-  sec.hidden = !(open && can("admin"));
+  sec.hidden = !(open && can("admin")) || $("#rv-admin").hidden;
   if (sec.hidden) return;
   mail.cid = open.id;
   const tb = $("#rv-mail-table tbody");
@@ -228,13 +260,18 @@ async function loadDrafts(open) {
     tb.innerHTML = drafts.map((d) => `<tr>
       <td data-label="Group"><strong>${esc(d.name)}</strong>${d.scope === "infra" ? "" : `<div class="muted tiny">${d.members} user VPN</div>`}</td>
       <td data-label="Gửi tới" class="tiny">${d.to.length ? d.to.map(esc).join(", ") : `<span class="text-warn">Chưa có email — khai báo ở Cài đặt › VPN &amp; rà soát</span>`}</td>
-      <td data-label="Quyền" class="nowrap">${d.total}${d.pending ? ` <span class="muted tiny">· chờ ${d.pending}</span>` : ""}</td>
-      <td><button class="btn btn--sm" type="button" data-draft="${esc(d.scope)}">Soạn email</button></td>
+      <td data-label="Quyền" class="nowrap">${d.total}${d.pending && d.pending < d.total ? ` <span class="muted tiny">· chờ ${d.pending}</span>` : ""}</td>
+      <td data-label="Đã gửi" class="tiny">${sentCell(d.sent)}</td>
+      <td><button class="btn btn--sm${d.sent ? "" : " btn--primary"}" type="button" data-draft="${esc(d.scope)}">${d.sent ? "Gửi lại" : "Soạn email"}</button></td>
     </tr>`).join("");
   } catch (ex) {
-    tb.innerHTML = `<tr><td colspan="4">${errorBox(ex)}</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="5">${errorBox(ex)}</td></tr>`;
   }
 }
+
+const sentCell = (x) => (x
+  ? `<span class="text-ok">${esc(fmtTime(x.at))}</span><div class="muted">${esc(x.method)} · ${esc(x.by)}${x.count > 1 ? ` · ${x.count} lần` : ""}</div>`
+  : `<span class="muted">Chưa gửi</span>`);
 
 const draftBody = () => ({
   to: $("#dm-to").value, cc: $("#dm-cc").value, subject: $("#dm-subject").value.trim(), body: $("#dm-body").value,
@@ -246,8 +283,10 @@ $("#rv-mail-table").addEventListener("click", async (e) => {
   try {
     const d = await api(`/api/review/campaigns/${mail.cid}/drafts/${encodeURIComponent(b.dataset.draft)}`);
     mail.scope = d.scope;
+    mail.sent = d.sent;
     openModal(`Email rà soát — ${d.name}`, `
       <form class="draft-form" id="draft-form" autocomplete="off">
+        ${d.sent ? `<p class="alert alert--warn" role="status">Đã gửi cho group này ${esc(fmtTime(d.sent.at))} (${esc(d.sent.method)}, ${esc(d.sent.by)}${d.sent.count > 1 ? `, ${d.sent.count} lần` : ""}). Gửi lại sẽ là thư thứ ${d.sent.count + 1}.</p>` : ""}
         <div class="row row--2">
           <label class="field"><span>Gửi tới</span><input id="dm-to" value="${esc(d.to.join(", "))}" placeholder="dai.dien@hsc.com.vn" /></label>
           <label class="field"><span>Cc</span><input id="dm-cc" value="${esc(d.cc.join(", "))}" /></label>
@@ -298,20 +337,23 @@ $("#modal").addEventListener("click", async (e) => {
       a.download = name;
       a.click();
       window.setTimeout(() => window.URL.revokeObjectURL(a.href), 5000);
-      dmSay(`Đã tải ${name} — mở bằng Outlook, kiểm tra rồi bấm Gửi.`, "ok");
+      dmSay(`Đã tải ${name} — mở bằng Outlook, kiểm tra rồi bấm Gửi. Lần tạo thư đã được ghi vào nhật ký rà soát.`, "ok");
+      loadDrafts(rv.openCamp);
     } catch (ex) {
       dmSay(ex.message, "error");
     }
   } else if (e.target.id === "dm-send") {
     const d = draftBody();
-    if (!(await confirmAction({ title: "Gửi email rà soát?", ok: "Gửi email", danger: false,
-      html: `<p>Gửi tới <strong>${esc(d.to)}</strong>${d.cc.trim() ? `, Cc ${esc(d.cc)}` : ""} qua máy chủ SMTP của app.</p>` }))) return;
+    if (!(await confirmAction({ title: mail.sent ? "Gửi lại email rà soát?" : "Gửi email rà soát?", ok: mail.sent ? "Gửi lại" : "Gửi email", danger: false,
+      html: `<p>Gửi tới <strong>${esc(d.to)}</strong>${d.cc.trim() ? `, Cc ${esc(d.cc)}` : ""} qua máy chủ SMTP của app.</p>
+        ${mail.sent ? `<p class="text-warn">Group này đã nhận email lúc ${esc(fmtTime(mail.sent.at))} (${esc(mail.sent.method)}).</p>` : ""}` }))) return;
     const btn = $("#dm-send");
     btn.disabled = true;
     try {
       const r = await api(`${url}/send`, { method: "POST", body: d });
       toast(r.message, "ok");
       closeModal();
+      loadDrafts(rv.openCamp);
     } catch (ex) {
       dmSay(ex.message, "error");
     }

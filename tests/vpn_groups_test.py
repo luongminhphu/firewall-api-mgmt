@@ -158,6 +158,15 @@ try:
         and "Ghi chú thêm của Infra." in msg.get_body(preferencelist=("plain",)).get_content(), r.text[:200])
     acts = [a for a in c.get("/api/audit", headers=H, params={"limit": 50}).json()["rows"]
             if a["action"] == "review" and "email rà soát" in a["message"]]
+    ds = {d["scope"]: d for d in c.get(f"/api/review/campaigns/{cid}/drafts", headers=H).json()["drafts"]}
+    sent = ds["it"].get("sent") or {}
+    chk("bảng email ghi lần gửi gần nhất (SMTP, người gửi, số lần = .eml + SMTP); group chưa gửi → null",
+        sent.get("method") == "SMTP" and sent.get("by") == "phu.luong@hsc.com.vn" and sent.get("count") == 2
+        and "it.lead@hsc.com.vn" in sent.get("detail", "") and ds["infra"].get("sent") is None, ds["it"])
+    chk("bản nháp mở lại cho biết đã gửi", (c.get(f"/api/review/campaigns/{cid}/drafts/it", headers=H).json()
+                                           .get("sent") or {}).get("method") == "SMTP")
+    v = c.get("/api/review/verify", headers=V).json()
+    chk("lần gửi nằm trong nhật ký rà soát nối chuỗi băm, chuỗi vẫn toàn vẹn", v["ok"], v)
     chk("audit ghi lần gửi email rà soát (cả lần lỗi)", len(acts) >= 2 and {a["result"] for a in acts} == {"ok", "error"},
         [(a["result"], a["message"][:60]) for a in acts])
 finally:

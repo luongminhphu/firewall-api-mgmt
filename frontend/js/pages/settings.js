@@ -8,6 +8,7 @@
    - Group VPN: đại diện + user VPN thuộc group (nhập tay), hàng đợi email + Chạy ngay. */
 import { api, errorBox } from "../api.js";
 import { loadAutoblockSettings } from "./autoblock-settings.js";
+import { confirmAction } from "../components/modal.js";
 import { setBusy } from "../components/progress.js";
 import { tableMessage } from "../components/table.js";
 import { toast } from "../components/toast.js";
@@ -97,21 +98,37 @@ showStep("abs-sec-1");
 
 // ------------------------------------------------------------------ VPN
 let vpnFwIds = [];
+// Phạm vi tường minh: "Tất cả firewall đang bật" là một lựa chọn riêng (trước đây = không tick ô nào, dễ hiểu ngược)
 function renderVpnFws() {
   const fws = state.firewalls || [];
+  const all = !vpnFwIds.length;
+  $("#vs-scope-all").checked = all;
+  $("#vs-scope-pick").checked = !all;
   $("#vs-fws").innerHTML = fws.length
     ? fws.map((f) => `<label class="check">
-        <input type="checkbox" value="${f.id}" ${vpnFwIds.includes(f.id) ? "checked" : ""} />
+        <input type="checkbox" value="${f.id}" ${vpnFwIds.includes(f.id) ? "checked" : ""} ${all ? "disabled" : ""} />
         <span>${esc(f.name)}${f.enabled ? "" : " (đang tắt)"}</span></label>`).join("")
     : `<p class="muted tiny">Chưa có firewall nào.</p>`;
+  $("#vs-fws").classList.toggle("is-off", all);
 }
+$("#vs-form").addEventListener("change", (e) => {
+  if (e.target.name !== "vs-scope") return;
+  const all = e.target.value === "all";
+  $$("#vs-fws input").forEach((x) => (x.disabled = all));
+  $("#vs-fws").classList.toggle("is-off", all);
+  if (!all) $("#vs-fws input")?.focus();
+});
 on("firewalls", renderVpnFws);
 
 async function loadVpnSettings() {
   try {
     const s = await api("/api/vpn/settings");
     $("#vs-days").value = s.expiring_days;
-    $("#vs-groups").innerHTML = s.allowed_rule_groups.map((g) => `<label class="check">
+    // Chỉ một group được phép (gắn cứng khi build) → hiện là giá trị cố định, không phải ô chọn giả
+    $("#vs-groups").innerHTML = s.allowed_rule_groups.length === 1
+      ? `<p class="vs-fixed"><span class="mono">${esc(s.allowed_rule_groups[0])}</span> <span class="muted tiny">· cố định khi build (hardening)</span>
+          <input type="checkbox" value="${esc(s.allowed_rule_groups[0])}" checked hidden /></p>`
+      : s.allowed_rule_groups.map((g) => `<label class="check">
         <input type="checkbox" value="${esc(g)}" ${s.rule_groups.includes(g) ? "checked" : ""} /> <span>${esc(g)}</span>
       </label>`).join("");
     vpnFwIds = s.firewall_ids || [];
@@ -126,13 +143,17 @@ async function loadVpnSettings() {
 
 $("#vs-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if ($("#vs-scope-pick").checked && !$$("#vs-fws input:checked").length) {
+    say($("#vs-msg"), "Chọn ít nhất một firewall, hoặc chọn \"Tất cả firewall đang bật\".", "error");
+    return;
+  }
   try {
     await api("/api/vpn/settings", {
       method: "PUT",
       body: {
         expiring_days: Number($("#vs-days").value),
         rule_groups: $$("#vs-groups input:checked").map((c) => c.value),
-        firewall_ids: $$("#vs-fws input:checked").map((c) => Number(c.value)),
+        firewall_ids: $("#vs-scope-all").checked ? [] : $$("#vs-fws input:checked").map((c) => Number(c.value)),
       },
     });
     say($("#vs-msg"), "Đã lưu cấu hình VPN.", "ok");
@@ -165,13 +186,45 @@ const memberChip = (u) => `<span class="chip tc-m" data-u="${esc(u)}">${esc(u)}<
 
 function contactRow(c = { team: "", emails: [], note: "", members: [] }) {
   return `<tr>
-    <td data-label="Group"><input class="tc-team" list="tc-teams" value="${esc(c.team)}" aria-label="Tên group" placeholder="RMS RESEARCH" /></td>
+    <td data-label="Group" class="tc-gcell"><input class="tc-team" list="tc-teams" value="${esc(c.team)}" aria-label="Tên group" placeholder="RMS RESEARCH" />
+      <input class="tc-note" value="${esc(c.note || "")}" aria-label="Ghi chú cho group ${esc(c.team)}" placeholder="Ghi chú (tuỳ chọn)" /></td>
     <td data-label="Email đại diện"><input class="tc-emails" value="${esc(c.emails.join(", "))}" aria-label="Email đại diện (phân cách dấu phẩy)" placeholder="truong.nhom@hsc.com.vn" /></td>
     <td data-label="User VPN"><div class="tc-members">${(c.members || []).map(memberChip).join("")}
       <input class="tc-madd" list="tc-users" aria-label="Thêm user VPN vào group ${esc(c.team)}" placeholder="Thêm user VPN…" /></div></td>
-    <td data-label="Ghi chú"><input class="tc-note" value="${esc(c.note || "")}" aria-label="Ghi chú" /></td>
-    <td><button class="btn btn--ghost btn--sm tc-del" type="button" aria-label="Xóa group ${esc(c.team)}">✕</button></td>
+    <td><button class="btn btn--ghost btn--sm tc-del" type="button" aria-label="Xóa group ${esc(c.team)}">Xóa</button></td>
   </tr>`;
+}
+
+// ---- Trạng thái chưa lưu: so bảng hiện tại với bản đã lưu; thanh Lưu / Hoàn tác bám đáy khi có thay đổi
+let tcSaved = [];
+function collectContacts() {
+  return $$("#tc-table tbody tr")
+    .map((tr) => ({
+      team: $(".tc-team", tr).value.trim(),
+      emails: $(".tc-emails", tr).value,
+      note: $(".tc-note", tr).value.trim(),
+      // user đang gõ dở trong ô thêm cũng được lưu
+      members: [...$$(".tc-m", tr).map((x) => x.dataset.u), ...$(".tc-madd", tr).value.split(/[,;\s]+/).filter(Boolean)],
+    }))
+    .filter((c) => c.team || c.emails.trim() || c.members.length);
+}
+const tcKey = (list) => JSON.stringify(list.map((c) => [c.team, String(Array.isArray(c.emails) ? c.emails.join(",") : c.emails)
+  .split(/[,;\s]+/).filter(Boolean).join(","), c.note || "", c.members || []]));
+const tcDirty = () => tcKey(collectContacts()) !== tcKey(tcSaved);
+
+function updateDirty() {
+  const changed = tcDirty();
+  $("#tc-bar").classList.toggle("is-dirty", changed);
+  $("#tc-undo").hidden = !changed;
+  $("#tc-dirty").textContent = changed ? "Có thay đổi chưa lưu" : "";
+}
+
+function renderContacts(list) {
+  tcSaved = list;
+  $("#tc-table tbody").innerHTML = list.length ? list.map(contactRow).join("") : contactRow();
+  refreshUnassigned();
+  applyTcFilter();
+  updateDirty();
 }
 
 // User VPN có quyền nhưng chưa thuộc group nào → Infra biết còn ai chưa gán
@@ -228,9 +281,8 @@ async function openSuggest() {
       ${suggestions.length ? `<div class="tc-sugg__list">${suggestions.map((s, i) => `
         <fieldset class="tc-sg">
           <legend><label class="check"><input type="checkbox" class="tc-sg__pick" data-i="${i}"${s.users.length ? " checked" : ""} />
-            <strong>${esc(s.team)}</strong></label>
-            <span class="chip ${s.existing ? "chip--info" : "chip--ok"}">${s.existing ? "Bổ sung thành viên" : "Group mới"}</span></legend>
-          <p class="muted tiny" title="${esc(s.rules.join("\n"))}">${s.rules.length} rule: ${esc(s.rules.slice(0, 2).join(" · "))}${s.rules.length > 2 ? " · …" : ""}</p>
+            <strong>${esc(s.team)}</strong></label></legend>
+          <p class="muted tiny" title="${esc(s.rules.join("\n"))}"><span class="tc-sg__kind ${s.existing ? "text-info" : "text-ok"}">${s.existing ? "Bổ sung thành viên" : "Group mới"}</span> · ${s.rules.length} rule: ${esc(s.rules.slice(0, 2).join(" · "))}${s.rules.length > 2 ? " · …" : ""}</p>
           <div class="tc-sg__users">${s.users.length ? s.users.map((u) => `<label class="check tc-sg__u"><input type="checkbox" class="tc-sg__user" data-i="${i}" value="${esc(u)}" checked /> <span>${esc(u)}</span></label>`).join("")
             : `<span class="muted tiny">Rule dùng group trên firewall / chưa đồng bộ tài khoản — chưa có user để gợi ý.</span>`}</div>
           ${s.taken.length ? `<p class="tiny text-warn">Đã thuộc group khác (không chuyển): ${s.taken.map((t) => `${esc(t.username)} → ${esc(t.group)}`).join(", ")}</p>` : ""}
@@ -322,7 +374,8 @@ async function loadNotify() {
     $("#nt-infra").value = r.infra_emails.join("\n");
     $("#nt-days").value = r.reminder_days.join(", ");
     $("#nt-weekly").checked = r.expired_weekly;
-    $("#tc-table tbody").innerHTML = r.contacts.length ? r.contacts.map(contactRow).join("") : contactRow();
+    // đang sửa dở bảng group thì không ghi đè (vd vừa bấm Lưu thông báo → tải lại cấu hình)
+    if (!tcDirty() || !tcSaved.length) renderContacts(r.contacts);
     try {
       const [rules, accs] = await Promise.all([api("/api/vpn/rules"), api("/api/vpn/accounts")]);
       $("#tc-teams").innerHTML = rules.teams.map((t) => `<option value="${esc(t)}"></option>`).join("");
@@ -407,10 +460,33 @@ $("#tc-table").addEventListener("click", (e) => {
     return;
   }
   const b = e.target.closest(".tc-del");
-  if (b) {
-    b.closest("tr").remove();
-    refreshUnassigned();
-  }
+  if (b) delGroup(b.closest("tr"));
+});
+
+async function delGroup(tr) {
+  const team = $(".tc-team", tr).value.trim();
+  const n = $$(".tc-m", tr).length;
+  if ((team || n) && !(await confirmAction({
+    title: `Xóa group ${team || "(chưa đặt tên)"}?`, ok: "Xóa group",
+    html: `<p>${n ? `${n} user VPN của group sẽ thành <strong>chưa thuộc group nào</strong>; ` : ""}đại diện không còn nhận email rà soát và nhắc hạn của group.
+      Thay đổi chỉ áp dụng khi bấm <strong>Lưu group VPN</strong> (trước đó bấm Hoàn tác để lấy lại).</p>`,
+  }))) return;
+  tr.remove();
+  refreshUnassigned();
+  updateDirty();
+}
+
+// Mọi thay đổi trong bảng (gõ, thêm / bỏ chip, thêm / xóa dòng, chọn gợi ý) → cập nhật trạng thái chưa lưu
+$("#tc-table").addEventListener("input", updateDirty);
+new window.MutationObserver(updateDirty).observe($("#tc-table tbody"), { childList: true, subtree: true });
+$("#tc-undo").addEventListener("click", () => {
+  renderContacts(tcSaved);
+  say($("#tc-msg"), "Đã hoàn tác về bản đã lưu.", "ok");
+});
+window.addEventListener("beforeunload", (e) => {
+  if (!tcDirty()) return;
+  e.preventDefault();
+  e.returnValue = ""; // trình duyệt hiện hộp "Rời trang? Thay đổi chưa lưu"
 });
 // Thêm user: chọn từ gợi ý (change), Enter, hoặc dán nhiều user phân cách dấu phẩy / khoảng trắng
 $("#tc-table").addEventListener("change", (e) => {
@@ -428,20 +504,10 @@ $("#tc-table").addEventListener("keydown", (e) => {
   }
 });
 $("#tc-save").addEventListener("click", async () => {
-  const contacts = $$("#tc-table tbody tr")
-    .map((tr) => ({
-      team: $(".tc-team", tr).value.trim(),
-      emails: $(".tc-emails", tr).value,
-      note: $(".tc-note", tr).value.trim(),
-      // user đang gõ dở trong ô thêm cũng được lưu
-      members: [...$$(".tc-m", tr).map((x) => x.dataset.u), ...$(".tc-madd", tr).value.split(/[,;\s]+/).filter(Boolean)],
-    }))
-    .filter((c) => c.team || c.emails.trim() || c.members.length);
+  const contacts = collectContacts();
   try {
     const r = await api("/api/notify/contacts", { method: "PUT", body: { contacts } });
-    $("#tc-table tbody").innerHTML = r.contacts.length ? r.contacts.map(contactRow).join("") : contactRow();
-    refreshUnassigned();
-    applyTcFilter();
+    renderContacts(r.contacts);
     say($("#tc-msg"), `Đã lưu ${r.contacts.length} group VPN.`, "ok");
   } catch (ex) {
     say($("#tc-msg"), ex.message, "error");
