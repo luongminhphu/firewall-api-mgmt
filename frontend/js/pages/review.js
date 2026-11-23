@@ -3,7 +3,7 @@
      (Thu hồi / điều chỉnh bắt buộc lý do). Quản trị viên thấy thêm phạm vi Infra và quyết định thay được.
    - viewer trở lên: danh sách đợt, tiến độ theo team, CSV bằng chứng / cần xử lý, kiểm tra chuỗi băm;
      quản trị viên: mở / đóng đợt. */
-import { confirmAction } from "../components/modal.js";
+import { closeModal, confirmAction, openModal } from "../components/modal.js";
 import { API, api, errorBox } from "../api.js";
 import { toast } from "../components/toast.js";
 import { can, state } from "../store.js";
@@ -44,13 +44,13 @@ async function renderMine(r) {
   if (!c) {
     $("#rv-progress").innerHTML = "";
     $("#rv-list").innerHTML = `<p class="empty">Hiện không có đợt rà soát nào đang mở. Đợt mới mở vào đầu mỗi quý;
-      khi mở, đại diện team nhận email kèm đường link, vào đây chọn <strong>Còn cần / Thu hồi / Cần điều chỉnh</strong> cho từng quyền VPN của team mình.</p>`;
+      khi mở, đại diện group nhận email kèm đường link, vào đây chọn <strong>Còn cần / Thu hồi / Cần điều chỉnh</strong> cho từng quyền VPN của group mình.</p>`;
     return;
   }
   const scopes = r.scopes.map((s) => esc(s.name)).join(", ");
   $("#rv-sub").innerHTML = r.scopes.length
     ? `Bạn rà soát: <strong>${scopes}</strong> · hạn <strong>${fmtDate(c.due_date)}</strong>. Xác nhận từng quyền còn cần, cần thu hồi hay cần điều chỉnh.`
-    : `Bạn không phải đại diện team nào trong đợt này.`;
+    : `Bạn không phải đại diện group nào trong đợt này.`;
   // tiến độ của phạm vi mình (lấy tất cả mục, không theo bộ lọc) — vẽ cùng lúc với danh sách
   await renderProgress();
   if (!r.items.length) {
@@ -168,6 +168,7 @@ async function loadCampaigns() {
     }).join("") : `<tr><td colspan="5"><p class="empty">Chưa có đợt rà soát nào.</p></td></tr>`;
     const open = r.campaigns.find((c) => c.status === "open");
     $("#rv-open").disabled = !!open;
+    loadDrafts(open);
     $("#rv-scopes").innerHTML = open ? `<div class="rv-scopes">${open.by_scope.map((s) => {
       const done = s.total - s.pending;
       return `<div class="rv-scope"><div class="rv-scope__head"><strong>${esc(s.name)}</strong><span class="tiny muted">${done}/${s.total}</span></div>
@@ -191,7 +192,7 @@ $("#rv-camps").addEventListener("click", async (e) => {
 });
 
 $("#rv-open").addEventListener("click", async () => {
-  if (!(await confirmAction({ title: "Mở đợt rà soát mới?", ok: "Mở đợt rà soát", danger: false, html: "<p>Ảnh chụp rule VPN và tài khoản hiện tại sẽ được gửi cho đại diện team và Infra.</p>" }))) return;
+  if (!(await confirmAction({ title: "Mở đợt rà soát mới?", ok: "Mở đợt rà soát", danger: false, html: "<p>Ảnh chụp rule VPN và tài khoản hiện tại sẽ được gửi cho đại diện group và Infra.</p>" }))) return;
   try {
     const c = await api("/api/review/campaigns", { method: "POST", body: {} });
     toast(`Đã mở ${c.name}: ${c.totals.total} mục`, "ok");
@@ -210,5 +211,110 @@ $("#rv-verify").addEventListener("click", async () => {
   } catch (ex) {
     el.textContent = ex.message;
     el.className = "tiny text-err";
+  }
+});
+
+// ------------------------------------------------------------------ email rà soát theo group (quản trị viên)
+const mail = { cid: null, scope: null };
+
+async function loadDrafts(open) {
+  const sec = $("#rv-mail");
+  sec.hidden = !(open && can("admin"));
+  if (sec.hidden) return;
+  mail.cid = open.id;
+  const tb = $("#rv-mail-table tbody");
+  try {
+    const { drafts } = await api(`/api/review/campaigns/${open.id}/drafts`);
+    tb.innerHTML = drafts.map((d) => `<tr>
+      <td data-label="Group"><strong>${esc(d.name)}</strong>${d.scope === "infra" ? "" : `<div class="muted tiny">${d.members} user VPN</div>`}</td>
+      <td data-label="Gửi tới" class="tiny">${d.to.length ? d.to.map(esc).join(", ") : `<span class="text-warn">Chưa có email — khai báo ở Cài đặt › VPN &amp; rà soát</span>`}</td>
+      <td data-label="Quyền" class="nowrap">${d.total}${d.pending ? ` <span class="muted tiny">· chờ ${d.pending}</span>` : ""}</td>
+      <td><button class="btn btn--sm" type="button" data-draft="${esc(d.scope)}">Soạn email</button></td>
+    </tr>`).join("");
+  } catch (ex) {
+    tb.innerHTML = `<tr><td colspan="4">${errorBox(ex)}</td></tr>`;
+  }
+}
+
+const draftBody = () => ({
+  to: $("#dm-to").value, cc: $("#dm-cc").value, subject: $("#dm-subject").value.trim(), body: $("#dm-body").value,
+});
+
+$("#rv-mail-table").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-draft]");
+  if (!b) return;
+  try {
+    const d = await api(`/api/review/campaigns/${mail.cid}/drafts/${encodeURIComponent(b.dataset.draft)}`);
+    mail.scope = d.scope;
+    openModal(`Email rà soát — ${d.name}`, `
+      <form class="draft-form" id="draft-form" autocomplete="off">
+        <div class="row row--2">
+          <label class="field"><span>Gửi tới</span><input id="dm-to" value="${esc(d.to.join(", "))}" placeholder="dai.dien@hsc.com.vn" /></label>
+          <label class="field"><span>Cc</span><input id="dm-cc" value="${esc(d.cc.join(", "))}" /></label>
+        </div>
+        <label class="field"><span>Tiêu đề</span><input id="dm-subject" value="${esc(d.subject)}" maxlength="250" /></label>
+        <label class="field"><span>Nội dung (sửa được)</span><textarea id="dm-body" rows="18">${esc(d.body)}</textarea></label>
+        <p id="dm-msg" class="alert hidden" role="status"></p>
+        <div class="actions">
+          <button class="btn btn--ghost" type="button" id="dm-copy">Sao chép nội dung</button>
+          <button class="btn" type="button" id="dm-eml">Tải .eml (thư nháp Outlook)</button>
+          <button class="btn btn--primary" type="button" id="dm-send">Gửi qua SMTP</button>
+        </div>
+      </form>`);
+  } catch (ex) {
+    toast(ex.message, "err");
+  }
+});
+
+function dmSay(text, kind) {
+  const el = $("#dm-msg");
+  el.textContent = text;
+  el.className = `alert alert--${kind === "ok" ? "ok" : "error"}`;
+}
+
+$("#modal").addEventListener("click", async (e) => {
+  if (!mail.scope || !$("#draft-form")) return;
+  const url = `/api/review/campaigns/${mail.cid}/drafts/${encodeURIComponent(mail.scope)}`;
+  if (e.target.id === "dm-copy") {
+    const d = draftBody();
+    try {
+      await window.navigator.clipboard.writeText(`Tiêu đề: ${d.subject}\n\n${d.body}`);
+      dmSay("Đã sao chép tiêu đề + nội dung.", "ok");
+    } catch {
+      $("#dm-body").select(); // trình duyệt chặn clipboard: chọn sẵn để Ctrl+C
+      dmSay("Trình duyệt không cho sao chép tự động — nội dung đã được chọn, bấm Ctrl+C.", "error");
+    }
+  } else if (e.target.id === "dm-eml") {
+    try {
+      const res = await fetch(`${API}${url}/eml`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Auth-Token": state.token },
+        body: JSON.stringify(draftBody()),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `Lỗi ${res.status}`);
+      const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") || "")?.[1] || "ra-soat-vpn.eml";
+      const a = document.createElement("a");
+      a.href = window.URL.createObjectURL(await res.blob());
+      a.download = name;
+      a.click();
+      window.setTimeout(() => window.URL.revokeObjectURL(a.href), 5000);
+      dmSay(`Đã tải ${name} — mở bằng Outlook, kiểm tra rồi bấm Gửi.`, "ok");
+    } catch (ex) {
+      dmSay(ex.message, "error");
+    }
+  } else if (e.target.id === "dm-send") {
+    const d = draftBody();
+    if (!(await confirmAction({ title: "Gửi email rà soát?", ok: "Gửi email", danger: false,
+      html: `<p>Gửi tới <strong>${esc(d.to)}</strong>${d.cc.trim() ? `, Cc ${esc(d.cc)}` : ""} qua máy chủ SMTP của app.</p>` }))) return;
+    const btn = $("#dm-send");
+    btn.disabled = true;
+    try {
+      const r = await api(`${url}/send`, { method: "POST", body: d });
+      toast(r.message, "ok");
+      closeModal();
+    } catch (ex) {
+      dmSay(ex.message, "error");
+    }
+    btn.disabled = false;
   }
 });

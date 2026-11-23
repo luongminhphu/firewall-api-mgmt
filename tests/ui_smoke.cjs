@@ -251,11 +251,21 @@ const confirmOk = async (page) => {
     await page.click('#nt-form button[type="submit"]');
     await page.waitForSelector("#nt-msg.alert--ok");
     chk("Cài đặt: bật thông báo hạn VPN", true);
+    // Group VPN & đại diện (mục VPN & rà soát): tên, đại diện, gán user VPN bằng chip
+    await page.click('#st-nav [data-st="vpn"]');
     await page.fill("#tc-table tbody tr:first-child .tc-team", "RMS RESEARCH");
     await page.fill("#tc-table tbody tr:first-child .tc-emails", "rms.lead@hsc.com.vn");
+    await page.fill("#tc-table tbody tr:first-child .tc-madd", "chau.nb@hsc.com.vn, nhan.ndt@hsc.com.vn");
+    await page.press("#tc-table tbody tr:first-child .tc-madd", "Enter");
+    chk("Group VPN: dán 2 user → 2 chip thành viên",
+      (await page.$$("#tc-table tbody tr:first-child .tc-m")).length === 2);
+    await page.click('#tc-table .tc-m[data-u="nhan.ndt@hsc.com.vn"] .tc-m__x');
+    chk("Group VPN: bấm × bỏ user khỏi group", (await page.$$("#tc-table tbody tr:first-child .tc-m")).length === 1);
     await page.click("#tc-save");
     await page.waitForSelector("#tc-msg.alert--ok");
-    chk("Cài đặt: lưu đại diện team", (await page.textContent("#tc-msg")).includes("1 team"));
+    chk("Cài đặt: lưu group VPN (đại diện + 1 user)", (await page.textContent("#tc-msg")).includes("1 group VPN")
+      && (await page.$$('#tc-table .tc-m[data-u="chau.nb@hsc.com.vn"]')).length === 1);
+    await page.click('#st-nav [data-st="mail"]');
     await page.click("#ob-run");
     await page.waitForFunction(() => /nằm chờ|Xếp hàng/.test(document.querySelector("#ob-note").textContent));
     chk("Cài đặt: Chạy ngay → thư nằm chờ khi SMTP tắt", (await page.textContent("#ob-note")).includes("nằm chờ"));
@@ -428,6 +438,25 @@ const confirmOk = async (page) => {
     await page.click(`[data-confirm='${first}']`);
     await page.waitForFunction((id) => !document.querySelector(`#rv-item-${id}`), first);
     chk("Rà soát: thu hồi kèm lý do → rời danh sách chưa quyết định", true);
+    // Email rà soát theo group (ISO 27001): bản nháp sửa được, tải .eml
+    await page.waitForSelector('#rv-mail-table [data-draft="rms research"]');
+    chk("Rà soát: bảng email theo group có đại diện RMS RESEARCH",
+      (await page.textContent("#rv-mail-table")).includes("rms.lead@hsc.com.vn"));
+    await page.click('#rv-mail-table [data-draft="rms research"]');
+    await page.waitForSelector("#modal[open] #dm-body");
+    chk("Email rà soát: tiêu đề ISO 27001 + nội dung A.5.18 + user của group",
+      (await page.inputValue("#dm-subject")).includes("ISO 27001")
+      && (await page.inputValue("#dm-body")).includes("A.5.18")
+      && (await page.inputValue("#dm-body")).includes("chau.nb@hsc.com.vn"));
+    await page.fill("#dm-body", (await page.inputValue("#dm-body")) + "\nGhi chú UI smoke");
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.click("#dm-eml")]);
+    const eml = require("fs").readFileSync(await dl.path(), "utf8");
+    const [, emlBody = ""] = eml.split(/\r?\n\r?\n/, 2).length > 1 ? [null, eml.slice(eml.search(/\r?\n\r?\n/))] : [];
+    const decoded = /Content-Transfer-Encoding: base64/i.test(eml) ? Buffer.from(emlBody.replace(/\s+/g, ""), "base64").toString("utf8") : emlBody;
+    chk("Email rà soát: tải .eml thư nháp (X-Unsent) có nội dung đã sửa",
+      dl.suggestedFilename().endsWith(".eml") && eml.includes("X-Unsent: 1") && decoded.includes("Ghi chú UI smoke"),
+      dl.suggestedFilename());
+    await page.click("#modal [data-close]");
 
     // Logo (Cài đặt › Giao diện): tải PNG lên, hiện ở thanh trên, rồi gỡ
     await tab(page, "settings");

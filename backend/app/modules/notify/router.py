@@ -49,6 +49,7 @@ class ContactIn(_In):
     team: str
     emails: Any = None
     note: str | None = None
+    members: Any = None  # user VPN của group: list hoặc chuỗi phân cách , ; xuống dòng
 
 
 class ContactsIn(_In):

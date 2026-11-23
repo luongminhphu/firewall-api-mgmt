@@ -391,7 +391,8 @@ class EmailOutbox(Base):
 
 
 class VpnTeamContact(Base):
-    """Người đại diện của team (nhập tay — quyết định §9): nhận email báo trước hạn VPN của team."""
+    """Group VPN (team) + đại diện (nhập tay — quyết định §9): đại diện nhận email báo trước hạn VPN và rà soát quyền
+    của group. Rule có team trùng tên group thuộc group; user VPN gán tay vào group qua `members`."""
 
     __tablename__ = "vpn_team_contacts"
 
@@ -400,6 +401,7 @@ class VpnTeamContact(Base):
     team_key: Mapped[str] = mapped_column(String(160), unique=True, index=True)  # lowercase
     emails: Mapped[str] = mapped_column(Text, default="")  # phân cách dấu phẩy
     note: Mapped[str] = mapped_column(Text, default="")
+    members: Mapped[str] = mapped_column(Text, default="")  # username user VPN, phân cách dấu phẩy; một user ≤ 1 group
     updated_by: Mapped[str] = mapped_column(String(120), default="")
     updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

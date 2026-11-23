@@ -62,7 +62,7 @@ const HELP = {
   "vs-fws": "Chọn firewall có cấu hình VPN (SSL VPN / IPsec, Rule Group VPN). Đồng bộ định kỳ và nút Đồng bộ ngay chỉ đọc các firewall này. Không chọn = mọi firewall đang bật.",
   "vs-groups": "Rule Group trên firewall chứa rule cấp quyền VPN. Chỉ chọn được group có trong whitelist mã nguồn (hardening).",
   "rs-auto": "Tự mở đợt rà soát trong 15 ngày đầu mỗi quý (khi đã có dữ liệu VPN). Quản trị viên vẫn mở tay được ở tab Rà soát.",
-  "rs-due": "Số ngày đại diện team có để xác nhận từ lúc mở đợt (mặc định 14).",
+  "rs-due": "Số ngày đại diện group có để xác nhận từ lúc mở đợt (mặc định 14).",
   "rs-remind": "Còn ≤ số ngày này tới hạn thì email nhắc các mục chưa quyết định.",
 
   // ---------------------------------------------------------------- SMTP / thông báo
@@ -77,7 +77,7 @@ const HELP = {
   "smtp-from-name": "Tên hiển thị của người gửi, vd \"SOC Rapid Block\".",
   "smtp-test-to": "Nhập email của bạn rồi bấm Gửi thử để kiểm tra cấu hình ngay.",
   "nt-enabled": "Bật để gửi email nhắc hạn VPN theo các mốc bên dưới.",
-  "nt-infra": "Email Infra nhận mọi thông báo hạn VPN (mỗi dòng một địa chỉ). Đại diện team chỉ nhận thư của team mình.",
+  "nt-infra": "Email Infra nhận mọi thông báo hạn VPN (mỗi dòng một địa chỉ). Đại diện group chỉ nhận thư của group mình.",
   "nt-days": "Các mốc nhắc trước hạn, phân cách dấu phẩy (vd 30, 14, 7, 1). Mỗi mốc chỉ gửi một lần cho mỗi rule.",
   "nt-weekly": "Mỗi tuần báo Infra danh sách rule đã hết hạn mà vẫn đang bật trên firewall.",
 };

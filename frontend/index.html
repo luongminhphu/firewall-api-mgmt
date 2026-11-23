@@ -539,6 +539,18 @@ Ví dụ:
             </div>
             <p id="rv-verify-msg" class="tiny"></p>
             <div id="rv-scopes"></div>
+            <section class="rv-mail" id="rv-mail" hidden aria-labelledby="rv-mail-title">
+              <div class="card-head">
+                <div><h3 id="rv-mail-title">Email rà soát theo group</h3>
+                  <p class="muted tiny">Bản nháp theo ISO 27001 (A.5.18) cho từng group của đợt đang mở: danh sách user VPN, quyền cần xác nhận, hạn trả lời. Xem và sửa trước, rồi sao chép, tải .eml (Outlook mở thành thư nháp) hoặc gửi qua SMTP của app.</p></div>
+              </div>
+              <div class="table-wrap">
+                <table class="table" id="rv-mail-table">
+                  <thead><tr><th>Group</th><th>Gửi tới</th><th>Quyền cần xác nhận</th><th><span class="sr-only">Thao tác</span></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
             <div class="table-wrap">
               <table class="table" id="rv-camps">
                 <thead><tr><th>Đợt</th><th>Trạng thái</th><th>Hạn</th><th>Kết quả</th><th>Bằng chứng</th></tr></thead>
@@ -720,11 +732,11 @@ Ví dụ:
               </button>
               <button type="button" class="st-nav__item" data-st="vpn">
                 <svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                <span><strong>VPN &amp; rà soát</strong><small>Firewall có VPN, hạn truy cập, rà soát quý</small></span>
+                <span><strong>VPN &amp; rà soát</strong><small>Firewall có VPN, hạn truy cập, rà soát quý, group &amp; đại diện</small></span>
               </button>
               <button type="button" class="st-nav__item" data-st="mail">
                 <svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
-                <span><strong>Email &amp; thông báo</strong><small>SMTP, nhắc hạn, đại diện team, hàng đợi</small></span>
+                <span><strong>Email &amp; thông báo</strong><small>SMTP, nhắc hạn, hàng đợi</small></span>
               </button>
               <button type="button" class="st-nav__item" data-st="general">
                 <svg class="ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r="1.5"/><circle cx="17.5" cy="10.5" r="1.5"/><circle cx="8.5" cy="7.5" r="1.5"/><circle cx="6.5" cy="12.5" r="1.5"/><path d="M12 2a10 10 0 0 0 0 20c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a6 6 0 0 0 6-6c0-4.9-4.5-8.6-10-8.6z"/></svg>
@@ -912,10 +924,28 @@ Ví dụ:
                 <label class="field"><span>Hạn hoàn thành (ngày)</span><input id="rs-due" type="number" min="1" max="90" /></label>
                 <label class="field"><span>Nhắc khi còn ≤ (ngày)</span><input id="rs-remind" type="number" min="0" max="30" /></label>
               </div>
-              <p class="muted tiny">Người rà soát là đại diện team (khai báo ở <strong>Email &amp; thông báo › Đại diện team</strong>); mục không thuộc team nào do Infra (quản trị viên) rà soát. Đại diện team chưa là người dùng app vẫn đăng nhập được bằng Microsoft, chỉ thấy tab Rà soát.</p>
+              <p class="muted tiny">Người rà soát là đại diện group (khai báo ở thẻ <strong>Group VPN &amp; đại diện</strong> bên dưới); mục không thuộc group nào do Infra (quản trị viên) rà soát. Email rà soát theo từng group soạn ở tab Rà soát. Đại diện group chưa là người dùng app vẫn đăng nhập được bằng Microsoft, chỉ thấy tab Rà soát.</p>
               <p id="rs-msg" class="alert hidden" role="status"></p>
               <button class="btn btn--primary" type="submit">Lưu</button>
             </form>
+
+            <div class="card card--wide" id="tc-card">
+              <div class="card-head">
+                <div><h2>Group VPN &amp; đại diện</h2><p class="muted tiny">Mỗi group có đại diện (nhận email nhắc hạn VPN và rà soát quyền định kỳ) và danh sách user VPN thuộc group. Rule có tên team trùng tên group (vd "RMS RESEARCH") tự thuộc group; rule còn lại thuộc group của user được cấp quyền. Một user chỉ thuộc một group.</p></div>
+                <button class="btn btn--ghost btn--sm" id="tc-add" type="button">Thêm group</button>
+              </div>
+              <datalist id="tc-teams"></datalist>
+              <datalist id="tc-users"></datalist>
+              <div class="table-wrap">
+                <table class="table tc-table" id="tc-table">
+                  <thead><tr><th>Group</th><th>Email đại diện</th><th>User VPN thuộc group</th><th>Ghi chú</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <p id="tc-unassigned" class="muted tiny" aria-live="polite"></p>
+              <p id="tc-msg" class="alert hidden" role="status"></p>
+              <div class="actions"><button class="btn btn--primary" id="tc-save" type="button">Lưu group VPN</button></div>
+            </div>
               </div>
 
               <div class="st-group grid grid--settings" data-st-group="mail" hidden>
@@ -963,26 +993,10 @@ Ví dụ:
               <label class="field"><span>Nhắc trước hạn (ngày, phân cách dấu phẩy)</span>
                 <input id="nt-days" placeholder="30, 14, 7, 1" inputmode="numeric" /></label>
               <label class="check"><input type="checkbox" id="nt-weekly" /> <span>Báo Infra hằng tuần các rule đã hết hạn nhưng vẫn bật</span></label>
-              <p class="muted tiny">Mỗi mốc chỉ gửi một lần cho mỗi rule; đổi hạn thì nhắc lại theo hạn mới. Đại diện team nhận thư nhắc của các rule thuộc team mình.</p>
+              <p class="muted tiny">Mỗi mốc chỉ gửi một lần cho mỗi rule; đổi hạn thì nhắc lại theo hạn mới. Đại diện group (mục VPN &amp; rà soát) nhận thư nhắc của các rule thuộc group mình.</p>
               <p id="nt-msg" class="alert hidden" role="status"></p>
               <button class="btn btn--primary" type="submit">Lưu thông báo</button>
             </form>
-
-            <div class="card card--wide">
-              <div class="card-head">
-                <div><h2>Đại diện team</h2><p class="muted tiny">Nhận email nhắc trước hạn VPN của team. Tên team khớp phần team bóc từ tên rule (vd "RMS RESEARCH").</p></div>
-                <button class="btn btn--ghost btn--sm" id="tc-add" type="button">Thêm team</button>
-              </div>
-              <datalist id="tc-teams"></datalist>
-              <div class="table-wrap">
-                <table class="table" id="tc-table">
-                  <thead><tr><th>Team</th><th>Email đại diện (phân cách dấu phẩy)</th><th>Ghi chú</th><th class="w-check"><span class="sr-only">Xóa</span></th></tr></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-              <p id="tc-msg" class="alert hidden" role="status"></p>
-              <div class="actions"><button class="btn btn--primary" id="tc-save" type="button">Lưu đại diện team</button></div>
-            </div>
 
             <div class="card card--wide">
               <div class="card-head">

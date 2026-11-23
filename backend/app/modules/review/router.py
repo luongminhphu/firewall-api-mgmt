@@ -8,20 +8,22 @@ from __future__ import annotations
 
 import csv
 import io
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, Query, Request
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict
+from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...auth.rbac import admin, principal, require
 from ...core import hashchain
+from ...core.audit import audit
 from ...core.db import get_session
 from ...core.deps import client_ip_of
 from ...core.errors import AppError
 from ...core.models import ReviewCampaign, ReviewDecision
+from ..notify import smtp
 from . import service
 
 router = APIRouter()
@@ -39,6 +41,13 @@ class DecisionIn(_In):
 
 class OpenIn(_In):
     name: str | None = None
+
+
+class DraftIn(_In):
+    to: Any = None  # list hoặc chuỗi phân cách , ; xuống dòng
+    cc: Any = None
+    subject: str = Field(min_length=1, max_length=250)
+    body: str = Field(min_length=1, max_length=100_000)
 
 
 class SettingsIn(_In):
@@ -171,3 +180,54 @@ def review_revocations(cid: int, token: str = Query(default=""), db: Session = D
             for it in service.items(db, cid) if it["decision"] in ("revoke", "change", "no_response")]
     return _csv_response(f"ra_soat_vpn_{c.period_key}_can_xu_ly.csv",
                          ["firewall", "quyen", "team", "quyet_dinh", "ly_do", "nguoi_quyet_dinh", "thoi_diem"], rows)
+
+
+# ------------------------------------------------------------------ email rà soát (bản nháp) — quản trị viên
+@router.get("/api/review/campaigns/{cid}/drafts")
+def review_drafts(cid: int, db: Session = Depends(get_session), p: dict = Depends(admin)):
+    _camp(db, cid)
+    return {"drafts": service.drafts(db, cid)}
+
+
+@router.get("/api/review/campaigns/{cid}/drafts/{scope}")
+def review_draft(cid: int, scope: str, db: Session = Depends(get_session), p: dict = Depends(admin)):
+    _camp(db, cid)
+    return service.draft(db, cid, scope.lower())
+
+
+def _draft_in(payload: DraftIn) -> tuple[list[str], list[str]]:
+    to, cc = smtp.parse_emails(payload.to or []), smtp.parse_emails(payload.cc or [])
+    if not to:
+        raise AppError(400, "Nhập ít nhất một người nhận hợp lệ")
+    return to, cc
+
+
+@router.post("/api/review/campaigns/{cid}/drafts/{scope}/eml")
+def review_draft_eml(cid: int, scope: str, payload: DraftIn = Body(...), db: Session = Depends(get_session),
+                     p: dict = Depends(admin)):
+    camp = _camp(db, cid)
+    to, cc = _draft_in(payload)
+    data = service.draft_eml(to, cc, payload.subject, payload.body)
+    name = f"ra-soat-vpn-{camp.period_key}-{scope}".replace(" ", "-")
+    name = "".join(ch for ch in name if ch.isalnum() or ch in "-_.")[:120] or "ra-soat-vpn"
+    return Response(data, media_type="message/rfc822",
+                    headers={"Content-Disposition": f'attachment; filename="{name}.eml"'})
+
+
+@router.post("/api/review/campaigns/{cid}/drafts/{scope}/send")
+def review_draft_send(cid: int, scope: str, request: Request, payload: DraftIn = Body(...),
+                      db: Session = Depends(get_session), p: dict = Depends(admin)):
+    camp = _camp(db, cid)
+    to, cc = _draft_in(payload)
+    ip = client_ip_of(request)
+    try:
+        smtp.send(db, to, " ".join(payload.subject.split()), payload.body, cc=cc)  # tiêu đề sửa tay: gộp xuống dòng
+    except smtp.MailError as exc:
+        audit(db, action="review", fw=None, target=camp.period_key, result="error", actor=p["user"], client_ip=ip,
+              message=f"Gửi email rà soát {scope} không thành công: {exc}")
+        db.commit()
+        raise AppError(400, f"Gửi không thành công: {exc}") from exc
+    audit(db, action="review", fw=None, target=camp.period_key, result="ok", actor=p["user"], client_ip=ip,
+          message=f"Gửi email rà soát cho {scope}: {', '.join(to)}" + (f" · Cc {', '.join(cc)}" if cc else ""))
+    db.commit()
+    return {"ok": True, "message": f"Đã gửi tới {', '.join(to)}"}

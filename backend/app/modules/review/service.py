@@ -109,7 +109,8 @@ def open_campaign(db: Session, *, actor: str, client_ip: str = "", period_key: s
                           due_date=today + dt.timedelta(days=cfg["due_days"]), created_by=actor, created_at=_now())
     db.add(camp)
     db.flush()
-    contacts = {c.team_key for c in db.scalars(select(VpnTeamContact))}
+    contacts = {c.team_key: c.team for c in db.scalars(select(VpnTeamContact))}
+    members = planner.member_map(db)  # user VPN gán tay vào group
     rules = vpn_rules.list_rules(db, today=today)["rules"]
     linked: set[tuple[int, str]] = set()
     items = []
@@ -122,9 +123,12 @@ def open_campaign(db: Session, *, actor: str, client_ip: str = "", period_key: s
                                   "dst_zones", "dst_networks", "services", "schedule_name", "src_zones",
                                   "src_networks", "description")}
         snap["accounts"] = [a["username"] for a in r["accounts"]]
+        if team_key not in contacts:  # team trong tên rule chưa là group → theo group của user (nếu chỉ một group)
+            owners = {members.get(a["username"].lower()) for a in r["accounts"]}
+            team_key = owners.pop() if len(owners) == 1 and None not in owners else ""
         items.append(ReviewItem(campaign_id=camp.id, kind="rule", firewall_id=r["firewall_id"],
                                 firewall_name=r["firewall"], ref_key=r["rule_name"].lower()[:255],
-                                title=r["rule_name"][:255], team=r["team"],
+                                title=r["rule_name"][:255], team=r["team"] or contacts.get(team_key, ""),
                                 scope=team_key if team_key in contacts else "infra",
                                 snapshot_json=json.dumps(snap, ensure_ascii=False)))
     names = {i.firewall_id: i.firewall_name for i in items}
@@ -139,7 +143,8 @@ def open_campaign(db: Session, *, actor: str, client_ip: str = "", period_key: s
                 "sslvpn_policy": a.sslvpn_policy}
         items.append(ReviewItem(campaign_id=camp.id, kind="orphan_account", firewall_id=a.firewall_id,
                                 firewall_name=names.get(a.firewall_id, f"#{a.firewall_id}"), ref_key=a.username_key,
-                                title=a.username[:255], team="", scope="infra",
+                                title=a.username[:255], team=contacts.get(members.get(a.username_key, ""), ""),
+                                scope=members.get(a.username_key) or "infra",
                                 snapshot_json=json.dumps(snap, ensure_ascii=False)))
     db.add_all(items)
     audit(db, action="review", fw=None, target=camp.period_key, result="ok", actor=actor, client_ip=client_ip,
@@ -340,3 +345,140 @@ def items(db: Session, cid: int, *, scopes: set[str] | None = None, decision: st
         n = q.lower().strip()
         rows = [r for r in rows if n in json.dumps(r, ensure_ascii=False).lower()]
     return rows
+
+
+# ------------------------------------------------------------------ email rà soát (bản nháp)
+ISO_REF = "ISO/IEC 27001:2022 — A.5.18 Quyền truy cập (rà soát định kỳ) và A.5.15 Kiểm soát truy cập"
+
+
+def _ddmmyyyy(iso: str | None) -> str:
+    return dt.date.fromisoformat(iso).strftime("%d/%m/%Y") if iso else "không thời hạn"
+
+
+def drafts(db: Session, cid: int) -> list[dict]:
+    """Mỗi phạm vi (group có đại diện / Infra) trong đợt: tên, người nhận, số mục."""
+    camp = db.get(ReviewCampaign, cid)
+    contacts = {c.team_key: c for c in db.scalars(select(VpnTeamContact))}
+    infra = planner.get_cfg(db).get("infra_emails") or []
+    out = []
+    for s in summary(db, cid)["by_scope"]:
+        c = contacts.get(s["scope"])
+        to = infra if s["scope"] == "infra" else [e for e in (c.emails.split(",") if c else []) if e]
+        out.append({"scope": s["scope"], "name": s["name"], "to": to, "total": s["total"], "pending": s["pending"],
+                    "members": len(planner.split_members(c.members)) if c else 0})
+    for key, c in sorted(contacts.items()):  # group chưa có mục nào vẫn hiện (thư báo "không có quyền nào")
+        if camp and key not in {o["scope"] for o in out}:
+            out.append({"scope": key, "name": c.team, "to": [e for e in c.emails.split(",") if e], "total": 0,
+                        "pending": 0, "members": len(planner.split_members(c.members))})
+    return out
+
+
+def draft(db: Session, cid: int, scope: str) -> dict:
+    """Bản nháp email rà soát quyền VPN cho một group (hoặc Infra) theo đợt đang chọn — người gửi sửa được trước khi
+    dùng. Chỉ đọc dữ liệu đã có (ảnh chụp của đợt + danh sách thành viên group), không ghi gì."""
+    camp = db.get(ReviewCampaign, cid)
+    if camp is None:
+        raise AppError(404, "Không tìm thấy đợt rà soát")
+    infra = planner.get_cfg(db).get("infra_emails") or []
+    c = db.scalar(select(VpnTeamContact).where(VpnTeamContact.team_key == scope))
+    if scope != "infra" and c is None:
+        raise AppError(404, f"Không có group '{scope}'")
+    name = "Infra" if scope == "infra" else c.team
+    to = infra if scope == "infra" else [e for e in c.emails.split(",") if e]
+    cc = [] if scope == "infra" else [e for e in infra if e not in to]
+    its = items(db, cid, scopes={scope})
+    rules = [i for i in its if i["kind"] == "rule"]
+    orphans = [i for i in its if i["kind"] == "orphan_account"]
+    # người dùng của group: thành viên gán tay + người dùng xuất hiện trong rule của group
+    users: dict[str, dict] = {}
+    if c is not None:
+        for m in planner.split_members(c.members):
+            users[m.lower()] = {"username": m, "display": "", "fws": set(), "vpn": set(), "status": "", "found": False}
+    for i in rules:
+        for u in i["snapshot"].get("accounts") or []:
+            users.setdefault(u.lower(), {"username": u, "display": "", "fws": set(), "vpn": set(), "status": "",
+                                         "found": False})
+    for i in orphans:
+        users.setdefault(i["title"].lower(), {"username": i["title"], "display": "", "fws": set(), "vpn": set(),
+                                              "status": "", "found": False})
+    fw_scope = vpn_settings.scope_ids(db)
+    fw_names = {i["firewall_id"]: i["firewall"] for i in its}
+    if users:
+        for a in db.scalars(select(VpnAccount).where(VpnAccount.removed_at.is_(None),
+                                                     VpnAccount.username_key.in_(list(users)))):
+            if fw_scope is not None and a.firewall_id not in fw_scope:
+                continue
+            u = users[a.username_key]
+            u["found"] = True
+            u["display"] = u["display"] or a.display_name
+            u["status"] = u["status"] or a.status
+            u["fws"].add(fw_names.get(a.firewall_id) or f"#{a.firewall_id}")
+            u["vpn"] |= {"SSL VPN"} if a.has_sslvpn else set()
+            u["vpn"] |= {"IPsec"} if a.has_ipsec else set()
+    due = camp.due_date.strftime("%d/%m/%Y")
+    total = len(rules) + len(orphans)
+    lines = [f"Kính gửi anh/chị đại diện {name},", "",
+             f"Theo chính sách kiểm soát truy cập của công ty và yêu cầu {ISO_REF}, Infra thực hiện rà soát định kỳ "
+             f"quyền truy cập VPN — đợt \"{camp.name}\".",
+             (f"Đề nghị anh/chị xác nhận {total} quyền truy cập VPN của {name} dưới đây trước ngày {due}."
+              if total else f"Hiện {name} không có quyền truy cập VPN nào cần xác nhận trong đợt này; đề nghị anh/chị "
+                            f"kiểm tra danh sách người dùng bên dưới và báo Infra nếu có thay đổi nhân sự."), ""]
+    lines += [f"1. NGƯỜI DÙNG VPN CỦA {name.upper()} ({len(users)})"]
+    for u in sorted(users.values(), key=lambda x: x["username"].lower()):
+        bits = [u["display"]] if u["display"] else []
+        bits += [", ".join(sorted(u["fws"]))] if u["fws"] else []
+        bits += ["/".join(sorted(u["vpn"]))] if u["vpn"] else []
+        bits += [f"trạng thái {u['status']}"] if u["status"] else []
+        if not u["found"]:
+            bits.append("KHÔNG còn tài khoản trên firewall — đề nghị gỡ khỏi group")
+        lines.append(f"   - {u['username']}" + (f" — {' · '.join(bits)}" if bits else ""))
+    if not users:
+        lines.append("   (chưa gán người dùng nào cho group)")
+    lines += ["", f"2. QUYỀN TRUY CẬP CẦN XÁC NHẬN ({total})"]
+    n = 0
+    for i in rules:
+        s = i["snapshot"]
+        n += 1
+        who = ", ".join(s.get("accounts") or s.get("identities") or []) or "—"
+        dst = ", ".join(s.get("dst_networks") or []) or "—"
+        svc = ", ".join(s.get("services") or []) or "mọi dịch vụ"
+        lines += [f"   {n}. {i['title']} ({i['firewall']})",
+                  f"      Người dùng: {who}",
+                  f"      Đích: {dst} · Dịch vụ: {svc}",
+                  f"      Hết hạn: {_ddmmyyyy(s.get('expiry_date'))} · {s.get('status_label') or ''}".rstrip(" ·")]
+        lines += [f"      Đã quyết định: {i['decision_label']}"] if i["decision"] != "pending" else []
+    for i in orphans:
+        n += 1
+        lines += [f"   {n}. Tài khoản VPN {i['title']} ({i['firewall']}) — có quyền VPN nhưng không thuộc rule nào"]
+        lines += [f"      Đã quyết định: {i['decision_label']}"] if i["decision"] != "pending" else []
+    if not total:
+        lines.append("   (không có)")
+    lines += ["", "Với mỗi quyền, vui lòng chọn một trong ba:",
+              "   • Còn cần — vẫn phục vụ công việc, giữ nguyên;",
+              "   • Thu hồi — không còn cần (nghỉ việc, chuyển bộ phận, kết thúc dự án…);",
+              "   • Cần điều chỉnh — thu hẹp đích / dịch vụ hoặc đổi thời hạn (ghi rõ yêu cầu).",
+              "Thu hồi hoặc điều chỉnh xin ghi kèm lý do.", "",
+              "Cách phản hồi: " + (f"vào {settings.APP_BASE_URL.rstrip('/')}/#review (đăng nhập bằng tài khoản Microsoft "
+                                   "công ty) và chọn quyết định cho từng mục, hoặc trả lời email này."
+                                   if settings.APP_BASE_URL else "mở tab \"Rà soát\" trong SOC Rapid Block, hoặc trả lời "
+                                                                "email này."),
+              f"Quá hạn {due} mà chưa phản hồi: mục được ghi \"Không phản hồi\" trong biên bản rà soát và chuyển "
+              "Infra xử lý theo chính sách kiểm soát truy cập (nguyên tắc đặc quyền tối thiểu).",
+              "Kết quả rà soát được lưu làm bằng chứng cho audit ISO 27001.", "", "Trân trọng,", "Infra"]
+    subject = f"[Rà soát VPN · ISO 27001] {name} — {camp.name}: xác nhận {total} quyền trước {due}"
+    return {"campaign_id": cid, "scope": scope, "name": name, "to": to, "cc": cc, "subject": subject[:250],
+            "body": "\n".join(lines) + "\n"}
+
+
+def draft_eml(to: list[str], cc: list[str], subject: str, body: str) -> bytes:
+    """File .eml mở trong Outlook thành THƯ NHÁP (X-Unsent: 1) — người gửi kiểm tra rồi bấm Gửi từ hộp thư của mình."""
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["To"] = ", ".join(to)
+    if cc:
+        msg["Cc"] = ", ".join(cc)
+    msg["Subject"] = " ".join(subject.split())  # không cho xuống dòng trong header
+    msg["X-Unsent"] = "1"
+    msg.set_content(body)
+    return bytes(msg)
