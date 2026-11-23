@@ -5,7 +5,7 @@
    - VPN: ngưỡng "sắp hết hạn", Rule Group được đọc (trong whitelist), firewall có VPN cần đồng bộ.
    - SMTP: máy chủ / bảo mật / tài khoản (mật khẩu không bao giờ hiển thị lại), người gửi, gửi thử.
    - Thông báo: bật/tắt, email Infra, mốc nhắc, báo hằng tuần rule hết hạn còn bật.
-   - Đại diện team (nhập tay), hàng đợi email + Chạy ngay. */
+   - Group VPN: đại diện + user VPN thuộc group (nhập tay), hàng đợi email + Chạy ngay. */
 import { api } from "../api.js";
 import { loadAutoblockSettings } from "./autoblock-settings.js";
 import { setBusy } from "../components/progress.js";
@@ -142,7 +142,7 @@ $("#vs-form").addEventListener("submit", async (e) => {
   }
 });
 
-// ------------------------------------------------------------------ SMTP + thông báo + đại diện team
+// ------------------------------------------------------------------ SMTP + thông báo + group VPN
 function fillSmtp(s) {
   $("#smtp-enabled").checked = s.enabled;
   $("#smtp-host").value = s.host;
@@ -161,13 +161,39 @@ function fillSmtp(s) {
   st.className = `chip ${s.enabled && s.configured ? "chip--ok" : "chip--warn"}`;
 }
 
-function contactRow(c = { team: "", emails: [], note: "" }) {
+const memberChip = (u) => `<span class="chip tc-m" data-u="${esc(u)}">${esc(u)}<button type="button" class="tc-m__x" aria-label="Bỏ ${esc(u)} khỏi group">×</button></span>`;
+
+function contactRow(c = { team: "", emails: [], note: "", members: [] }) {
   return `<tr>
-    <td><input class="tc-team" list="tc-teams" value="${esc(c.team)}" aria-label="Tên team" /></td>
-    <td><input class="tc-emails" value="${esc(c.emails.join(", "))}" aria-label="Email đại diện" placeholder="truong.nhom@hsc.com.vn" /></td>
-    <td><input class="tc-note" value="${esc(c.note || "")}" aria-label="Ghi chú" /></td>
-    <td><button class="btn btn--ghost btn--sm tc-del" type="button" aria-label="Xóa team ${esc(c.team)}">✕</button></td>
+    <td data-label="Group"><input class="tc-team" list="tc-teams" value="${esc(c.team)}" aria-label="Tên group" placeholder="RMS RESEARCH" /></td>
+    <td data-label="Email đại diện"><input class="tc-emails" value="${esc(c.emails.join(", "))}" aria-label="Email đại diện (phân cách dấu phẩy)" placeholder="truong.nhom@hsc.com.vn" /></td>
+    <td data-label="User VPN"><div class="tc-members">${(c.members || []).map(memberChip).join("")}
+      <input class="tc-madd" list="tc-users" aria-label="Thêm user VPN vào group ${esc(c.team)}" placeholder="Thêm user VPN…" /></div></td>
+    <td data-label="Ghi chú"><input class="tc-note" value="${esc(c.note || "")}" aria-label="Ghi chú" /></td>
+    <td><button class="btn btn--ghost btn--sm tc-del" type="button" aria-label="Xóa group ${esc(c.team)}">✕</button></td>
   </tr>`;
+}
+
+// User VPN có quyền nhưng chưa thuộc group nào → Infra biết còn ai chưa gán
+let vpnUsers = [];
+function refreshUnassigned() {
+  const taken = new Set($$("#tc-table .tc-m").map((x) => x.dataset.u.toLowerCase()));
+  const free = vpnUsers.filter((u) => !taken.has(u.toLowerCase()));
+  $("#tc-users").innerHTML = free.map((u) => `<option value="${esc(u)}"></option>`).join("");
+  $("#tc-unassigned").textContent = !vpnUsers.length ? ""
+    : free.length ? `${free.length}/${vpnUsers.length} user VPN chưa thuộc group nào: ${free.slice(0, 8).join(", ")}${free.length > 8 ? ", …" : ""}`
+      : `Mọi user VPN (${vpnUsers.length}) đã thuộc một group.`;
+}
+
+function addMembers(input) {
+  const box = input.closest(".tc-members");
+  const have = new Set($$(".tc-m", box).map((x) => x.dataset.u.toLowerCase()));
+  for (const u of input.value.split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean)) {
+    if (!have.has(u.toLowerCase())) input.insertAdjacentHTML("beforebegin", memberChip(u));
+    have.add(u.toLowerCase());
+  }
+  input.value = "";
+  refreshUnassigned();
 }
 
 async function loadNotify() {
@@ -180,9 +206,13 @@ async function loadNotify() {
     $("#nt-weekly").checked = r.expired_weekly;
     $("#tc-table tbody").innerHTML = r.contacts.length ? r.contacts.map(contactRow).join("") : contactRow();
     try {
-      const teams = (await api("/api/vpn/rules")).teams;
-      $("#tc-teams").innerHTML = teams.map((t) => `<option value="${esc(t)}"></option>`).join("");
-    } catch {}
+      const [rules, accs] = await Promise.all([api("/api/vpn/rules"), api("/api/vpn/accounts")]);
+      $("#tc-teams").innerHTML = rules.teams.map((t) => `<option value="${esc(t)}"></option>`).join("");
+      vpnUsers = [...new Set(accs.accounts.map((a) => a.username))].sort();
+    } catch {
+      /* chưa đồng bộ VPN: vẫn nhập tay được */
+    }
+    refreshUnassigned();
   } catch (ex) {
     toast(ex.message, "err");
   }
@@ -247,8 +277,34 @@ $("#tc-add").addEventListener("click", () => {
   $("#tc-table tbody tr:last-child .tc-team").focus();
 });
 $("#tc-table").addEventListener("click", (e) => {
+  const x = e.target.closest(".tc-m__x");
+  if (x) {
+    const input = x.closest(".tc-members").querySelector(".tc-madd");
+    x.closest(".tc-m").remove();
+    input.focus();
+    refreshUnassigned();
+    return;
+  }
   const b = e.target.closest(".tc-del");
-  if (b) b.closest("tr").remove();
+  if (b) {
+    b.closest("tr").remove();
+    refreshUnassigned();
+  }
+});
+// Thêm user: chọn từ gợi ý (change), Enter, hoặc dán nhiều user phân cách dấu phẩy / khoảng trắng
+$("#tc-table").addEventListener("change", (e) => {
+  if (e.target.classList.contains("tc-madd")) addMembers(e.target);
+});
+$("#tc-table").addEventListener("keydown", (e) => {
+  if (!e.target.classList.contains("tc-madd")) return;
+  if (e.key === "Enter") {
+    e.preventDefault();
+    addMembers(e.target);
+  } else if (e.key === "Backspace" && !e.target.value) {
+    const prev = e.target.previousElementSibling;
+    if (prev?.classList.contains("tc-m")) prev.remove();
+    refreshUnassigned();
+  }
 });
 $("#tc-save").addEventListener("click", async () => {
   const contacts = $$("#tc-table tbody tr")
@@ -256,12 +312,15 @@ $("#tc-save").addEventListener("click", async () => {
       team: $(".tc-team", tr).value.trim(),
       emails: $(".tc-emails", tr).value,
       note: $(".tc-note", tr).value.trim(),
+      // user đang gõ dở trong ô thêm cũng được lưu
+      members: [...$$(".tc-m", tr).map((x) => x.dataset.u), ...$(".tc-madd", tr).value.split(/[,;\s]+/).filter(Boolean)],
     }))
-    .filter((c) => c.team || c.emails.trim());
+    .filter((c) => c.team || c.emails.trim() || c.members.length);
   try {
     const r = await api("/api/notify/contacts", { method: "PUT", body: { contacts } });
     $("#tc-table tbody").innerHTML = r.contacts.length ? r.contacts.map(contactRow).join("") : contactRow();
-    say($("#tc-msg"), `Đã lưu ${r.contacts.length} team.`, "ok");
+    refreshUnassigned();
+    say($("#tc-msg"), `Đã lưu ${r.contacts.length} group VPN.`, "ok");
   } catch (ex) {
     say($("#tc-msg"), ex.message, "error");
   }

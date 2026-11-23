@@ -133,7 +133,7 @@ def _clean_header(v: str) -> str:
 
 
 def send(db: Session, to: list[str], subject: str, body: str,
-         attachments: list[tuple[str, bytes, str]] | None = None) -> None:
+         attachments: list[tuple[str, bytes, str]] | None = None, cc: list[str] | None = None) -> None:
     """Gửi ngay một email. Ném MailError (thông điệp tiếng Việt, không chứa mật khẩu) nếu lỗi.
 
     attachments: [(tên file, nội dung, MIME type "maintype/subtype")] — vd báo cáo PDF / Excel."""
@@ -146,6 +146,9 @@ def send(db: Session, to: list[str], subject: str, body: str,
     msg = EmailMessage()
     msg["From"] = formataddr((_clean_header(cfg["from_name"]), _clean_header(cfg["from_addr"])))
     msg["To"] = ", ".join(_clean_header(a) for a in rcpts)
+    cc = [a for a in cc or [] if valid_email(a) and a not in rcpts]
+    if cc:
+        msg["Cc"] = ", ".join(_clean_header(a) for a in cc)
     msg["Subject"] = _clean_header(subject)[:250]
     msg["Date"] = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid(domain=cfg["from_addr"].split("@")[-1])
@@ -171,7 +174,7 @@ def send(db: Session, to: list[str], subject: str, body: str,
                 conn.ehlo()
             if cfg["username"]:
                 conn.login(cfg["username"], decrypt(cfg["password_enc"]) if cfg["password_enc"] else "")
-            refused = conn.send_message(msg, to_addrs=rcpts)
+            refused = conn.send_message(msg, to_addrs=rcpts + cc)
         if refused:
             raise MailError(f"Máy chủ từ chối người nhận: {', '.join(refused)}")
     except MailError:

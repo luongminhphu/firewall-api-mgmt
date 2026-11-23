@@ -997,3 +997,29 @@ button.block-sum { border: 0; background: none; padding: 0; font-family: inherit
     font-variant-numeric: tabular-nums; cursor: pointer; min-height: 44px; }
   button.block-sum { min-height: 44px; }
 }
+
+/* Group VPN: chip user trong ô, gõ / dán để thêm */
+.tc-members { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; min-width: 16rem; padding: var(--s1) 0; }
+.tc-m { display: inline-flex; align-items: center; gap: 2px; padding-right: 2px; }
+.tc-m__x { border: 0; background: none; color: inherit; cursor: pointer; font-size: 1rem; line-height: 1; min-width: 24px; min-height: 24px; border-radius: var(--radius-sm); }
+.tc-m__x:hover { background: var(--overlay-hover); }
+.tc-m__x:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tc-madd { flex: 1 1 10rem; min-width: 10rem; }
+.tc-table td { vertical-align: top; }
+/* Email rà soát */
+.rv-mail { margin-top: var(--s5); }
+.draft-form { display: grid; gap: var(--s3); }
+.draft-form textarea { min-height: 22rem; }
+.tc-table .tc-emails { min-width: 15rem; }
+/* Điện thoại: bảng group + bảng email thành thẻ xếp dọc (không cuộn ngang, thấy hết thành viên) */
+@media (max-width: 720px) {
+  #tc-table thead, #rv-mail-table thead { display: none; }
+  #tc-table tr, #rv-mail-table tr { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s2);
+    padding: var(--s3) var(--s4); border-bottom: 1px solid var(--border); }
+  #tc-table td, #rv-mail-table td { display: block; height: auto; padding: 0; border: 0; width: auto; text-align: left; }
+  #tc-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 2px; color: var(--text-muted); font-size: var(--fs-xs); }
+  #tc-table td:last-child { position: absolute; right: var(--s2); top: var(--s2); }
+  #tc-table td:first-child { padding-right: var(--s8); }
+  #tc-table input, .tc-table .tc-emails, .tc-members, .tc-madd { min-width: 0; width: 100%; }
+  #rv-mail-table td[data-label="Gửi tới"]::before, #rv-mail-table td[data-label="Quyền"]::before { content: attr(data-label) " · "; color: var(--text-muted); font-size: var(--fs-xs); }
+}

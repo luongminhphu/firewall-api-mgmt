@@ -118,8 +118,18 @@ def update_cfg(db: Session, data: dict, *, actor: str, client_ip: str) -> dict:
     return get_cfg(db)
 
 
+def split_members(v: str | None) -> list[str]:
+    return [m for m in (v or "").split(",") if m]
+
+
+def member_map(db: Session) -> dict[str, str]:
+    """username (lowercase) → team_key của group chứa user đó."""
+    return {m.lower(): c.team_key for c in db.scalars(select(VpnTeamContact)) for m in split_members(c.members)}
+
+
 def get_contacts(db: Session) -> list[dict]:
     return [{"id": c.id, "team": c.team, "emails": [e for e in c.emails.split(",") if e], "note": c.note,
+             "members": split_members(c.members),
              "updated_by": c.updated_by, "updated_at": c.updated_at.isoformat() if c.updated_at else None}
             for c in db.scalars(select(VpnTeamContact).order_by(VpnTeamContact.team_key))]
 
@@ -140,7 +150,26 @@ def replace_contacts(db: Session, items: list[dict], *, actor: str, client_ip: s
         emails = parse_emails(it.get("emails") or [])
         if not emails:
             raise AppError(400, f"Team '{team}' cần ít nhất một email đại diện")
-        clean[team.lower()] = {"team": team, "emails": emails, "note": str(it.get("note") or "")[:500]}
+        raw = it.get("members") or []
+        raw = raw.replace(";", ",").replace("\n", ",").split(",") if isinstance(raw, str) else raw
+        members: dict[str, str] = {}
+        for m in raw:
+            m = str(m).strip()
+            if not m:
+                continue
+            if len(m) > 255 or any(ch in m for ch in ",\r\n"):
+                raise AppError(400, f"Tên user VPN không hợp lệ: {m[:60]}")
+            members.setdefault(m.lower(), m)
+        if len(members) > 2000:
+            raise AppError(400, f"Group '{team}' có quá nhiều user (tối đa 2000)")
+        clean[team.lower()] = {"team": team, "emails": emails, "note": str(it.get("note") or "")[:500],
+                               "members": list(members.values())}
+    owner: dict[str, str] = {}
+    for v in clean.values():  # một user chỉ thuộc một group — đại diện rà soát được xác định duy nhất
+        for m in v["members"]:
+            if m.lower() in owner:
+                raise AppError(400, f"User '{m}' đang nằm ở 2 group: {owner[m.lower()]} và {v['team']}")
+            owner[m.lower()] = v["team"]
     now = dt.datetime.now(dt.timezone.utc)
     existing = {c.team_key: c for c in db.scalars(select(VpnTeamContact))}
     for key, c in existing.items():
@@ -148,10 +177,10 @@ def replace_contacts(db: Session, items: list[dict], *, actor: str, client_ip: s
             db.delete(c)
     for key, v in clean.items():
         c = existing.get(key) or VpnTeamContact(team_key=key)
-        c.team, c.emails, c.note = v["team"], ",".join(v["emails"]), v["note"]
+        c.team, c.emails, c.note, c.members = v["team"], ",".join(v["emails"]), v["note"], ",".join(v["members"])
         c.updated_by, c.updated_at = actor, now
         db.add(c)
     audit(db, action="settings_cud", fw=None, target="team_contacts", result="ok", actor=actor, client_ip=client_ip,
-          message=f"{len(clean)} team có đại diện nhận thông báo VPN")
+          message=f"{len(clean)} group VPN có đại diện · {len(owner)} user VPN được gán group")
     db.commit()
     return get_contacts(db)
