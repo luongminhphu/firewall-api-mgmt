@@ -786,6 +786,7 @@
   "GET /api/group-cache",
   "GET /api/health",
   "GET /api/jobs/{job_id}",
+  "GET /api/notify/contacts/suggest",
   "GET /api/notify/outbox",
   "GET /api/notify/settings",
   "GET /api/reports/blocks.pdf",

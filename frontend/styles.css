@@ -1023,3 +1023,19 @@ button.block-sum { border: 0; background: none; padding: 0; font-family: inherit
   #tc-table input, .tc-table .tc-emails, .tc-members, .tc-madd { min-width: 0; width: 100%; }
   #rv-mail-table td[data-label="Gửi tới"]::before, #rv-mail-table td[data-label="Quyền"]::before { content: attr(data-label) " · "; color: var(--text-muted); font-size: var(--fs-xs); }
 }
+
+/* Group VPN: lọc nhanh + gợi ý từ tên rule */
+.tc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); margin-bottom: var(--s3); }
+.tc-filter { flex: 0 1 26rem; margin: 0; }
+.tc-tools p { margin: 0; flex: 1 1 16rem; }
+.tc-m.is-hit { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tc-m--new { border-color: var(--ok); }
+#tc-table tr.is-new { box-shadow: inset 3px 0 0 var(--ok); }
+.tc-sugg { margin-bottom: var(--s4); padding: var(--s4); border: 1px dashed var(--border-strong); border-radius: var(--radius); background: var(--surface-2); }
+.tc-sugg__head h3 { margin: 0 0 var(--s1); }
+.tc-sugg__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr)); gap: var(--s3); margin: var(--s3) 0; }
+.tc-sg { margin: 0; padding: var(--s3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); min-width: 0; }
+.tc-sg legend { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); padding: 0 var(--s1); }
+.tc-sg p { margin: var(--s1) 0; overflow-wrap: anywhere; }
+.tc-sg__users { display: grid; gap: 2px; }
+.tc-sg__u span { overflow-wrap: anywhere; font-size: var(--fs-sm); }

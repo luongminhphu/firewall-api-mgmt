@@ -253,18 +253,48 @@ const confirmOk = async (page) => {
     chk("Cài đặt: bật thông báo hạn VPN", true);
     // Group VPN & đại diện (mục VPN & rà soát): tên, đại diện, gán user VPN bằng chip
     await page.click('#st-nav [data-st="vpn"]');
-    await page.fill("#tc-table tbody tr:first-child .tc-team", "RMS RESEARCH");
+    // Gợi ý từ tên rule → bỏ tick 1 user → Chọn → group mới vào bảng, con trỏ ở ô email đại diện
+    await page.click("#tc-suggest");
+    await page.waitForSelector("#tc-sugg .tc-sg");
+    const sgText = await page.textContent("#tc-sugg");
+    chk("Gợi ý group: RMS RESEARCH (group mới) với user của rule", sgText.includes("RMS RESEARCH") && sgText.includes("Group mới")
+      && sgText.includes("chau.nb@hsc.com.vn") && sgText.includes("nhan.ndt@hsc.com.vn"));
+    const sgIdx = await page.$$eval("#tc-sugg .tc-sg", (els) => els.findIndex((x) => x.textContent.includes("RMS RESEARCH")));
+    for (const cb of await page.$$("#tc-sugg .tc-sg__pick")) {
+      if ((await cb.getAttribute("data-i")) !== String(sgIdx)) await cb.uncheck();
+    }
+    await page.uncheck(`#tc-sugg .tc-sg__user[data-i="${sgIdx}"][value="nhan.ndt@hsc.com.vn"]`);
+    await page.click("#tc-sg-apply");
+    chk("Chọn gợi ý → 1 dòng group RMS RESEARCH (đánh dấu mới) chỉ với user đã tick, focus ô email đại diện",
+      (await page.$$("#tc-table tbody tr")).length === 1
+      && (await page.inputValue("#tc-table tbody tr.is-new .tc-team")) === "RMS RESEARCH"
+      && (await page.$$('#tc-table tr.is-new .tc-m')).length === 1
+      && (await page.evaluate(() => document.activeElement?.classList.contains("tc-emails"))));
     await page.fill("#tc-table tbody tr:first-child .tc-emails", "rms.lead@hsc.com.vn");
-    await page.fill("#tc-table tbody tr:first-child .tc-madd", "chau.nb@hsc.com.vn, nhan.ndt@hsc.com.vn");
+    // sửa thành viên bằng tay: dán 2 user, bỏ 1
+    await page.fill("#tc-table tbody tr:first-child .tc-madd", "x1@hsc.com.vn, nhan.ndt@hsc.com.vn");
     await page.press("#tc-table tbody tr:first-child .tc-madd", "Enter");
-    chk("Group VPN: dán 2 user → 2 chip thành viên",
-      (await page.$$("#tc-table tbody tr:first-child .tc-m")).length === 2);
-    await page.click('#tc-table .tc-m[data-u="nhan.ndt@hsc.com.vn"] .tc-m__x');
-    chk("Group VPN: bấm × bỏ user khỏi group", (await page.$$("#tc-table tbody tr:first-child .tc-m")).length === 1);
+    chk("Group VPN: dán 2 user → thêm 2 chip thành viên",
+      (await page.$$("#tc-table tbody tr:first-child .tc-m")).length === 3);
+    await page.click('#tc-table .tc-m[data-u="x1@hsc.com.vn"] .tc-m__x');
+    chk("Group VPN: bấm × bỏ user khỏi group", (await page.$$("#tc-table tbody tr:first-child .tc-m")).length === 2);
     await page.click("#tc-save");
-    await page.waitForSelector("#tc-msg.alert--ok");
-    chk("Cài đặt: lưu group VPN (đại diện + 1 user)", (await page.textContent("#tc-msg")).includes("1 group VPN")
-      && (await page.$$('#tc-table .tc-m[data-u="chau.nb@hsc.com.vn"]')).length === 1);
+    await page.waitForFunction(() => /Đã lưu/.test(document.querySelector("#tc-msg").textContent));
+    chk("Cài đặt: lưu group VPN (đại diện + 2 user)", (await page.textContent("#tc-msg")).includes("1 group VPN")
+      && (await page.$$('#tc-table .tc-m[data-u="chau.nb@hsc.com.vn"]')).length === 1
+      && (await page.$$('#tc-table .tc-m[data-u="nhan.ndt@hsc.com.vn"]')).length === 1);
+    // Lọc nhanh theo user / group
+    await page.click("#tc-add");
+    await page.fill("#tc-table tbody tr:last-child .tc-team", "IT");
+    await page.fill("#tc-filter", "nhan.ndt");
+    chk("Lọc theo user: chỉ còn group chứa user, báo user → group",
+      (await page.$$("#tc-table tbody tr:not([hidden])")).length === 1
+      && (await page.textContent("#tc-filter-msg")).includes("nhan.ndt@hsc.com.vn → RMS RESEARCH"));
+    await page.fill("#tc-filter", "it");
+    chk("Lọc theo tên group", (await page.$$("#tc-table tbody tr:not([hidden])")).length >= 1
+      && !(await page.isHidden("#tc-table tbody tr:last-child")));
+    await page.fill("#tc-filter", "");
+    await page.click("#tc-table tbody tr:last-child .tc-del");
     await page.click('#st-nav [data-st="mail"]');
     await page.click("#ob-run");
     await page.waitForFunction(() => /nằm chờ|Xếp hàng/.test(document.querySelector("#ob-note").textContent));

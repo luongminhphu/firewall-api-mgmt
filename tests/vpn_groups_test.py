@@ -13,6 +13,7 @@ import time
 import httpx
 
 sys.path.insert(0, "backend")
+from app.core.db import SessionLocal  # noqa: E402
 from app.core.security import issue_token  # noqa: E402
 
 B = "http://127.0.0.1:8090"
@@ -45,6 +46,34 @@ try:
                                                     "username": "apiadmin", "password": "Sophos@123"}).json()["id"]
     c.post("/api/vpn/sync", headers=H, json={"firewall_ids": [fid]})
     c.put("/api/notify/settings", headers=H, json={"infra_emails": "infra@hsc.com.vn"})
+
+    # ------------------------------------------------------------ gợi ý group từ tên rule
+    chk("viewer không xem được gợi ý group", c.get("/api/notify/contacts/suggest", headers=V).status_code == 403)
+    sg = {s["team"]: s for s in c.get("/api/notify/contacts/suggest", headers=H).json()["suggestions"]}
+    rms = sg.get("RMS RESEARCH", {})
+    chk("gợi ý group mới RMS RESEARCH từ tên rule, thành viên = user của các rule đó",
+        rms.get("existing") is False and rms.get("users") == ["chau.nb@hsc.com.vn", "nhan.ndt@hsc.com.vn"]
+        and len(rms.get("rules", [])) == 3, rms)
+    chk("rule không có team (chỉ tên user, vd THAM.NQ) không thành gợi ý group", "THAM.NQ" not in sg, list(sg))
+    c.put("/api/notify/contacts", headers=H, json={"contacts": [
+        {"team": "RMS RESEARCH", "emails": "rms.lead@hsc.com.vn", "members": ["chau.nb@hsc.com.vn"]}]})
+    rms = {s["team"]: s for s in c.get("/api/notify/contacts/suggest", headers=H).json()["suggestions"]}.get("RMS RESEARCH", {})
+    chk("group đã có nhưng thiếu user → gợi ý bổ sung đúng user còn thiếu",
+        rms.get("existing") is True and rms.get("users") == ["nhan.ndt@hsc.com.vn"], rms)
+    c.put("/api/notify/contacts", headers=H, json={"contacts": [
+        {"team": "RMS RESEARCH", "emails": "rms.lead@hsc.com.vn", "members": ["chau.nb@hsc.com.vn"]},
+        {"team": "KHAC", "emails": "khac@hsc.com.vn", "members": ["nhan.ndt@hsc.com.vn"]}]})
+    rms = {s["team"]: s for s in c.get("/api/notify/contacts/suggest", headers=H).json()["suggestions"]}.get("RMS RESEARCH")
+    chk("user đã thuộc group khác không gợi ý chuyển; group đủ thành viên thì hết gợi ý", rms is None, rms)
+    c.put("/api/notify/contacts", headers=H, json={"contacts": [
+        {"team": "RMS RESEARCH", "emails": "rms.lead@hsc.com.vn", "members": ["chau.nb@hsc.com.vn"]},
+        {"team": "KHAC", "emails": "khac@hsc.com.vn", "members": ["nhan.ndt@hsc.com.vn", "x@hsc.com.vn"]}]})
+    with SessionLocal() as db:
+        from app.modules.notify import planner
+        taken = next((s for s in planner.suggest_groups(db) if s["team"] == "RMS RESEARCH"), None)
+    chk("gợi ý không đổi dữ liệu (chỉ đọc)",
+        {x["team"]: x["members"] for x in c.get("/api/notify/settings", headers=H).json()["contacts"]}
+        == {"KHAC": ["nhan.ndt@hsc.com.vn", "x@hsc.com.vn"], "RMS RESEARCH": ["chau.nb@hsc.com.vn"]} and taken is None)
 
     # ------------------------------------------------------------ group + đại diện + thành viên
     IT = ["tham.nq@hsc.com.vn", "HR.TEST1@hsc.com.vn", "ghost@hsc.com.vn"]
