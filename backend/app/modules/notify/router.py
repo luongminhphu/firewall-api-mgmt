@@ -108,6 +108,12 @@ def contacts_put(request: Request, payload: ContactsIn = Body(...), db: Session 
                                                  client_ip=client_ip_of(request))}
 
 
+@router.get("/api/notify/contacts/suggest")
+def contacts_suggest(db: Session = Depends(get_session), p: dict = Depends(admin)):
+    """Gợi ý group VPN + thành viên từ tên rule (chỉ đọc)."""
+    return {"suggestions": planner.suggest_groups(db)}
+
+
 @router.get("/api/notify/outbox")
 def outbox_list(status: Literal["", "pending", "sent", "failed"] = Query(default=""),
                 limit: int = Query(default=100, le=1000), db: Session = Depends(get_session),

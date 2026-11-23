@@ -127,6 +127,45 @@ def member_map(db: Session) -> dict[str, str]:
     return {m.lower(): c.team_key for c in db.scalars(select(VpnTeamContact)) for m in split_members(c.members)}
 
 
+def suggest_groups(db: Session) -> list[dict]:
+    """Gợi ý group VPN từ team bóc trong tên rule (vd "RMS RESEARCH - CHAU.NB …"): user của các rule đó là thành viên.
+
+    - Team chưa là group → gợi ý group mới (kèm user chưa thuộc group nào).
+    - Team đã là group nhưng còn user của rule chưa được gán → gợi ý bổ sung thành viên.
+    - User đã thuộc group KHÁC không được gợi ý chuyển (một user ≤ 1 group) — liệt kê ở `taken` để Infra biết.
+    Chỉ đọc; không ghi gì — Infra chọn gợi ý, rà lại thành viên, nhập đại diện rồi mới lưu.
+    """
+    from ..vpn import rules as vpn_rules  # tránh vòng import notify ↔ vpn
+
+    groups = {c.team_key: c for c in db.scalars(select(VpnTeamContact))}
+    owner = member_map(db)
+    found: dict[str, dict] = {}
+    for r in vpn_rules.list_rules(db)["rules"]:
+        team = (r.get("team") or "").strip()
+        if not team:
+            continue
+        g = found.setdefault(team.lower(), {"team": team, "rules": [], "users": {}})
+        g["rules"].append(r["rule_name"])
+        for a in r.get("accounts") or []:
+            g["users"].setdefault(a["username"].lower(), a["username"])
+    out = []
+    for key, g in found.items():
+        existing = key in groups
+        new, taken = [], []
+        for k, u in sorted(g["users"].items()):
+            if owner.get(k) == key:
+                continue  # đã ở đúng group
+            if k in owner:
+                taken.append({"username": u, "group": groups[owner[k]].team if owner[k] in groups else owner[k]})
+            else:
+                new.append(u)
+        if existing and not new:
+            continue  # group đã đủ thành viên theo rule
+        out.append({"team": groups[key].team if existing else g["team"], "team_key": key, "existing": existing,
+                    "rules": sorted(g["rules"], key=str.lower), "users": new, "taken": taken})
+    return sorted(out, key=lambda x: (x["existing"], x["team"].lower()))
+
+
 def get_contacts(db: Session) -> list[dict]:
     return [{"id": c.id, "team": c.team, "emails": [e for e in c.emails.split(",") if e], "note": c.note,
              "members": split_members(c.members),

@@ -932,7 +932,16 @@ Ví dụ:
             <div class="card card--wide" id="tc-card">
               <div class="card-head">
                 <div><h2>Group VPN &amp; đại diện</h2><p class="muted tiny">Mỗi group có đại diện (nhận email nhắc hạn VPN và rà soát quyền định kỳ) và danh sách user VPN thuộc group. Rule có tên team trùng tên group (vd "RMS RESEARCH") tự thuộc group; rule còn lại thuộc group của user được cấp quyền. Một user chỉ thuộc một group.</p></div>
-                <button class="btn btn--ghost btn--sm" id="tc-add" type="button">Thêm group</button>
+                <div class="row row--tight">
+                  <button class="btn btn--sm" id="tc-suggest" type="button" aria-expanded="false" aria-controls="tc-sugg">Gợi ý từ tên rule</button>
+                  <button class="btn btn--ghost btn--sm" id="tc-add" type="button">Thêm group</button>
+                </div>
+              </div>
+              <section class="tc-sugg" id="tc-sugg" hidden aria-labelledby="tc-sugg-title"></section>
+              <div class="tc-tools">
+                <label class="field tc-filter"><span class="sr-only">Lọc group</span>
+                  <input type="search" id="tc-filter" placeholder="Lọc theo tên group, user VPN hoặc email đại diện…" autocomplete="off" /></label>
+                <p id="tc-filter-msg" class="muted tiny" aria-live="polite"></p>
               </div>
               <datalist id="tc-teams"></datalist>
               <datalist id="tc-users"></datalist>
