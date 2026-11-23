@@ -193,7 +193,9 @@ function refreshBlockButton() {
   const btn = $("#do-block");
   if (btn.getAttribute("aria-busy") !== "true") {
     // Nút nói đúng điều sẽ xảy ra: chạy thử là nút trung tính, chặn thật là nút chính
-    btn.textContent = dry ? "Chạy thử (không ghi)" : "Chặn ngay";
+    const nIp = state.candidates.length, nFw = selectedFwIds().length;
+    // chế độ + số lượng ngay trên nút: không thể nhầm đang chặn thật hay chạy thử
+    btn.textContent = dry ? "Chạy thử (không ghi)" : nIp && nFw ? `Chặn thật ${nIp} IP trên ${nFw} firewall` : "Chặn ngay";
     btn.className = `btn ${dry ? "" : "btn--primary"}`;
   }
   const n = state.candidates.length, f = selectedFwIds().length;

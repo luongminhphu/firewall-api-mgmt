@@ -38,6 +38,7 @@ code { font-size: 0.9em; padding: 1px 5px; border-radius: 4px; background: var(-
 .text-ok { color: var(--ok); }
 .text-err { color: var(--danger); }
 .text-warn { color: var(--warn); }
+.text-info { color: var(--info); }
 .sep { border: 0; border-top: 1px solid var(--border); margin: var(--s5) 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .ic { flex: none; }
@@ -556,7 +557,7 @@ progress::-moz-progress-bar { background: var(--primary-text); border-radius: 99
 .rv-reason { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s2); margin-top: var(--s3); }
 .rv-reason .field { flex: 1 1 260px; margin: 0; }
 .rv-scopes { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--s3); margin-bottom: var(--s4); }
-.rv-scope { padding: var(--s3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.rv-scope { padding: var(--s2) 0; border-bottom: 1px solid var(--border); } /* danh sách phẳng, không lồng thẻ */
 .rv-scope__head { display: flex; justify-content: space-between; gap: var(--s2); margin-bottom: var(--s2); }
 
 /* ========================================================== TỰ ĐỘNG CHẶN === */
@@ -1007,7 +1008,6 @@ button.block-sum { border: 0; background: none; padding: 0; font-family: inherit
 .tc-madd { flex: 1 1 10rem; min-width: 10rem; }
 .tc-table td { vertical-align: top; }
 /* Email rà soát */
-.rv-mail { margin-top: var(--s5); }
 .draft-form { display: grid; gap: var(--s3); }
 .draft-form textarea { min-height: 22rem; }
 .tc-table .tc-emails { min-width: 15rem; }
@@ -1039,3 +1039,43 @@ button.block-sum { border: 0; background: none; padding: 0; font-family: inherit
 .tc-sg p { margin: var(--s1) 0; overflow-wrap: anywhere; }
 .tc-sg__users { display: grid; gap: 2px; }
 .tc-sg__u span { overflow-wrap: anywhere; font-size: var(--fs-sm); }
+
+/* Group VPN: thanh Lưu bám đáy khi có thay đổi chưa lưu */
+.tc-bar { align-items: center; }
+.tc-bar__state { margin-right: auto; font-size: var(--fs-sm); font-weight: 600; color: var(--warn); }
+.tc-bar.is-dirty { position: sticky; bottom: 0; z-index: 5; margin: var(--s3) calc(-1 * var(--s4)) 0; padding: var(--s3) var(--s4);
+  background: var(--surface); border-top: 1px solid var(--line-warn); box-shadow: 0 -6px 16px -10px rgba(0, 0, 0, .35); }
+#tc-table .tc-emails { min-width: 15rem; }
+@media (max-width: 720px) {
+  #tc-card .table-wrap { max-height: none; overflow: visible; } /* không cuộn lồng trong trang */
+  #tc-table .tc-emails, #tc-table .tc-note { min-width: 0; }
+  .tc-bar.is-dirty { bottom: 0; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+  .tc-bar.is-dirty .btn { width: auto; flex: 0 0 auto; }
+  .tc-bar.is-dirty .tc-bar__state { flex: 1 1 100%; }
+}
+
+/* Rà soát: hai phần (Việc của tôi / Quản lý đợt), lý do nút Mở đợt bị tắt */
+.rv-views { margin-bottom: var(--s4); }
+.rv-open-hint:empty { display: none; }
+.rv-open-hint { margin: calc(-1 * var(--s2)) 0 var(--s3); text-align: right; }
+@media (max-width: 720px) {
+  #rv-camps thead, #rv-mail-table thead { display: none; }
+  #rv-camps tr { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--border); }
+  #rv-camps td { display: block; height: auto; padding: 0; border: 0; white-space: normal; width: auto; text-align: left; }
+  #rv-camps td[data-label]:not([data-label="Đợt"])::before, #rv-mail-table td[data-label="Đã gửi"]::before { content: attr(data-label) " · "; color: var(--text-muted); font-size: var(--fs-xs); }
+  .rv-open-hint { text-align: left; margin-top: 0; }
+}
+
+/* Cài đặt VPN: phạm vi firewall tường minh; Rule Group cố định */
+.vs-scope { display: grid; gap: var(--s1); margin-bottom: var(--s2); }
+.vs-fws { padding-left: var(--s6); }
+.vs-fws.is-off { opacity: .55; }
+.vs-fixed { margin: 0; }
+.tc-sg__kind { font-weight: 600; }
+.tc-sugg__list { grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); } /* không chừa ô trống cuối hàng */
+@media (max-width: 720px) {
+  /* thanh nhóm cài đặt cuộn ngang: mép phải mờ dần báo còn mục phía sau */
+  .st-nav { -webkit-mask-image: linear-gradient(90deg, #000 82%, transparent); mask-image: linear-gradient(90deg, #000 82%, transparent); padding-right: var(--s8); }
+}
+.tc-gcell { min-width: 11rem; }
+.tc-gcell .tc-note { display: block; width: 100%; margin-top: var(--s1); min-height: 30px; font-size: var(--fs-xs); }

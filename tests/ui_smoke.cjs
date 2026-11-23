@@ -127,6 +127,8 @@ const confirmOk = async (page) => {
       (await page.textContent("#block-result")).includes("KHÔNG ghi lên firewall")
       && !!(await page.$('#block-result .result-verdict.is-dry [data-after="real"]')));
     await page.check("#mode-real");
+    chk("Chặn thật: nút chính ghi rõ chế độ + số lượng ('Chặn thật 2 IP trên N firewall')",
+      /^Chặn thật 2 IP trên \d+ firewall$/.test((await page.textContent("#do-block")).trim()), await page.textContent("#do-block"));
     await page.click("#do-block");
     await page.waitForSelector("#confirm-dialog[open]");
     chk("chặn thật → màn xác nhận trong app liệt kê IP, firewall, lý do; nút ghi đúng hành động",
@@ -230,6 +232,14 @@ const confirmOk = async (page) => {
     chk("Cài đặt: chọn nhóm → chỉ hiện nhóm đó", await visible(page, "#vs-form") && !(await visible(page, "#ab-form"))
       && !(await visible(page, "#smtp-form")));
     await page.waitForFunction(() => document.querySelector("#vs-days").value !== "");
+    chk("Cài đặt VPN: phạm vi firewall là lựa chọn tường minh 'Tất cả firewall đang bật' (ô firewall bị khóa)",
+      await page.isChecked("#vs-scope-all") && (await page.$$("#vs-fws input:disabled")).length > 0);
+    await page.check("#vs-scope-pick");
+    await page.click('#vs-form button[type="submit"]');
+    await page.waitForSelector("#vs-msg.alert--error");
+    chk("Cài đặt VPN: 'Chỉ các firewall chọn' mà không tick firewall nào → báo lỗi, không lưu",
+      (await page.textContent("#vs-msg")).includes("ít nhất một firewall"));
+    await page.check("#vs-scope-all");
     await page.fill("#vs-days", "45");
     await page.click('#vs-form button[type="submit"]');
     await page.waitForSelector("#vs-msg.alert--ok");
@@ -271,6 +281,8 @@ const confirmOk = async (page) => {
       && (await page.$$('#tc-table tr.is-new .tc-m')).length === 1
       && (await page.evaluate(() => document.activeElement?.classList.contains("tc-emails"))));
     await page.fill("#tc-table tbody tr:first-child .tc-emails", "rms.lead@hsc.com.vn");
+    chk("Group VPN: có thay đổi → thanh 'Có thay đổi chưa lưu' + Hoàn tác",
+      (await page.textContent("#tc-dirty")).includes("chưa lưu") && await visible(page, "#tc-undo"));
     // sửa thành viên bằng tay: dán 2 user, bỏ 1
     await page.fill("#tc-table tbody tr:first-child .tc-madd", "x1@hsc.com.vn, nhan.ndt@hsc.com.vn");
     await page.press("#tc-table tbody tr:first-child .tc-madd", "Enter");
@@ -280,7 +292,8 @@ const confirmOk = async (page) => {
     chk("Group VPN: bấm × bỏ user khỏi group", (await page.$$("#tc-table tbody tr:first-child .tc-m")).length === 2);
     await page.click("#tc-save");
     await page.waitForFunction(() => /Đã lưu/.test(document.querySelector("#tc-msg").textContent));
-    chk("Cài đặt: lưu group VPN (đại diện + 2 user)", (await page.textContent("#tc-msg")).includes("1 group VPN")
+    chk("Cài đặt: lưu group VPN (đại diện + 2 user), hết trạng thái chưa lưu", (await page.textContent("#tc-msg")).includes("1 group VPN")
+      && (await page.textContent("#tc-dirty")) === "" && !(await visible(page, "#tc-undo"))
       && (await page.$$('#tc-table .tc-m[data-u="chau.nb@hsc.com.vn"]')).length === 1
       && (await page.$$('#tc-table .tc-m[data-u="nhan.ndt@hsc.com.vn"]')).length === 1);
     // Lọc nhanh theo user / group
@@ -295,6 +308,11 @@ const confirmOk = async (page) => {
       && !(await page.isHidden("#tc-table tbody tr:last-child")));
     await page.fill("#tc-filter", "");
     await page.click("#tc-table tbody tr:last-child .tc-del");
+    await page.waitForSelector("#confirm-dialog[open]");
+    chk("Xóa group: hỏi xác nhận, nút ghi 'Xóa group'", (await page.textContent("#confirm-ok")).trim() === "Xóa group");
+    await confirmOk(page);
+    chk("Xóa group IT chưa lưu → bảng về như bản đã lưu (hết chưa lưu)", (await page.$$("#tc-table tbody tr")).length === 1
+      && (await page.textContent("#tc-dirty")) === "");
     await page.click('#st-nav [data-st="mail"]');
     await page.click("#ob-run");
     await page.waitForFunction(() => /nằm chờ|Xếp hàng/.test(document.querySelector("#ob-note").textContent));
@@ -453,10 +471,17 @@ const confirmOk = async (page) => {
     // Rà soát định kỳ (admin): mở đợt, quyết định (thu hồi cần lý do), tiến độ theo team
     await tab(page, "review");
     await page.waitForSelector("#panel-review.is-active");
+    chk("Rà soát: 2 phần Việc của tôi / Quản lý đợt, mặc định Việc của tôi",
+      await visible(page, "#rv-views") && await visible(page, "#rv-mine") && !(await visible(page, "#rv-admin")));
+    await page.click('#rv-views [data-rv-view="manage"]');
     await page.click("#rv-open");
     await confirmOk(page);
     await page.waitForFunction(() => /Đang mở/.test(document.querySelector("#rv-camps")?.textContent || ""));
-    chk("Rà soát: admin mở đợt", (await page.$$("#rv-scopes .rv-scope")).length === 2);
+    chk("Rà soát: admin mở đợt; nút Mở đợt tắt kèm lý do; Đóng đợt là nút viền đỏ",
+      (await page.$$("#rv-scopes .rv-scope")).length === 2 && await page.isDisabled("#rv-open")
+      && (await page.textContent("#rv-open-hint")).includes("đóng đợt đó trước")
+      && !!(await page.$("#rv-camps .btn--danger-ghost[data-close]")));
+    await page.click('#rv-views [data-rv-view="mine"]');
     await page.waitForSelector("#rv-list .rv-item");
     const first = await page.getAttribute("#rv-list .rv-item [data-dec='revoke']", "data-id");
     await page.click(`#rv-list [data-dec='revoke'][data-id='${first}']`);
@@ -469,6 +494,7 @@ const confirmOk = async (page) => {
     await page.waitForFunction((id) => !document.querySelector(`#rv-item-${id}`), first);
     chk("Rà soát: thu hồi kèm lý do → rời danh sách chưa quyết định", true);
     // Email rà soát theo group (ISO 27001): bản nháp sửa được, tải .eml
+    await page.click('#rv-views [data-rv-view="manage"]');
     await page.waitForSelector('#rv-mail-table [data-draft="rms research"]');
     chk("Rà soát: bảng email theo group có đại diện RMS RESEARCH",
       (await page.textContent("#rv-mail-table")).includes("rms.lead@hsc.com.vn"));
@@ -486,7 +512,13 @@ const confirmOk = async (page) => {
     chk("Email rà soát: tải .eml thư nháp (X-Unsent) có nội dung đã sửa",
       dl.suggestedFilename().endsWith(".eml") && eml.includes("X-Unsent: 1") && decoded.includes("Ghi chú UI smoke"),
       dl.suggestedFilename());
-    await page.click("#modal [data-close]");
+    await page.waitForFunction(() => /tải \.eml/.test(document.querySelector("#rv-mail-table").textContent));
+    chk("Email rà soát: bảng ghi lần tạo thư (cột Đã gửi), nút đổi thành 'Gửi lại'",
+      (await page.textContent('#rv-mail-table [data-draft="rms research"]')).trim() === "Gửi lại");
+    await page.evaluate(() => { window.location.hash = "block"; });
+    await page.waitForSelector("#panel-block.is-active");
+    chk("Đổi tab khi hộp soạn email đang mở → hộp thoại tự đóng", !(await page.$("#modal[open]")));
+    await tab(page, "review");
 
     // Logo (Cài đặt › Giao diện): tải PNG lên, hiện ở thanh trên, rồi gỡ
     await tab(page, "settings");

@@ -355,8 +355,30 @@ def _ddmmyyyy(iso: str | None) -> str:
     return dt.date.fromisoformat(iso).strftime("%d/%m/%Y") if iso else "không thời hạn"
 
 
+MAIL_METHODS = {"mail_smtp": "SMTP", "mail_eml": "tải .eml"}
+
+
+def record_mail(db: Session, cid: int, scope: str, method: str, to: list[str], cc: list[str], *, actor: str) -> None:
+    """Ghi lần gửi (SMTP) / tạo thư nháp (.eml) email rà soát vào nhật ký rà soát nối chuỗi băm — bằng chứng ISO
+    'đã thông báo đại diện lúc nào, cho ai'. item_title = phạm vi (team_key | infra)."""
+    _log(db, [ReviewDecision(ts=_now(), campaign_id=cid, item_title=scope[:255], decision=method, actor=actor,
+                             comment=f"Tới: {', '.join(to)}" + (f" · Cc: {', '.join(cc)}" if cc else ""))])
+
+
+def mail_log(db: Session, cid: int) -> dict[str, dict]:
+    """Lần gửi gần nhất theo phạm vi + số lần."""
+    out: dict[str, dict] = {}
+    for d in db.scalars(select(ReviewDecision).where(ReviewDecision.campaign_id == cid,
+                                                     ReviewDecision.decision.in_(list(MAIL_METHODS)))
+                        .order_by(ReviewDecision.id)):
+        prev = out.get(d.item_title, {"count": 0})
+        out[d.item_title] = {"at": _iso(d.ts), "by": d.actor, "method": MAIL_METHODS[d.decision], "detail": d.comment,
+                             "count": prev["count"] + 1}
+    return out
+
+
 def drafts(db: Session, cid: int) -> list[dict]:
-    """Mỗi phạm vi (group có đại diện / Infra) trong đợt: tên, người nhận, số mục."""
+    """Mỗi phạm vi (group có đại diện / Infra) trong đợt: tên, người nhận, số mục, lần gửi gần nhất."""
     camp = db.get(ReviewCampaign, cid)
     contacts = {c.team_key: c for c in db.scalars(select(VpnTeamContact))}
     infra = planner.get_cfg(db).get("infra_emails") or []
@@ -370,6 +392,9 @@ def drafts(db: Session, cid: int) -> list[dict]:
         if camp and key not in {o["scope"] for o in out}:
             out.append({"scope": key, "name": c.team, "to": [e for e in c.emails.split(",") if e], "total": 0,
                         "pending": 0, "members": len(planner.split_members(c.members))})
+    sent = mail_log(db, cid)
+    for o in out:
+        o["sent"] = sent.get(o["scope"])
     return out
 
 
@@ -467,7 +492,7 @@ def draft(db: Session, cid: int, scope: str) -> dict:
               "Kết quả rà soát được lưu làm bằng chứng cho audit ISO 27001.", "", "Trân trọng,", "Infra"]
     subject = f"[Rà soát VPN · ISO 27001] {name} — {camp.name}: xác nhận {total} quyền trước {due}"
     return {"campaign_id": cid, "scope": scope, "name": name, "to": to, "cc": cc, "subject": subject[:250],
-            "body": "\n".join(lines) + "\n"}
+            "body": "\n".join(lines) + "\n", "sent": mail_log(db, cid).get(scope)}
 
 
 def draft_eml(to: list[str], cc: list[str], subject: str, body: str) -> bytes:
