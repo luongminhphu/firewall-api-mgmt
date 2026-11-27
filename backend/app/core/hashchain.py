@@ -9,7 +9,7 @@ import hashlib
 import threading
 from typing import Iterable
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, text
 from sqlalchemy.orm import Session
 
 _locks: dict[str, threading.Lock] = {}
@@ -35,15 +35,24 @@ def append(db: Session, model, rows: Iterable) -> None:
 
     Commit trong khóa là bắt buộc: có luồng nền (quét cache, công việc chặn song song) ghi cùng lúc;
     nếu nhả khóa trước khi commit, hai phiên có thể đọc cùng prev_hash → đứt chuỗi.
+    PostgreSQL: thêm pg_advisory_xact_lock (khóa giữa các pod) — chờ không giới hạn để không mất bản ghi.
+    Quy ước cho người gọi: flush thay đổi khác trước, gọi append sau, không gọi firewall/Graph giữa hai bước.
     """
     with _lock(model):
-        prev = last_hash(db, model)
-        for row in rows:
-            row.prev_hash = prev
-            row.row_hash = digest(row)
-            prev = row.row_hash
-            db.add(row)
-        db.commit()
+        try:
+            if db.get_bind().dialect.name == "postgresql":
+                # cùng transaction nên tự nhả khi commit / rollback (không tốn thêm kết nối)
+                db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": "chain:" + model.__tablename__})
+            prev = last_hash(db, model)
+            for row in rows:
+                row.prev_hash = prev
+                row.row_hash = digest(row)
+                prev = row.row_hash
+                db.add(row)
+            db.commit()
+        except BaseException:
+            db.rollback()  # nhả khóa xact ngay, không để luồng khác treo tới khi session đóng
+            raise
 
 
 def verify(db: Session, model) -> dict:

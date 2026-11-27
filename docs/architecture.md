@@ -690,3 +690,35 @@ Không cần cơ chế mới: thứ tự kiểm tra là tài khoản riêng lẻ
 Test: người khác của cùng tenant đối tác bị bỏ qua · đúng Object ID nhưng sai tenant bị bỏ qua · danh sách thành viên chat
 đánh dấu ai đã được ủy quyền · thiếu quyền đọc thành viên vẫn kiểm tra kết nối được · cấu hình cũ `soc_tenants` không còn
 hiệu lực và hiện cảnh báo.
+
+---
+
+## 22. Đánh giá tổng thể & M1 hiệu suất / toàn vẹn (v2.2.1, 27/11/2026)
+
+Đánh giá đầy đủ và lộ trình (liên kết tính năng, tính năng cho IT Infrastructure Manager): [`roadmap-infra.md`](roadmap-infra.md).
+
+| Việc | Thay đổi | Test |
+|---|---|---|
+| Chuỗi băm liên pod | `hashchain.append` thêm `pg_advisory_xact_lock(hashtext('chain:<bảng>'))` trên chính session (không tốn thêm kết nối, nhả khi commit/rollback); lỗi giữa chừng thì rollback ngay. Chờ khoá không giới hạn: ưu tiên không mất bản ghi. Quy ước: flush thay đổi khác trước, gọi `append` sau, không gọi firewall giữa hai bước | `hashchain_multiproc_test.py`: 4 tiến trình × 50 dòng trên PostgreSQL; code cũ gãy chuỗi, code mới liền |
+| Tìm Audit | Lọc `q` trong SQL **trước** `LIMIT` (`icontains(autoescape=True)`: `%` và `_` là ký tự thường); index `ix_audit_logs_action`, tạo cả cho DB cũ khi khởi động | `audit_search_test.py`, `db_migrate_test.py` |
+| VPN `list_rules` | Dựng chỉ mục tài khoản theo firewall một lần (nhóm / username / mã user), kết quả và thứ tự giống bản cũ | `vpn_rules_perf_test.py`: 1,3 s → 0,01 s |
+| Vận hành | `GZipMiddleware` (≥ 1 KB, mức 5); dọn `jobs` mỗi 6 giờ (trước chỉ chạy lúc khởi động); `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`; huy hiệu menu ngừng poll khi tab ẩn | `ops_test.py` |
+| Kiểm thử | `tests/run_all.sh`: lấy biến môi trường riêng từ dòng `# Chạy:` của từng bộ, chờ cổng được nhả giữa các bộ (vòng lặp cũ báo FAIL giả) | toàn bộ |
+
+Không đổi API (contract snapshot giữ nguyên), không nới `policy.py`. Hoãn: chạy song song các lượt quét định kỳ, parse cache
+một lần (xem roadmap §3).
+
+## 23. Trang Tổng quan (v2.3.0, 27/11/2026)
+
+Roadmap L1. **Chỉ frontend** (`frontend/js/pages/overview.js`), không API mới (contract snapshot giữ nguyên).
+
+- Nguồn: `/api/group-cache`, `/api/autoblock/status`, `/api/vpn/rules`, `/api/review/campaigns`, `/api/changes?type=drift&from=<VN−6>`,
+  `/api/reports/summary?days=7`, và `/api/notify/outbox?status=failed&limit=1000` (chỉ quản trị viên gọi; lọc 7 ngày, chỉ đếm theo loại,
+  không hiện người nhận / tiêu đề). Gọi song song `Promise.allSettled`; mỗi nguồn lỗi, 403, hoặc trả dữ liệu không phải JSON (trang đăng nhập
+  của proxy) chỉ làm hỏng thẻ của nó. Đang tải thì không gọi chồng.
+- Sức khoẻ firewall lấy từ trạng thái quét cache (tín hiệu sống); `last_status` chỉ là phụ vì chỉ cập nhật khi bấm Kiểm tra hoặc chặn / bỏ chặn.
+- Tự động chặn: `enabled` = bộ đọc Teams, `auto_enabled` = công tắc khẩn cấp (TẮT → Cảnh báo); bộ đọc đứng quá 3 chu kỳ → Cảnh báo.
+- Router: tab mặc định theo vai trò (`setDefaultTab`: quản trị viên → `overview`, còn lại → `block`); hash rỗng / không hợp lệ, kể cả khi bấm
+  Back, về tab mặc định; bỏ qua khi chưa đăng nhập. Vai trò Rà soát không thấy tab này (API vẫn chặn bằng `REVIEWER_PATHS`).
+- Test: `ui_smoke.cjs` +23 khẳng định (route giả lập trạng thái có vấn đề, API 500, response HTML, Back, chống gọi chồng, Readonly không gọi outbox, 390px).
+- Hoãn: `last_checked` trên thẻ Firewall; deep link có tham số (L2); `GET /api/overview/counts` cho huy hiệu menu (L6).

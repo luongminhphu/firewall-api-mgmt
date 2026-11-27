@@ -10,13 +10,14 @@ from .config import settings
 
 log = logging.getLogger(__name__)
 
-connect_args = {}
+connect_args, pool_args = {}, {"pool_size": settings.DB_POOL_SIZE, "max_overflow": settings.DB_MAX_OVERFLOW}
 if settings.DATABASE_URL.startswith("sqlite"):
+    pool_args = {}
     # timeout: v1.7 ghi DB từ nhiều luồng song song (mỗi firewall một luồng) — chờ khóa thay vì lỗi ngay
     connect_args = {"check_same_thread": False, "timeout": 30}
 
 engine = create_engine(
-    settings.DATABASE_URL, pool_pre_ping=True, future=True, connect_args=connect_args
+    settings.DATABASE_URL, pool_pre_ping=True, future=True, connect_args=connect_args, **pool_args
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
@@ -63,6 +64,9 @@ def _migrate() -> None:
                     conn.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table.name}_{col.name} "
                                       f"ON {table.name} ({col.name})"))
             log.warning("Nâng cấp DB: thêm cột %s.%s", table.name, col.name)
+    if "audit_logs" in existing:  # DB cũ: create_all không thêm index cho bảng đã có
+        with engine.begin() as conn:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_audit_logs_action ON audit_logs (action)"))
 
 
 def get_session():

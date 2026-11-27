@@ -76,6 +76,7 @@ Phiên bản: **v2.2.0** · Thiết kế chi tiết: [`docs/architecture.md`](do
 | Tính năng | Mô tả |
 |---|---|
 | **Đăng nhập & quyền** | Microsoft Entra ID (OIDC + PKCE, MFA qua Conditional Access, SSO một lần qua App Proxy) · header SSO · tài khoản riêng · vai trò *Rà soát / Readonly / Write / Quản trị viên* |
+| **Tổng quan** | Một màn hình cho IT Infrastructure Manager: khối **Cần xử lý** (cầu dao tự động chặn đã ngắt, cache group lỗi, rule VPN hết hạn còn bật, rà soát quá hạn, lệnh chờ duyệt, sửa ngoài app 7 ngày, email lỗi 7 ngày…) xếp theo mức nghiêm trọng, cùng thẻ từng module; bấm để mở đúng tab. Trang mặc định của quản trị viên |
 | **Giao diện** | Kiểu dashboard vận hành: menu trái theo nhóm (ngăn kéo trên điện thoại), bảng/thẻ cân cột, tối/sáng, **tooltip ⓘ hướng dẫn** ở mọi mục cấu hình |
 | **Vận hành** | Audit log đầy đủ · log JSON có `request_id` · khóa phân tán `pg_advisory_lock` (chạy nhiều pod không trùng việc) · bảng tự tạo khi khởi động, không cần migrate |
 
@@ -375,6 +376,7 @@ ban đầu; quản trị viên chỉnh lại trên giao diện.
 | `SESSION_SECRET` | Khóa ký phiên; để trống thì mỗi lần restart mọi người phải đăng nhập lại. **Secret** |
 | `POSTGRES_PASSWORD` / `OIDC_CLIENT_SECRET` | Mật khẩu DB / client secret của app đăng nhập. **Secret** |
 | `DATABASE_URL` | Chuỗi kết nối PostgreSQL (manifest k8s tự ghép) |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | Pool kết nối PostgreSQL mỗi pod (5 / 10). Tăng khi chặn trên nhiều firewall cùng lúc; tổng × số pod phải nhỏ hơn `max_connections` |
 | `APP_BASE_URL` | Địa chỉ người dùng mở app, dùng cho link trong email nhắc hạn, rà soát, tự động chặn |
 | `SESSION_TTL_HOURS` | Thời hạn phiên (mặc định 8 giờ) |
 | `SAFE_LIST` / `ALLOW_PRIVATE` | Dải **không bao giờ** bị chặn · cho phép chặn IP private (mặc định `false`) |
@@ -435,8 +437,19 @@ chạm vào để xem hướng dẫn (điền gì, lấy ở đâu, ví dụ).
 
 ## 6. Hướng dẫn sử dụng theo tab
 
-Thứ tự theo menu: **Vận hành** (Chặn nhanh · Tự động chặn · IP Host Group · Firewall) · **Giám sát** (Lịch sử thay đổi ·
+Thứ tự theo menu: **Tổng quan** · **Vận hành** (Chặn nhanh · Tự động chặn · IP Host Group · Firewall) · **Giám sát** (Lịch sử thay đổi ·
 Audit log · Báo cáo) · **VPN & tuân thủ** (VPN · Rà soát) · **Quản trị** (Cài đặt · Người dùng).
+
+### 6.0 Tổng quan
+
+Quản trị viên mở app (không kèm `#tab`) sẽ vào thẳng trang này. Write / Readonly vẫn vào **Chặn nhanh** để ca trực thao tác nhanh,
+nhưng vẫn mở được Tổng quan từ menu.
+
+- **Cần xử lý**: chỉ liệt kê việc có vấn đề. **Nghiêm trọng** (đỏ) xếp trước **Cảnh báo** (cam); không có gì thì hiện "Không có việc cần xử lý".
+  Bấm một dòng để mở tab xử lý.
+- **Thẻ module**: Firewall (theo kết quả quét cache gần nhất, không phải lần bấm Kiểm tra), IP Host Group, Tự động chặn (chế độ: chưa bật đọc
+  Teams / đã ngắt / công tắc khẩn cấp TẮT / trong hoặc ngoài lịch), VPN, Rà soát, Sửa ngoài app (7 ngày), 7 ngày qua, Email lỗi (7 ngày, chỉ quản trị viên).
+- Một nguồn dữ liệu lỗi thì chỉ thẻ đó báo "Không đọc được", phần còn lại vẫn hiện. Trang chỉ tải khi mở hoặc bấm **Làm mới**.
 
 ### 6.1 Chặn nhanh
 
@@ -701,9 +714,10 @@ python -m uvicorn app.main:app --app-dir backend --port 8080
 
 API docs có ở `http://localhost:8080/api/docs`.
 
-**Kiểm thử hồi quy:** 27 bộ, chạy được trên SQLite và PostgreSQL.
+**Kiểm thử hồi quy:** 32 bộ, chạy được trên SQLite và PostgreSQL.
 
 ```bash
+bash tests/run_all.sh                                # toàn bộ (tự đặt biến môi trường riêng của từng bộ)
 bash tests/run_e2e.sh tests/<tên>_test.py
 E2E_DATABASE_URL=postgresql+psycopg2://u:p@127.0.0.1:5432/srb bash tests/run_e2e.sh tests/autoblock_test.py
 ```
@@ -715,7 +729,11 @@ E2E_DATABASE_URL=postgresql+psycopg2://u:p@127.0.0.1:5432/srb bash tests/run_e2e
 | `db_migrate_test.py` | Nâng cấp DB bản cũ: tự thêm cột thiếu, giữ toàn vẹn chuỗi băm bằng chứng cũ |
 | `contract_test.py` | Khóa danh sách API và hình dạng response (ghi lại bằng `CONTRACT_RECORD=1` khi cố ý thêm API) |
 | `policy_guard_test.py` | Không lệnh ghi nào lọt lên firewall ngoài allowlist |
-| `ui_smoke_test.py` | Playwright trên mọi tab: desktop, điện thoại 390px, tooltip, phân quyền giao diện |
+| `hashchain_multiproc_test.py` | Chuỗi băm vẫn liền khi nhiều tiến trình / pod ghi cùng lúc (PostgreSQL) |
+| `audit_search_test.py` | Tìm Audit log trúng cả bản ghi cũ, `%` / `_` là ký tự thường, có index `action` |
+| `vpn_rules_perf_test.py` | Liên kết rule ↔ tài khoản VPN nhanh, kết quả giống thuật toán cũ |
+| `ops_test.py` | Nén gzip response lớn, dọn công việc nền cũ |
+| `ui_smoke_test.py` | Playwright trên mọi tab: desktop, điện thoại 390px, tooltip, phân quyền giao diện · Tổng quan: mức nghiêm trọng, thẻ lỗi riêng lẻ, Back, không gọi chồng, Readonly không gọi outbox |
 
 Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che dữ liệu):
 `SOPHOS_PASSWORD=… python tools/sophos_sample.py --host <fw> --user <api> --insecure --out sophos-sample`.
@@ -726,6 +744,8 @@ Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che d
 
 | Phiên bản | Nội dung chính |
 |---|---|
+| **2.3.0** | **Trang Tổng quan** cho IT Infrastructure Manager (Cần xử lý + thẻ từng module, bấm để mở tab), trang mặc định của quản trị viên · nút Back về đúng trang mặc định |
+| **2.2.1** | Chuỗi băm an toàn khi chạy nhiều pod · tìm Audit log đúng trên toàn bộ dữ liệu · VPN nhanh hơn ~100 lần với nhiều rule/tài khoản · gzip · dọn công việc nền định kỳ · pool DB cấu hình được · `tests/run_all.sh`. Đánh giá & lộ trình: [`docs/roadmap-infra.md`](docs/roadmap-infra.md) |
 | **2.2.0** | **Tự động chặn từ group chat Teams:** cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, team SOC trực 24/7 (ủy quyền từng tài khoản gắn tenant / nhóm Entra), bỏ qua tin đã sửa, whitelist + Approve, lịch tự chặn (ngoài giờ / cuối tuần / ngày lễ), ngưỡng IP/giờ, công tắc khẩn cấp, trả lời qua Teams Workflows, lọc phía Graph (không đọc lại lịch sử), thời điểm lệnh theo Teams, lệnh cũ chờ duyệt, **bằng chứng khi tin bị xóa**. **Báo cáo PDF / Excel** (Executive Summary, HSC Design System, logo, chọn kỳ trên lịch, gửi email). **Giao diện mới** (menu trái, bảng cân đối, tooltip hướng dẫn) |
 | **2.1.0** | Rà soát quyền VPN định kỳ theo ISO 27001 · overlay Rancher |
 | **2.0.0** | Thông báo email: SMTP trên giao diện, nhắc trước hạn, outbox chống gửi trùng |

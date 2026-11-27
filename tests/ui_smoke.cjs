@@ -571,7 +571,108 @@ const confirmOk = async (page) => {
       await cr.close();
     }
 
+    // ------------------------------------------------ trang Tổng quan
+    {
+      const { ctx: co, page: po, errors: eo } = await newPage(browser, { tok: admin });
+      const gcCalls = [];
+      po.on("request", (r) => { if (r.url().includes("/api/group-cache")) gcCalls.push(r.url()); });
+      await po.goto(B + "/");
+      await po.waitForSelector("#panel-overview.is-active .ov-grid");
+      chk("Tổng quan: admin mở / không hash → vào Tổng quan", await visible(po, "#panel-overview"));
+      chk("Tổng quan: có khối 'Cần xử lý' và ≥ 7 thẻ", (await po.textContent("#ov-body")).includes("Cần xử lý")
+        && (await po.$$(".ov-card")).length >= 7, (await po.$$(".ov-card")).length);
+      await po.click('.ov-card[data-go="vpn"]');
+      await po.waitForSelector("#panel-vpn.is-active");
+      chk("Tổng quan: bấm thẻ VPN → mở tab VPN", true);
+      await po.goBack();
+      await po.waitForSelector("#panel-overview.is-active");
+      chk("Tổng quan: Back từ VPN → về lại Tổng quan", true);
+      await po.goto(B + "/#zzz");
+      await po.waitForSelector("#panel-overview.is-active");
+      chk("Tổng quan: hash không hợp lệ → Tổng quan (admin)", true);
+      // không gọi chồng: 2 lần bấm Làm mới liên tiếp → chỉ thêm 1 lần gọi
+      await po.waitForSelector("#ov-body .ov-grid");
+      await po.waitForFunction(() => !document.querySelector("#ov-refresh").disabled);
+      const n0 = gcCalls.length;
+      await po.evaluate(() => { const b = document.querySelector("#ov-refresh"); b.click(); b.click(); });
+      await po.waitForFunction(() => !document.querySelector("#ov-refresh").disabled);
+      chk("Tổng quan: bấm Làm mới 2 lần nhanh → /api/group-cache chỉ gọi thêm 1 lần", gcCalls.length === n0 + 1, `${gcCalls.length - n0}`);
+      chk("không lỗi JS (Tổng quan)", eo.length === 0, eo.join(" | "));
+      await co.close();
+    }
+    {
+      // có vấn đề: dữ liệu giả chỉ ở khối này
+      const { ctx: cp, page: pp, errors: ep } = await newPage(browser, { tok: admin });
+      const json = (body) => (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      await pp.route("**/api/vpn/rules*", json({ summary: { expired_enabled: 2 }, total: 5, today: "2026-01-01",
+        syncs: [{ status: "error", firewall: "FW<b>X</b>", error: "lỗi <b>đậm</b>" }], rules: [] }));
+      await pp.route("**/api/autoblock/status", json({ enabled: true, auto_enabled: true, pending: 3, hourly_limit: 20 }));
+      await pp.route(/\/api\/changes\?.*type=drift/, json({ totals: { drift: 1 }, items: [] }));
+      await pp.goto(B + "/");
+      await pp.waitForSelector("#ov-body .ov-issue");
+      const lv = await pp.$$eval(".ov-issue", (xs) => xs.map((x) => (x.classList.contains("ov-issue--err") ? "err" : "warn")));
+      chk("Tổng quan: có vấn đề → mục .ov-issue--err đứng trước mọi .ov-issue--warn",
+        lv.includes("err") && lv.includes("warn") && lv.lastIndexOf("err") < lv.indexOf("warn"), lv.join(","));
+      chk("Tổng quan: có vấn đề → không hiện 'Không có việc cần xử lý'", !(await pp.textContent("#ov-body")).includes("Không có việc cần xử lý"));
+      chk("Tổng quan: chuỗi lỗi chứa <b> hiện dạng chữ, không thành thẻ HTML",
+        (await pp.$$(".ov-issue b")).length === 0 && (await pp.textContent(".ov-issues")).includes("<b>đậm</b>"));
+      chk("không lỗi JS (Tổng quan có vấn đề)", ep.length === 0, ep.join(" | "));
+      await cp.close();
+    }
+    {
+      // công tắc khẩn cấp tắt (enabled && !auto_enabled) → cảnh báo, thẻ không ghi "Chưa bật đọc Teams"
+      const { ctx: cs, page: ps } = await newPage(browser, { tok: admin });
+      await ps.route("**/api/autoblock/status", (r) => r.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify({ enabled: true, auto_enabled: false, pending: 0, hourly_limit: 20 }) }));
+      await ps.goto(B + "/");
+      await ps.waitForSelector("#ov-body .ov-grid");
+      chk("Tổng quan: công tắc khẩn cấp tắt → mục cảnh báo 'Công tắc khẩn cấp đang TẮT'",
+        (await ps.$$eval(".ov-issue--warn", (xs) => xs.some((x) => x.textContent.includes("Công tắc khẩn cấp đang TẮT")))));
+      chk("Tổng quan: thẻ Tự động chặn không ghi 'Chưa bật đọc Teams'",
+        !(await ps.textContent('.ov-card[data-go="autoblock"]')).includes("Chưa bật đọc Teams"));
+      await cs.close();
+    }
+    {
+      // phản hồi không phải JSON (trang đăng nhập HTML) → thẻ VPN báo lỗi, trang vẫn render
+      const { ctx: ch, page: ph } = await newPage(browser, { tok: admin });
+      await ph.route("**/api/vpn/rules*", (r) => r.fulfill({ status: 200, contentType: "text/html", body: "<html>login</html>" }));
+      await ph.goto(B + "/");
+      await ph.waitForSelector("#ov-body .ov-grid");
+      const cards = await ph.$$eval(".ov-card", (xs) => xs.map((x) => [x.dataset.go, x.textContent.includes("Không đọc được")]));
+      chk("Tổng quan: /api/vpn/rules trả HTML → thẻ VPN báo 'Không đọc được'", cards.find((c) => c[0] === "vpn")?.[1] === true);
+      chk("Tổng quan: các thẻ khác vẫn hiện, khối 'Cần xử lý' vẫn render, không kẹt 'Đang tải…'",
+        cards.length >= 7 && cards.filter((c) => c[1]).length === 1
+        && (await ph.textContent("#ov-body")).includes("Cần xử lý") && !(await ph.textContent("#ov-body")).includes("Đang tải…"), JSON.stringify(cards));
+      await ch.close();
+    }
+    {
+      // một API lỗi 500 → chỉ thẻ đó báo lỗi
+      const { ctx: cf, page: pf } = await newPage(browser, { tok: admin });
+      await pf.route("**/api/review/campaigns*", (r) => r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: "boom" }) }));
+      await pf.goto(B + "/");
+      await pf.waitForSelector("#ov-body .ov-grid");
+      const cards = await pf.$$eval(".ov-card", (xs) => xs.map((x) => [x.dataset.go, x.textContent.includes("Không đọc được")]));
+      chk("Tổng quan: /api/review/campaigns lỗi 500 → thẻ Rà soát báo 'Không đọc được'", cards.find((c) => c[0] === "review")?.[1] === true);
+      chk("Tổng quan: các thẻ khác vẫn hiện bình thường", cards.length >= 7 && cards.filter((c) => c[1]).length === 1, JSON.stringify(cards));
+      await cf.close();
+    }
+
     // ------------------------------------------------ viewer
+    {
+      const viewer0 = await token("xem@hsc.com.vn");
+      const { ctx: cv, page: pv, errors: ev } = await newPage(browser, { tok: viewer0 });
+      const outbox = [];
+      pv.on("request", (r) => { if (r.url().includes("/api/notify/outbox")) outbox.push(r.url()); });
+      await pv.goto(B + "/");
+      await pv.waitForSelector("#panel-block.is-active");
+      chk("Tổng quan: Readonly mở / không hash → Chặn nhanh", true);
+      await pv.evaluate(() => { window.location.hash = "overview"; });
+      await pv.waitForSelector("#panel-overview.is-active .ov-grid");
+      chk("Tổng quan: Readonly không thấy thẻ Email", (await pv.$$('.ov-card[data-go="settings"]')).length === 0);
+      chk("Tổng quan: Readonly không gọi /api/notify/outbox", outbox.length === 0, outbox.join(","));
+      chk("không lỗi JS (Tổng quan Readonly)", ev.length === 0, ev.join(" | "));
+      await cv.close();
+    }
     {
       const viewer = await token("xem@hsc.com.vn");
       const { ctx: c2, page: p2, errors: e2 } = await newPage(browser, { tok: viewer });
@@ -627,7 +728,7 @@ const confirmOk = async (page) => {
       const { ctx: c3, page: p3, errors: e3 } = await newPage(browser, { tok: admin, viewport: { width: 390, height: 844 } });
       await p3.goto(B + "/");
       await p3.waitForSelector("#app:not(.hidden)");
-      for (const t of ["block", "groups", "firewalls", "changes", "audit", "reports", "vpn", "review", "autoblock", "settings", "users"]) {
+      for (const t of ["overview", "block", "groups", "firewalls", "changes", "audit", "reports", "vpn", "review", "autoblock", "settings", "users"]) {
         await tab(p3, t);
         await p3.waitForTimeout(250);
         const overflow = await p3.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

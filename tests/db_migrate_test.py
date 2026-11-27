@@ -59,6 +59,11 @@ chk("khởi động: tự thêm cột thiếu (autoblock_messages)", set(NEW) <=
 chk("khởi động: tự thêm cột thiếu (autoblock_evidence)", set(NEW) <= cols("autoblock_evidence"))
 init_db()
 chk("chạy lại lần nữa không lỗi (idempotent)", True)
+with engine.begin() as c:  # DB cũ chưa có index audit_logs(action) → khởi động tạo
+    c.execute(sa.text("DROP INDEX IF EXISTS ix_audit_logs_action"))
+init_db()
+chk("khởi động: tạo index ix_audit_logs_action cho DB cũ",
+    "ix_audit_logs_action" in {i["name"] for i in sa.inspect(engine).get_indexes("audit_logs")})
 
 with SessionLocal() as db:
     row = db.scalars(sa.select(AutoBlockMessage).where(AutoBlockMessage.msg_id == "m-old")).first()

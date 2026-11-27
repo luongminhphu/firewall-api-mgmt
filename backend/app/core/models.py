@@ -57,7 +57,7 @@ class AuditLog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     actor: Mapped[str] = mapped_column(String(120), default="soc")
-    action: Mapped[str] = mapped_column(String(32))  # block | unblock | test | firewall_cud
+    action: Mapped[str] = mapped_column(String(32), index=True)  # block | unblock | test | firewall_cud
     firewall_id: Mapped[int | None] = mapped_column(ForeignKey("firewalls.id"), nullable=True)
     firewall_name: Mapped[str] = mapped_column(String(120), default="")
     group_name: Mapped[str] = mapped_column(String(120), default="")

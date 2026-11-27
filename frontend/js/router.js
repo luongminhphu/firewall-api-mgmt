@@ -2,7 +2,9 @@
    Hash có dấu "=" (vd #sso=… từ Entra) không phải tab — main.js xử lý và xóa trước khi router chạy. */
 import { $, $$ } from "./util.js";
 
-const DEFAULT_TAB = "block";
+let DEFAULT_TAB = "block";
+/** Tab mặc định theo vai trò (hash rỗng / không hợp lệ); main.js đặt sau khi biết quyền. */
+export const setDefaultTab = (name) => { DEFAULT_TAB = name; };
 let onShow = () => {};
 
 const tabFromHash = () => {
@@ -43,8 +45,8 @@ export function initRouter(showFn) {
     if (btn) go(btn.dataset.tab);
   });
   window.addEventListener("hashchange", () => {
-    const t = tabFromHash();
-    if (t) show(t);
+    if ($("#app").classList.contains("hidden")) return; // chưa đăng nhập / đã thoát: không tải trang nào
+    show(tabFromHash() || DEFAULT_TAB); // hash rỗng (vd Back về URL không hash) → tab mặc định
   });
 }
 
