@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -40,6 +41,11 @@ from .modules.vpn import sync as vpn_sync
 from .modules.vpn.router import router as vpn_router
 
 
+def _purge_jobs() -> None:
+    with SessionLocal() as db:
+        jobs.purge_old(db)
+
+
 def _startup() -> None:
     init_db()
     with SessionLocal() as db:
@@ -48,10 +54,6 @@ def _startup() -> None:
             {Firewall.default_group: BLOCK_GROUP}, synchronize_session=False
         )
         db.commit()
-        try:
-            jobs.purge_old(db)
-        except Exception:  # noqa: BLE001
-            pass
     # Bộ lập lịch cache: quét ngay firewall chưa có cache/quá hạn, sau đó kiểm tra định kỳ (TTL / GROUP_CACHE_DAILY_AT)
     if settings.GROUP_CACHE_WARMUP:
         gc.start_scheduler()
@@ -63,6 +65,8 @@ def _startup() -> None:
         jobs.every("notify", settings.NOTIFY_INTERVAL_SECONDS, notify_outbox.run_cycle)
     # Rà soát quyền VPN: tự mở đợt đầu quý, nhắc / báo quá hạn (một pod/vòng); kiểm tra mỗi giờ
     jobs.every("review", 3600, review_service.tick)
+    # Dọn công việc nền cũ hơn JOB_RETENTION_DAYS (result_json chứa từng IP) — trước đây chỉ chạy lúc khởi động
+    jobs.every("jobs-purge", 6 * 3600, _purge_jobs)
     # Tự động chặn từ Teams: kiểm tra mỗi 30 giây, chỉ đọc Graph khi đủ chu kỳ quản trị viên chọn (mặc định 5 phút)
     if settings.AUTOBLOCK_POLL_SECONDS > 0:
         jobs.every("autoblock", 30, autoblock_service.tick)
@@ -85,6 +89,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Nén response lớn (thành viên group, VPN rule). Không có BREACH vì token đi qua header X-Auth-Token, không phải cookie
+# (trang lạ không ép được request có xác thực) — đổi sang cookie phiên thì phải xét lại. Mức 5: nhanh hơn mức 9 ~5 lần.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 app_errors.install(app)
 app_logging.install(app)
 

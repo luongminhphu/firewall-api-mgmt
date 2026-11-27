@@ -68,7 +68,7 @@ async function boot() {
 }
 
 async function refreshPendingBadge() {
-  if (!state.token) return;
+  if (!state.token || document.hidden) return; // tab ẩn: không poll; quay lại tab thì cập nhật ngay
   try {
     const s = await api("/api/autoblock/status");
     const b = $("#ab-badge");
@@ -79,6 +79,7 @@ async function refreshPendingBadge() {
     /* không đọc được trạng thái (mất mạng / hết phiên): giữ huy hiệu cũ */
   }
 }
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshPendingBadge(); });
 setAfterLogin(boot);
 initTips(); // nút ⓘ hướng dẫn cạnh các mục cấu hình
 

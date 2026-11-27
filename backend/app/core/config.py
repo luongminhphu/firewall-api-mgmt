@@ -14,6 +14,9 @@ class Settings:
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL", "postgresql+psycopg2://sophos:sophos@db:5432/sophos_blocker"
     )
+    # Pool kết nối PostgreSQL mỗi pod (mặc định như SQLAlchemy). Tổng (size+overflow) × số pod < max_connections.
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE") or "5")
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW") or "10")
 
     # Khóa chính dùng để mã hóa mật khẩu firewall (AES-256-GCM qua HKDF).
     # BẮT BUỘC đặt trong .env ở môi trường thật.
@@ -149,7 +152,7 @@ class Settings:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "").strip()
 
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "2.2.0"
+    APP_VERSION: str = "2.2.1"
 
     @property
     def auth_modes(self) -> list[str]:

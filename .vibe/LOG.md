@@ -1,0 +1,9 @@
+# LOG
+- 2026-11-27 Vòng 1: đánh giá tổng thể (2 agent đọc code: hiệu suất, liên kết). Baseline 28/28 pass khi chạy riêng và đúng env; vòng lặp liền nhau FAIL giả (E8). Viết PLAN M1.
+- Gate 1: 0 Blocker, 4 Major (3 Accepted, 1 Deferred), 2 Minor Accepted. Bật PostgreSQL 16 cục bộ cho test (u/p, db srb).
+- T-01 (Opus): tests/run_all.sh — nguyên nhân FAIL giả: không có `ss`, app cũ chưa nhả cổng; đổi sang /dev/tcp. 28/28.
+- T-02 (Sonnet) + Gate 2: pg_advisory_xact_lock; chứng minh code cũ gãy chuỗi trên PG. Opus thêm rollback, timeout test (C-08, C-09).
+- T-03 (Sonnet) + Gate 2: audit lọc SQL + index; Opus thêm test index DB cũ (C-10).
+- T-04 (Sonnet): chỉ mục VPN, 1,3 s → 0,01 s. T-05, T-06 (Opus, nhỏ). Gate 2 milestone → T-08 (Sonnet) test gzip/purge; Opus sửa mức nén, comment, env rỗng (C-12, C-13).
+- T-07 (Opus): docs/roadmap-infra.md, architecture.md §22, README 2.2.1.
+- CLOSE: run_all.sh 32/32 SQLite; 11 bộ liên quan pass trên PostgreSQL 16. Chưa commit (chờ người dùng).

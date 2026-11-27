@@ -6,7 +6,7 @@ import io
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import desc, select
+from sqlalchemy import desc, or_, select
 from sqlalchemy.orm import Session
 
 from ...auth.rbac import current_user, principal
@@ -24,18 +24,14 @@ def audit_list(
     db: Session = Depends(get_session),
     user: str = Depends(current_user),
 ):
-    stmt = select(AuditLog).order_by(desc(AuditLog.id)).limit(limit)
+    stmt = select(AuditLog)
     if action:
-        stmt = select(AuditLog).where(AuditLog.action == action).order_by(desc(AuditLog.id)).limit(limit)
-    rows = [r.to_dict() for r in db.scalars(stmt).all()]
-    if q:
-        needle = q.lower()
-        rows = [
-            r for r in rows
-            if needle in (r["target"] or "").lower()
-            or needle in (r["firewall_name"] or "").lower()
-            or needle in (r["reason"] or "").lower()
-        ]
+        stmt = stmt.where(AuditLog.action == action)
+    if q:  # lọc trong SQL trước LIMIT; autoescape để % _ trong q là ký tự thường
+        stmt = stmt.where(or_(AuditLog.target.icontains(q, autoescape=True),
+                              AuditLog.firewall_name.icontains(q, autoescape=True),
+                              AuditLog.reason.icontains(q, autoescape=True)))
+    rows = [r.to_dict() for r in db.scalars(stmt.order_by(desc(AuditLog.id)).limit(limit)).all()]
     return {"rows": rows, "count": len(rows)}
 
 

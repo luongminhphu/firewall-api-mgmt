@@ -156,7 +156,7 @@ Challenge đã xử lý trước đó (đừng lặp lại nếu không có bằ
 ```bash
 pip install -r backend/requirements.txt
 bash tests/run_e2e.sh tests/<tên>_test.py                                  # một bộ (SQLite + mock Sophos/Graph)
-for t in tests/*_test.py; do bash tests/run_e2e.sh "$t" || echo "FAIL $t"; done   # toàn bộ trước khi đóng
+bash tests/run_all.sh                                                        # toàn bộ trước khi đóng (env riêng từng bộ, chờ nhả cổng)
 E2E_DATABASE_URL=postgresql+psycopg2://u:p@127.0.0.1:5432/srb bash tests/run_e2e.sh tests/<tên>_test.py   # khi đổi DB/schema
 ```
 Luôn chạy `policy_guard_test.py` và `contract_test.py` khi chạm backend. Chỉ ghi lại snapshot (`CONTRACT_RECORD=1`) khi **cố ý** thêm/đổi API và ghi lý do vào PLAN.md.

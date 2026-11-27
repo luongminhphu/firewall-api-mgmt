@@ -245,21 +245,33 @@ def _accounts_by_fw(db: Session) -> dict[int, list[VpnAccount]]:
     return out
 
 
-def link_accounts(identities: list[str], user_code: str, accounts: list[VpnAccount]) -> tuple[list[VpnAccount], bool]:
+def _index(accounts: list[VpnAccount]) -> dict:
+    """Chỉ mục tài khoản của một firewall (dựng một lần): nhóm / username_key / mã user → vị trí trong danh sách gốc."""
+    by_group: dict[str, list[int]] = {}
+    by_key: dict[str, list[int]] = {}
+    by_code: dict[str, list[int]] = {}
+    for pos, a in enumerate(accounts):
+        for g in {g.lower() for g in json.loads(a.groups_json or "[]")}:
+            by_group.setdefault(g, []).append(pos)
+        by_key.setdefault(a.username_key, []).append(pos)
+        by_code.setdefault(a.username_key.split("@")[0], []).append(pos)
+    return {"accounts": accounts, "group": by_group, "key": by_key, "code": by_code}
+
+
+def link_accounts(identities: list[str], user_code: str, idx: dict) -> tuple[list[VpnAccount], bool]:
     """Tài khoản liên kết với rule + cờ 'mọi user của rule đã không còn / bị khóa'.
 
-    Ưu tiên identity (user hoặc nhóm), dự phòng mã user trong tên (CHAU.NB ↔ chau.nb@…).
+    Ưu tiên identity (user hoặc nhóm), dự phòng mã user trong tên (CHAU.NB ↔ chau.nb@…). `idx` từ `_index`.
     """
+    accounts = idx["accounts"]
     if not accounts:
         return [], False  # chưa đồng bộ tài khoản → không kết luận
     idents = {i.lower() for i in identities}
-    linked = [a for a in accounts if a.username_key in idents
-              or idents & {g.lower() for g in json.loads(a.groups_json or "[]")}]
-    if not linked and user_code:
-        code = user_code.lower()
-        linked = [a for a in accounts if a.username_key.split("@")[0] == code]
-    user_like = [i for i in idents if "@" in i]
-    missing_users = [i for i in user_like if i not in {a.username_key for a in accounts}]
+    pos = {p for i in idents for p in idx["key"].get(i, []) + idx["group"].get(i, [])}
+    if not pos and user_code:
+        pos = set(idx["code"].get(user_code.lower(), []))
+    linked = [accounts[p] for p in sorted(pos)]  # giữ thứ tự danh sách gốc
+    missing_users = [i for i in idents if "@" in i and i not in idx["key"]]
     gone = (bool(linked) and all(a.removed_at is not None or a.status.lower() != "active" for a in linked)) or \
            (not linked and bool(missing_users))
     return linked, gone
@@ -291,7 +303,8 @@ def list_rules(db: Session, *, firewall_id: int | None = None, status: str = "",
     cfg = vpn_settings.get(db)
     th = cfg["expiring_days"]
     names = {f.id: f.name for f in db.scalars(select(Firewall))}
-    accounts = _accounts_by_fw(db)
+    accounts = {fid: _index(v) for fid, v in _accounts_by_fw(db).items()}
+    no_accounts = _index([])
     stmt = select(VpnRule).order_by(VpnRule.firewall_id, VpnRule.position)
     if firewall_id:
         stmt = stmt.where(VpnRule.firewall_id == firewall_id)
@@ -303,7 +316,7 @@ def list_rules(db: Session, *, firewall_id: int | None = None, status: str = "",
     all_rows, teams = [], set()
     for r in db.scalars(stmt):
         linked, gone = link_accounts(json.loads(r.detail_json or "{}").get("identities", []), r.user_code,
-                                     accounts.get(r.firewall_id, []))
+                                     accounts.get(r.firewall_id, no_accounts))
         cls = expiry.classify(expiry_date=r.expiry_date, expiry_source=r.expiry_source, name_status=r.name_status,
                               enabled=r.enabled, accounts_gone=gone, today=today, threshold_days=th)
         all_rows.append(rule_dict(r, names.get(r.firewall_id, f"#{r.firewall_id}"), cls, linked))

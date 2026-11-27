@@ -375,6 +375,7 @@ ban đầu; quản trị viên chỉnh lại trên giao diện.
 | `SESSION_SECRET` | Khóa ký phiên; để trống thì mỗi lần restart mọi người phải đăng nhập lại. **Secret** |
 | `POSTGRES_PASSWORD` / `OIDC_CLIENT_SECRET` | Mật khẩu DB / client secret của app đăng nhập. **Secret** |
 | `DATABASE_URL` | Chuỗi kết nối PostgreSQL (manifest k8s tự ghép) |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | Pool kết nối PostgreSQL mỗi pod (5 / 10). Tăng khi chặn trên nhiều firewall cùng lúc; tổng × số pod phải nhỏ hơn `max_connections` |
 | `APP_BASE_URL` | Địa chỉ người dùng mở app, dùng cho link trong email nhắc hạn, rà soát, tự động chặn |
 | `SESSION_TTL_HOURS` | Thời hạn phiên (mặc định 8 giờ) |
 | `SAFE_LIST` / `ALLOW_PRIVATE` | Dải **không bao giờ** bị chặn · cho phép chặn IP private (mặc định `false`) |
@@ -701,9 +702,10 @@ python -m uvicorn app.main:app --app-dir backend --port 8080
 
 API docs có ở `http://localhost:8080/api/docs`.
 
-**Kiểm thử hồi quy:** 27 bộ, chạy được trên SQLite và PostgreSQL.
+**Kiểm thử hồi quy:** 32 bộ, chạy được trên SQLite và PostgreSQL.
 
 ```bash
+bash tests/run_all.sh                                # toàn bộ (tự đặt biến môi trường riêng của từng bộ)
 bash tests/run_e2e.sh tests/<tên>_test.py
 E2E_DATABASE_URL=postgresql+psycopg2://u:p@127.0.0.1:5432/srb bash tests/run_e2e.sh tests/autoblock_test.py
 ```
@@ -715,6 +717,10 @@ E2E_DATABASE_URL=postgresql+psycopg2://u:p@127.0.0.1:5432/srb bash tests/run_e2e
 | `db_migrate_test.py` | Nâng cấp DB bản cũ: tự thêm cột thiếu, giữ toàn vẹn chuỗi băm bằng chứng cũ |
 | `contract_test.py` | Khóa danh sách API và hình dạng response (ghi lại bằng `CONTRACT_RECORD=1` khi cố ý thêm API) |
 | `policy_guard_test.py` | Không lệnh ghi nào lọt lên firewall ngoài allowlist |
+| `hashchain_multiproc_test.py` | Chuỗi băm vẫn liền khi nhiều tiến trình / pod ghi cùng lúc (PostgreSQL) |
+| `audit_search_test.py` | Tìm Audit log trúng cả bản ghi cũ, `%` / `_` là ký tự thường, có index `action` |
+| `vpn_rules_perf_test.py` | Liên kết rule ↔ tài khoản VPN nhanh, kết quả giống thuật toán cũ |
+| `ops_test.py` | Nén gzip response lớn, dọn công việc nền cũ |
 | `ui_smoke_test.py` | Playwright trên mọi tab: desktop, điện thoại 390px, tooltip, phân quyền giao diện |
 
 Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che dữ liệu):
@@ -726,6 +732,7 @@ Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che d
 
 | Phiên bản | Nội dung chính |
 |---|---|
+| **2.2.1** | Chuỗi băm an toàn khi chạy nhiều pod · tìm Audit log đúng trên toàn bộ dữ liệu · VPN nhanh hơn ~100 lần với nhiều rule/tài khoản · gzip · dọn công việc nền định kỳ · pool DB cấu hình được · `tests/run_all.sh`. Đánh giá & lộ trình: [`docs/roadmap-infra.md`](docs/roadmap-infra.md) |
 | **2.2.0** | **Tự động chặn từ group chat Teams:** cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, team SOC trực 24/7 (ủy quyền từng tài khoản gắn tenant / nhóm Entra), bỏ qua tin đã sửa, whitelist + Approve, lịch tự chặn (ngoài giờ / cuối tuần / ngày lễ), ngưỡng IP/giờ, công tắc khẩn cấp, trả lời qua Teams Workflows, lọc phía Graph (không đọc lại lịch sử), thời điểm lệnh theo Teams, lệnh cũ chờ duyệt, **bằng chứng khi tin bị xóa**. **Báo cáo PDF / Excel** (Executive Summary, HSC Design System, logo, chọn kỳ trên lịch, gửi email). **Giao diện mới** (menu trái, bảng cân đối, tooltip hướng dẫn) |
 | **2.1.0** | Rà soát quyền VPN định kỳ theo ISO 27001 · overlay Rancher |
 | **2.0.0** | Thông báo email: SMTP trên giao diện, nhắc trước hạn, outbox chống gửi trùng |

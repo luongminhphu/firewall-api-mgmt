@@ -690,3 +690,20 @@ Không cần cơ chế mới: thứ tự kiểm tra là tài khoản riêng lẻ
 Test: người khác của cùng tenant đối tác bị bỏ qua · đúng Object ID nhưng sai tenant bị bỏ qua · danh sách thành viên chat
 đánh dấu ai đã được ủy quyền · thiếu quyền đọc thành viên vẫn kiểm tra kết nối được · cấu hình cũ `soc_tenants` không còn
 hiệu lực và hiện cảnh báo.
+
+---
+
+## 22. Đánh giá tổng thể & M1 hiệu suất / toàn vẹn (v2.2.1, 27/11/2026)
+
+Đánh giá đầy đủ và lộ trình (liên kết tính năng, tính năng cho IT Infrastructure Manager): [`roadmap-infra.md`](roadmap-infra.md).
+
+| Việc | Thay đổi | Test |
+|---|---|---|
+| Chuỗi băm liên pod | `hashchain.append` thêm `pg_advisory_xact_lock(hashtext('chain:<bảng>'))` trên chính session (không tốn thêm kết nối, nhả khi commit/rollback); lỗi giữa chừng thì rollback ngay. Chờ khoá không giới hạn: ưu tiên không mất bản ghi. Quy ước: flush thay đổi khác trước, gọi `append` sau, không gọi firewall giữa hai bước | `hashchain_multiproc_test.py`: 4 tiến trình × 50 dòng trên PostgreSQL; code cũ gãy chuỗi, code mới liền |
+| Tìm Audit | Lọc `q` trong SQL **trước** `LIMIT` (`icontains(autoescape=True)`: `%` và `_` là ký tự thường); index `ix_audit_logs_action`, tạo cả cho DB cũ khi khởi động | `audit_search_test.py`, `db_migrate_test.py` |
+| VPN `list_rules` | Dựng chỉ mục tài khoản theo firewall một lần (nhóm / username / mã user), kết quả và thứ tự giống bản cũ | `vpn_rules_perf_test.py`: 1,3 s → 0,01 s |
+| Vận hành | `GZipMiddleware` (≥ 1 KB, mức 5); dọn `jobs` mỗi 6 giờ (trước chỉ chạy lúc khởi động); `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`; huy hiệu menu ngừng poll khi tab ẩn | `ops_test.py` |
+| Kiểm thử | `tests/run_all.sh`: lấy biến môi trường riêng từ dòng `# Chạy:` của từng bộ, chờ cổng được nhả giữa các bộ (vòng lặp cũ báo FAIL giả) | toàn bộ |
+
+Không đổi API (contract snapshot giữ nguyên), không nới `policy.py`. Hoãn: chạy song song các lượt quét định kỳ, parse cache
+một lần (xem roadmap §3).
