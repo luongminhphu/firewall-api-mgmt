@@ -5,7 +5,8 @@ import { confirmAction } from "../components/modal.js";
 import { progressBox, reduceMotion, setBusy } from "../components/progress.js";
 import { toast } from "../components/toast.js";
 import { can, emit, on, state } from "../store.js";
-import { $, $$, esc, ICON } from "../util.js";
+import { link } from "../router.js";
+import { $, $$, esc, ICON, vnDay } from "../util.js";
 import { loadFirewalls } from "./firewalls.js";
 
 on("firewalls", () => renderFwPicker());
@@ -350,7 +351,7 @@ function blockSummary(r, dry) {
       <div class="result-verdict__acts">
         <button class="btn btn--sm" type="button" data-after="undo">Gỡ chặn ${lb.ips.length} IP này</button>
         <button class="btn btn--sm" type="button" data-after="again">Chặn tiếp</button>
-        <a class="btn btn--ghost btn--sm" href="#changes">Xem lịch sử thay đổi</a>
+        <a class="btn btn--ghost btn--sm" href="${esc(lb.ips.length === 1 ? link("changes", { q: lb.ips[0] }) : link("changes", { from: vnDay() }))}">Xem lịch sử thay đổi</a>
       </div>
     </div>`;
 }

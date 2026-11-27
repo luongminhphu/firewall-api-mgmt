@@ -23,7 +23,7 @@ Thứ tự ưu tiên tính theo giá trị cho Infra Manager trên công sức b
 | # | Đề xuất | Giá trị | Phạm vi | Rủi ro |
 |---|---|---|---|---|
 | L1 ✅ 2.3.0 | **Trang Tổng quan** (`#overview`, trang mặc định cho quản trị viên; Write / Readonly giữ Chặn nhanh) | Một màn hình trả lời "hôm nay có gì cần xử lý": firewall lỗi, lệnh chờ duyệt, rule VPN hết hạn mà vẫn bật, đợt rà soát quá hạn, email gửi lỗi, drift, cache cũ | Chỉ frontend, gọi các API sẵn có: `/api/firewalls`, `/api/group-cache`, `/api/autoblock/status`, `/api/vpn/rules` (`summary`, `syncs`), `/api/review/campaigns`, `/api/notify/outbox?status=failed`, `/api/reports/summary?days=7`. Thẻ nào vai trò không có quyền đọc thì ẩn | Thấp |
-| L2 | **Deep link có tham số** `#tab?ip=…&fw=…` | Mở thẳng tới đúng IP hoặc firewall từ email, báo cáo hay thẻ Tổng quan | `frontend/js/router.js` (hiện chỉ nhận `^[a-z]+$`) và phần điền sẵn bộ lọc ở các trang Lịch sử, VPN, IP Host Group. Backend đã có bộ lọc `q`, `firewall_id` | Thấp |
+| L2 ✅ 2.4.0 | **Deep link có tham số** `#tab?ip=…&fw=…` | Mở thẳng tới đúng IP hoặc firewall từ email, báo cáo hay thẻ Tổng quan | `frontend/js/router.js` (hiện chỉ nhận `^[a-z]+$`) và phần điền sẵn bộ lọc ở các trang Lịch sử, VPN, IP Host Group. Backend đã có bộ lọc `q`, `firewall_id` | Thấp |
 | L3 | **Tra cứu một IP** `GET /api/ip/{ip}` và ô tra cứu trên thanh trên | Trả lời câu hỏi của auditor và SOC: "IP này bị chặn khi nào, ai yêu cầu (tin Teams + bằng chứng), trên firewall nào, đã gỡ chưa" | API mới gộp `GroupChange`, `AutoBlockRequest`/evidence, `AuditLog` và trạng thái cache hiện tại. Cần ghi lại contract snapshot | TB |
 | L4 | **VPN ↔ Rà soát** | Từ mục rà soát mở được rule/tài khoản VPN tương ứng; ở chi tiết rule thấy quyết định của đợt rà soát gần nhất | `review.js`, `vpn.js` và `/api/vpn/rules/{id}` thêm khoá `review` (đổi response, cần ghi lại snapshot) | Thấp |
 | L5 | **Firewall → dữ liệu của nó** | Mỗi dòng firewall có lối tắt tới IP Host Group, VPN và lịch sử thay đổi của chính firewall đó (dùng L2) | `firewalls.js` | Thấp |
@@ -59,7 +59,7 @@ Thứ tự ưu tiên tính theo giá trị cho Infra Manager trên công sức b
 | F8 | **Quy trình xin / gia hạn quyền VPN** (đại diện team đề xuất, Infra duyệt; app chỉ ghi nhận và nhắc, không sửa firewall) | Khép vòng ISO A.5.18: cấp quyền, rà soát, thu hồi | Không (VPN vẫn chỉ đọc) | Lớn |
 | F9 | **Xuất chỉ số Prometheus `/metrics`** (job lỗi, độ trễ firewall, lệnh chờ duyệt) | Đưa vào hệ giám sát sẵn có của Infra (Grafana) | Không | Nhỏ |
 
-**Đề xuất thứ tự:** ~~L1~~ (xong 2.3.0) → L2 → F1 + F2 (dùng chung outbox) → L3 → F3 → F5. Các mục **[P]** cần chủ sản phẩm duyệt riêng.
+**Đề xuất thứ tự:** ~~L1~~ (xong 2.3.0) → ~~L2~~ (xong 2.4.0) → F1 + F2 (dùng chung outbox) → L3 → F3 → F5. Các mục **[P]** cần chủ sản phẩm duyệt riêng.
 
 ## 5. Việc người vận hành nên kiểm trên production
 
