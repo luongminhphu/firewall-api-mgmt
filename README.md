@@ -451,6 +451,19 @@ nhưng vẫn mở được Tổng quan từ menu.
   Teams / đã ngắt / công tắc khẩn cấp TẮT / trong hoặc ngoài lịch), VPN, Rà soát, Sửa ngoài app (7 ngày), 7 ngày qua, Email lỗi (7 ngày, chỉ quản trị viên).
 - Một nguồn dữ liệu lỗi thì chỉ thẻ đó báo "Không đọc được", phần còn lại vẫn hiện. Trang chỉ tải khi mở hoặc bấm **Làm mới**.
 
+**Link mở thẳng trang đã lọc** (dán vào email / ticket; nếu phải đăng nhập Microsoft, app vẫn mở đúng link sau khi đăng nhập):
+
+| Link | Mở |
+|---|---|
+| `#changes?q=1.2.3.4` | Lịch sử thay đổi của IP (khoá: `q`, `fw` = id firewall, `type`, `actor`, `from` / `to` = YYYY-MM-DD) |
+| `#changes?type=drift&from=2026-11-21` | Các lần sửa ngoài app từ ngày đó |
+| `#audit?q=1.2.3.4` | Audit log (khoá: `q`, `action`) |
+| `#groups?fw=2&q=1.2.3` | IP Host Group của firewall 2, lọc thành viên |
+| `#vpn?status=expired_enabled` | Rule VPN hết hạn còn bật (khoá: `status`, `fw`, `q`) |
+
+Link có tham số thì bộ lọc của trang được đặt lại theo đúng link; khoá lạ hoặc giá trị sai bị bỏ qua. Trang **Chặn nhanh** không bao giờ
+nhận tham số (link lạ không thể điền sẵn IP để chặn).
+
 ### 6.1 Chặn nhanh
 
 1. Chọn nguồn: **Dán từ Teams** (tự bóc IPv4/CIDR, kể cả dạng làm mờ), **Nhập tay**, hoặc **CSV/TXT** (kéo-thả).
@@ -733,7 +746,7 @@ E2E_DATABASE_URL=postgresql+psycopg2://u:p@127.0.0.1:5432/srb bash tests/run_e2e
 | `audit_search_test.py` | Tìm Audit log trúng cả bản ghi cũ, `%` / `_` là ký tự thường, có index `action` |
 | `vpn_rules_perf_test.py` | Liên kết rule ↔ tài khoản VPN nhanh, kết quả giống thuật toán cũ |
 | `ops_test.py` | Nén gzip response lớn, dọn công việc nền cũ |
-| `ui_smoke_test.py` | Playwright trên mọi tab: desktop, điện thoại 390px, tooltip, phân quyền giao diện · Tổng quan: mức nghiêm trọng, thẻ lỗi riêng lẻ, Back, không gọi chồng, Readonly không gọi outbox |
+| `ui_smoke_test.py` | Playwright trên mọi tab: desktop, điện thoại 390px, tooltip, phân quyền giao diện · Tổng quan: mức nghiêm trọng, thẻ lỗi riêng lẻ, Back, không gọi chồng, Readonly không gọi outbox · link có tham số: áp bộ lọc, 1 request, giá trị xấu, XSS, Chặn nhanh không nhận tham số, giữ link qua SSO |
 
 Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che dữ liệu):
 `SOPHOS_PASSWORD=… python tools/sophos_sample.py --host <fw> --user <api> --insecure --out sophos-sample`.
@@ -744,6 +757,7 @@ Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che d
 
 | Phiên bản | Nội dung chính |
 |---|---|
+| **2.4.0** | **Link có tham số** `#tab?k=v` (Lịch sử thay đổi, Audit, IP Host Group, VPN), giữ link qua đăng nhập Microsoft · Tổng quan và kết quả chặn mở thẳng trang đã lọc · thoát thủ công xoá link khỏi thanh địa chỉ |
 | **2.3.0** | **Trang Tổng quan** cho IT Infrastructure Manager (Cần xử lý + thẻ từng module, bấm để mở tab), trang mặc định của quản trị viên · nút Back về đúng trang mặc định |
 | **2.2.1** | Chuỗi băm an toàn khi chạy nhiều pod · tìm Audit log đúng trên toàn bộ dữ liệu · VPN nhanh hơn ~100 lần với nhiều rule/tài khoản · gzip · dọn công việc nền định kỳ · pool DB cấu hình được · `tests/run_all.sh`. Đánh giá & lộ trình: [`docs/roadmap-infra.md`](docs/roadmap-infra.md) |
 | **2.2.0** | **Tự động chặn từ group chat Teams:** cú pháp `ĐỀ XUẤT CỦA SOC: BLOCK IP <ip>`, team SOC trực 24/7 (ủy quyền từng tài khoản gắn tenant / nhóm Entra), bỏ qua tin đã sửa, whitelist + Approve, lịch tự chặn (ngoài giờ / cuối tuần / ngày lễ), ngưỡng IP/giờ, công tắc khẩn cấp, trả lời qua Teams Workflows, lọc phía Graph (không đọc lại lịch sử), thời điểm lệnh theo Teams, lệnh cũ chờ duyệt, **bằng chứng khi tin bị xóa**. **Báo cáo PDF / Excel** (Executive Summary, HSC Design System, logo, chọn kỳ trên lịch, gửi email). **Giao diện mới** (menu trái, bảng cân đối, tooltip hướng dẫn) |

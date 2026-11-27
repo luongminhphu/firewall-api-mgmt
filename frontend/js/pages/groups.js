@@ -6,7 +6,7 @@ import { progressBox, setBusy } from "../components/progress.js";
 import { tableMessage } from "../components/table.js";
 import { toast } from "../components/toast.js";
 import { can, on, state } from "../store.js";
-import { $, $$, esc } from "../util.js";
+import { $, $$, esc, applyFilterParams } from "../util.js";
 
 // ----------------------------------------------------------- object group
 on("firewalls", () => renderFwSelect());
@@ -134,7 +134,11 @@ function renderCacheMeta(r, c) {
 }
 $("#g-search").addEventListener("input", () => renderMembers(filterMembers()));
 
-export async function loadGroupsForSelectedFw() {
+export async function loadGroupsForSelectedFw(params) {
+  applyFilterParams(params, { fw: "#g-fw", q: "#g-search" }, ["#g-search"]); // #g-fw không có option rỗng: link thiếu/sai fw giữ giá trị hiện tại
+  if (params instanceof URLSearchParams && params.has("fw") && params.get("fw") !== $("#g-fw").value) {
+    toast("Không tìm thấy firewall trong link — đang hiện firewall đã chọn trước đó", "err"); // tránh thao tác nhầm firewall
+  }
   const id = $("#g-fw").value;
   if (!id) return;
   $("#g-meta").innerHTML = `<span class="skeleton" style="width:220px"></span>`;

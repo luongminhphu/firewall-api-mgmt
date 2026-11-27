@@ -722,3 +722,17 @@ Roadmap L1. **Chỉ frontend** (`frontend/js/pages/overview.js`), không API m�
   Back, về tab mặc định; bỏ qua khi chưa đăng nhập. Vai trò Rà soát không thấy tab này (API vẫn chặn bằng `REVIEWER_PATHS`).
 - Test: `ui_smoke.cjs` +23 khẳng định (route giả lập trạng thái có vấn đề, API 500, response HTML, Back, chống gọi chồng, Readonly không gọi outbox, 390px).
 - Hoãn: `last_checked` trên thẻ Firewall; deep link có tham số (L2); `GET /api/overview/counts` cho huy hiệu menu (L6).
+
+## 24. Link có tham số (v2.4.0, 27/11/2026)
+
+Roadmap L2. Chỉ frontend, không đổi API.
+
+- Cú pháp `#tab?k=v&…` (`router.HASH_RE`); `link(tab, params)` là nơi duy nhất dựng hash. Router truyền `URLSearchParams` cho `onShow`;
+  tab bị đổi (không đủ quyền / không tồn tại) thì bỏ tham số. Bấm menu cùng tab xoá `?…` khỏi URL nhưng giữ bộ lọc người dùng đang chỉnh.
+- Mỗi trang (`changes`, `audit`, `groups`, `vpn`) nhận tham số trong hàm tải của nó qua `util.applyFilterParams`: danh sách trắng khoá, chỉ gán
+  `.value`, select chỉ nhận option có sẵn, ngày `YYYY-MM-DD`, cắt 120 ký tự. Có khoá của trang (kể cả giá trị sai) → đặt lại mọi ô lọc rồi áp,
+  mở hộp lọc, tải đúng một lần. `#g-fw` không có option rỗng nên link sai `fw` giữ firewall đang chọn và báo toast.
+- Không trang nào có thao tác ghi tự do nhận tham số (`#block` bỏ qua mọi tham số).
+- SSO: hash chỉ được coi là kết quả đăng nhập khi bắt đầu bằng `sso=` / `sso_error=`. Trước khi chuyển sang Microsoft, link hiện tại được lưu
+  vào sessionStorage (`sb_return_hash`), khôi phục sau `#sso=` nếu khớp `HASH_RE` (không rời origin). Thoát thủ công xoá hash khỏi thanh địa chỉ.
+- Dùng ngay: Tổng quan (firewall → `#groups?fw=`, drift → `#changes?type=drift&from=`, VPN → `#vpn?status=`), kết quả Chặn nhanh → `#changes?q=<IP>`.

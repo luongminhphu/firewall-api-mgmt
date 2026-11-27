@@ -2,7 +2,7 @@
 import { api } from "../api.js";
 import { resultChip } from "../components/badge.js";
 import { tableMessage } from "../components/table.js";
-import { $, esc, fmtTime, actorLabel, fwMessage } from "../util.js";
+import { $, esc, fmtTime, actorLabel, fwMessage, applyFilterParams } from "../util.js";
 
 // ------------------------------------------------------------------ audit
 $("#a-reload").addEventListener("click", loadAudit);
@@ -13,7 +13,8 @@ $("#a-search").addEventListener("input", () => {
   auditTimer = setTimeout(loadAudit, 300);
 });
 
-export async function loadAudit() {
+export async function loadAudit(params) {
+  applyFilterParams(params, { q: "#a-search", action: "#a-action" }, ["#a-search", "#a-action"]);
   const tb = $("#a-table").querySelector("tbody");
   tableMessage(tb, 8, "loading");
   try {

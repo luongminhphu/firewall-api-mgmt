@@ -571,6 +571,137 @@ const confirmOk = async (page) => {
       await cr.close();
     }
 
+    // ------------------------------------------------ deep link có tham số (#tab?k=v)
+    {
+      const fwList = await (await fetch(`${B}/api/firewalls`, { headers: { "X-Auth-Token": admin } })).json();
+      const fwId = String(fwList[0].id);
+      const { ctx: cd, page: pd, errors: ed } = await newPage(browser, { tok: admin });
+      const chReq = [];
+      pd.on("request", (r) => { if (/\/api\/changes\?/.test(r.url())) chReq.push(r.url()); });
+      const vpnReq = [];
+      pd.on("request", (r) => { if (/\/api\/vpn\/rules/.test(r.url())) vpnReq.push(r.url()); });
+      const cval = (s) => pd.inputValue(s);
+
+      await pd.goto(B + "/#changes?q=1.2.3.4");
+      await pd.waitForSelector("#panel-changes.is-active");
+      await pd.waitForFunction(() => document.querySelector("#c-q").value === "1.2.3.4");
+      await pd.waitForTimeout(800);
+      chk("deep link #changes?q=: #c-q đúng", (await cval("#c-q")) === "1.2.3.4");
+      chk("deep link #changes?q=: đúng 1 request /api/changes có q=1.2.3.4",
+        chReq.filter((u) => u.includes("q=1.2.3.4")).length === 1, `${chReq.length} request: ${chReq.join(" ")}`);
+      chk("deep link #changes?q=: hộp lọc mở", await pd.$eval("#panel-changes details[data-filter-box]", (d) => d.open));
+
+      await pd.goto(B + `/#changes?fw=${fwId}&type=drift`);
+      await pd.waitForFunction(() => document.querySelector("#c-type").value === "drift");
+      chk("deep link #changes?fw=&type=drift: hai select đúng", (await cval("#c-fw")) === fwId && (await cval("#c-type")) === "drift");
+
+      ed.length = 0;
+      await pd.goto(B + "/#changes?fw=999999&from=abc&zzz=1");
+      await pd.waitForFunction(() => document.querySelector("#c-type").value === ""); // đang fw+drift: giá trị sai vẫn ĐẶT LẠI
+      await pd.waitForTimeout(800);
+      const badV = [await cval("#c-fw"), await cval("#c-type"), await cval("#c-from"), ed.length];
+      chk("deep link giá trị xấu (fw không có, from=abc, khoá lạ) khi đang lọc → đặt lại về mặc định, không lỗi JS " + JSON.stringify(badV),
+        badV[0] === "" && badV[1] === "" && badV[2] === "" && ed.length === 0, ed.join(" | "));
+
+      vpnReq.length = 0;
+      await pd.goto(B + "/#vpn?status=expired_enabled");
+      await pd.waitForSelector("#panel-vpn.is-active");
+      await pd.waitForSelector('#vr-cards [data-status="expired_enabled"][aria-pressed="true"]');
+      await pd.waitForTimeout(800);
+      chk("deep link #vpn?status=expired_enabled: chip active, đúng 1 request /api/vpn/rules", vpnReq.length === 1, `${vpnReq.length}`);
+
+      await pd.goto(B + "/#vpn?status=bogus");
+      await pd.waitForSelector("#vr-cards [data-status]");
+      await pd.waitForFunction(() => document.querySelectorAll('#vr-cards [aria-pressed="true"]').length === 0);
+      await pd.waitForTimeout(500);
+      chk("#vpn?status=bogus sau khi đang lọc expired_enabled → không chip nào active",
+        (await pd.$$('#vr-cards [data-status][aria-pressed="true"]')).length === 0);
+
+      await pd.goto(B + `/#groups?fw=${fwId}&q=1.2`);
+      await pd.waitForSelector("#panel-groups.is-active");
+      await pd.waitForFunction(() => document.querySelector("#g-search").value === "1.2");
+      chk("deep link #groups?fw=&q=: #g-fw, #g-search đúng", (await cval("#g-fw")) === fwId && (await cval("#g-search")) === "1.2");
+
+      await pd.goto(B + "/#groups?fw=999999");
+      await pd.waitForFunction(() => /Không tìm thấy firewall trong link/.test(document.querySelector("#toast").textContent));
+      chk("#groups?fw=999999 → toast 'Không tìm thấy firewall trong link'", true);
+
+      const xss = "<img src=x onerror=window.__x=1>";
+      await pd.goto(B + "/#audit?q=" + encodeURIComponent(xss));
+      await pd.waitForSelector("#panel-audit.is-active");
+      await pd.waitForFunction((v) => document.querySelector("#a-search").value === v, xss);
+      await pd.waitForTimeout(500);
+      chk("deep link #audit?q=<img onerror>: ô chứa nguyên chuỗi, không chạy script",
+        (await pd.evaluate(() => window.__x)) === undefined && (await pd.$$("#panel-audit img[src=x]")).length === 0);
+
+      await pd.goto(B + "/#block?ip=1.2.3.4&reason=x");
+      await pd.waitForSelector("#panel-block.is-active");
+      await pd.waitForTimeout(500);
+      chk("D9: #block?ip=&reason= bị bỏ qua (ô IP, lý do rỗng)", (await cval("#manual-ip")) === "" && (await cval("#block-reason")) === "");
+
+      // bấm menu cùng tab giữ bộ lọc; Back giữa hai link khác tham số
+      await pd.goto(B + "/#changes?q=x");
+      await pd.waitForFunction(() => document.querySelector("#c-q").value === "x");
+      await tab(pd, "changes");
+      await pd.waitForTimeout(500);
+      chk("bấm menu khi đang ở #changes?q=x → hash #changes, #c-q vẫn 'x'",
+        (await pd.evaluate(() => location.hash)) === "#changes" && (await cval("#c-q")) === "x");
+      await pd.goto(B + "/#changes?q=a");
+      await pd.waitForFunction(() => document.querySelector("#c-q").value === "a");
+      await pd.evaluate(() => { location.hash = "#changes?q=b"; });
+      await pd.waitForFunction(() => document.querySelector("#c-q").value === "b");
+      await pd.goBack();
+      await pd.waitForTimeout(800);
+      chk("Back giữa #changes?q=a và ?q=b → #c-q = a", (await cval("#c-q")) === "a", await cval("#c-q"));
+      await pd.goto(B + "/#audit?q=1.2.3.4");
+      await pd.waitForSelector("#panel-audit.is-active");
+      await pd.click("#logout");
+      await pd.waitForSelector("#login-screen:not(.hidden)");
+      const hAfter = await pd.evaluate(() => location.hash);
+      chk("Thoát thủ công khi đang ở #audit?q=… → location.hash rỗng", hAfter === "", hAfter);
+      chk("không lỗi JS (deep link)", ed.length === 0, ed.join(" | "));
+      await cd.close();
+    }
+    {
+      // Tổng quan → bấm mục VPN hết hạn → #vpn?status=expired_enabled
+      const { ctx: cq, page: pq, errors: eq } = await newPage(browser, { tok: admin });
+      await pq.route("**/api/vpn/rules*", (r) => r.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify({ summary: { expired_enabled: 2 }, total: 5, today: "2026-01-01", syncs: [], rules: [] }) }));
+      await pq.goto(B + "/");
+      await pq.waitForSelector("#ov-body .ov-issue");
+      await pq.click('.ov-issue[data-go="#vpn?status=expired_enabled"]');
+      await pq.waitForSelector('#panel-vpn.is-active #vr-cards [data-status="expired_enabled"][aria-pressed="true"]');
+      chk("Tổng quan: bấm 'rule VPN hết hạn còn bật' → #vpn?status=expired_enabled, chip active",
+        (await pq.evaluate(() => location.hash)) === "#vpn?status=expired_enabled");
+      chk("không lỗi JS (Tổng quan → VPN)", eq.length === 0, eq.join(" | "));
+      await cq.close();
+    }
+    {
+      // giữ deep link qua SSO (mô phỏng: không gọi Microsoft)
+      const run = async (stored) => {
+        const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+        await ctx.addInitScript((h) => sessionStorage.setItem("sb_return_hash", h), stored);
+        const page = await ctx.newPage();
+        const errs = [];
+        page.on("pageerror", (e) => errs.push(e.message));
+        await page.goto(B + "/#sso=" + admin);
+        await page.waitForSelector("#app:not(.hidden)");
+        await page.waitForTimeout(800);
+        return { ctx, page, errs };
+      };
+      const g = await run("changes?q=9.9.9.9");
+      await g.page.waitForSelector("#panel-changes.is-active");
+      await g.page.waitForFunction(() => document.querySelector("#c-q").value === "9.9.9.9");
+      chk("SSO: link đã lưu (sb_return_hash) được khôi phục → tab Lịch sử, #c-q = 9.9.9.9, khoá sessionStorage bị xoá",
+        (await g.page.evaluate(() => sessionStorage.getItem("sb_return_hash"))) === null && g.errs.length === 0, g.errs.join(" | "));
+      await g.ctx.close();
+      const bad = await run("javascript:alert(1)");
+      chk("SSO: sb_return_hash xấu → bị bỏ, vào tab mặc định (Tổng quan)",
+        (await bad.page.evaluate(() => sessionStorage.getItem("sb_return_hash"))) === null
+        && (await bad.page.isVisible("#panel-overview.is-active")) && !/javascript/.test(await bad.page.evaluate(() => location.hash)), bad.errs.join(" | "));
+      await bad.ctx.close();
+    }
+
     // ------------------------------------------------ trang Tổng quan
     {
       const { ctx: co, page: po, errors: eo } = await newPage(browser, { tok: admin });
@@ -719,6 +850,12 @@ const confirmOk = async (page) => {
       await p4.waitForFunction((n) => document.querySelectorAll("#rv-list .rv-item").length === n - 1, n0);
       await p4.waitForFunction(() => /1\/3/.test(document.querySelector("#rv-progress").textContent));
       chk("reviewer: Còn cần → tiến độ cập nhật", true);
+      await p4.goto(B + "/#vpn?status=expired_enabled");
+      await p4.reload();
+      await p4.waitForSelector("#panel-review.is-active");
+      chk("reviewer mở #vpn?status=… → vẫn chỉ tab Rà soát",
+        JSON.stringify(await p4.$$eval(".tab", (ts) => ts.filter((t) => !t.classList.contains("hidden")).map((t) => t.dataset.tab))) === '["review"]'
+        && !(await visible(p4, "#panel-vpn")));
       chk("không lỗi JS (reviewer)", e4.length === 0, e4.join(" | "));
       await c4.close();
     }

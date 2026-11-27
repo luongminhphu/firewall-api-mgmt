@@ -2,7 +2,7 @@
 import { api, API } from "../api.js";
 import { toast } from "../components/toast.js";
 import { state } from "../store.js";
-import { $, esc, fmtTime, actorLabel } from "../util.js";
+import { $, esc, fmtTime, actorLabel, applyFilterParams } from "../util.js";
 
 // ===================================================== LỊCH SỬ THAY ĐỔI
 const KIND = {
@@ -106,14 +106,17 @@ function renderChanges(r) {
   }).join("");
 }
 
-export async function loadChanges() {
+const LINK = { fw: "#c-fw", type: "#c-type", q: "#c-q", actor: "#c-actor", from: "#c-from", to: "#c-to" };
+
+export async function loadChanges(params) {
+  fillChangeFilters(); // option #c-fw phải có trước khi áp tham số deep link
+  applyFilterParams(params, LINK, Object.values(LINK));
   const box = $("#c-list");
   box.innerHTML = `<div class="skeleton"></div><div class="skeleton"></div>`;
   const p = changeParams();
   $("#c-export").href = `${API}/api/changes.csv?token=${encodeURIComponent(state.token)}&${p}`;
   try {
     const r = await api(`/api/changes?${p}`);
-    fillChangeFilters();
     renderChanges(r);
   } catch (ex) {
     box.innerHTML = `<p class="alert alert--error">${esc(ex.message)}</p>`;

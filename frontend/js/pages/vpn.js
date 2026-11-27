@@ -11,7 +11,7 @@ import { progressBox, setBusy } from "../components/progress.js";
 import { tableMessage } from "../components/table.js";
 import { toast } from "../components/toast.js";
 import { on, state } from "../store.js";
-import { $, $$, esc, fmtTime } from "../util.js";
+import { $, $$, esc, fmtTime, applyFilterParams } from "../util.js";
 
 const vs = { view: "rules", status: "", page: 1, rules: [], loaded: false };
 let searchTimer;
@@ -65,6 +65,11 @@ $("#v-view").addEventListener("click", (e) => {
 });
 
 function showView(view) {
+  setView(view);
+  loadVpn();
+}
+
+function setView(view) {
   vs.view = view;
   $$("#v-view [data-view]").forEach((b) => {
     b.classList.toggle("is-active", b.dataset.view === view);
@@ -72,10 +77,20 @@ function showView(view) {
   });
   $$("[data-vview]").forEach((el) => el.classList.toggle("hidden", el.dataset.vview !== view));
   $("#vr-export").classList.toggle("hidden", view !== "rules");
-  loadVpn();
 }
 
-export function loadVpn() {
+const VPN_LINK = { fw: "#vr-fw", q: "#vr-q" };
+const VPN_RESET = ["#vr-fw", "#vr-team", "#vr-from", "#vr-to", "#vr-asof", "#vr-q"];
+
+export function loadVpn(params) {
+  const st = params instanceof URLSearchParams ? params.get("status") : "";
+  const stOk = [...TODO, ...INFO].some(([k]) => k === st);
+  if (applyFilterParams(params, VPN_LINK, VPN_RESET, params instanceof URLSearchParams && params.has("status"))) { // link luôn mở view rule; setView không tải, chỉ loadRules() một lần
+    vs.status = stOk ? st : "";
+    vs.page = 1;
+    setView("rules");
+    return loadRules();
+  }
   if (vs.view === "accounts") return loadAccounts();
   if (vs.view === "history") return loadHistory();
   return loadRules();

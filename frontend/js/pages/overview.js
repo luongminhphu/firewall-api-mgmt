@@ -1,10 +1,9 @@
 /* Trang Tổng quan: gom tình trạng xuyên module từ các API sẵn có (không API mới), mỗi mục bấm để mở tab xử lý. */
 import { api } from "../api.js";
-import { go } from "../router.js";
+import { go, link } from "../router.js";
 import { can, state } from "../store.js";
-import { $, esc } from "../util.js";
+import { $, esc, vnDay } from "../util.js";
 
-const vnDay = (d = new Date()) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }); // YYYY-MM-DD
 const DAY_MS = 86400000;
 const EMAIL_KIND = { vpn: "VPN", review: "Rà soát", autoblock: "Tự động chặn", report: "Báo cáo" }; // theo tiền tố kind
 const kindLabel = (k) => EMAIL_KIND[String(k).split("_")[0]] || k;
@@ -20,9 +19,10 @@ function firewallPart(gc) {
   let ok = 0;
   for (const f of fws) {
     const name = esc(f.firewall);
-    if (f.status === "error") issues.push({ level: "err", tab: "groups", text: `Firewall ${name}: cache group lỗi — ${esc(f.error || "không rõ")}` });
-    else if (f.cached && f.exists === false) issues.push({ level: "err", tab: "groups", text: `Firewall ${name}: group ${esc(gc.group)} không tồn tại` });
-    else if (f.stale) issues.push({ level: "warn", tab: "groups", text: `Firewall ${name}: dữ liệu group đã cũ${f.scanned_at ? "" : " (chưa quét)"}` });
+    const tab = link("groups", { fw: f.firewall_id }); // mở đúng firewall
+    if (f.status === "error") issues.push({ level: "err", tab, text: `Firewall ${name}: cache group lỗi — ${esc(f.error || "không rõ")}` });
+    else if (f.cached && f.exists === false) issues.push({ level: "err", tab, text: `Firewall ${name}: group ${esc(gc.group)} không tồn tại` });
+    else if (f.stale) issues.push({ level: "warn", tab, text: `Firewall ${name}: dữ liệu group đã cũ${f.scanned_at ? "" : " (chưa quét)"}` });
     else ok++;
   }
   if (!fws.length) issues.push({ level: "warn", tab: "firewalls", text: "Chưa có firewall nào đang bật — chưa chặn được IP" });
@@ -61,9 +61,9 @@ function autoblockPart(s) {
 function vpnPart(v) {
   const sm = v.summary || {};
   const issues = [];
-  if (sm.expired_enabled) issues.push({ level: "err", tab: "vpn", text: `${num(sm.expired_enabled)} rule VPN đã hết hạn nhưng vẫn bật` });
+  if (sm.expired_enabled) issues.push({ level: "err", tab: link("vpn", { status: "expired_enabled" }), text: `${num(sm.expired_enabled)} rule VPN đã hết hạn nhưng vẫn bật` });
   for (const s of v.syncs || []) if (s.status === "error") issues.push({ level: "warn", tab: "vpn", text: `Đồng bộ VPN từ ${esc(s.firewall)} lỗi — ${esc(s.error || "không rõ")}` });
-  if (sm.expiring) issues.push({ level: "warn", tab: "vpn", text: `${num(sm.expiring)} rule VPN sắp hết hạn` });
+  if (sm.expiring) issues.push({ level: "warn", tab: link("vpn", { status: "expiring" }), text: `${num(sm.expiring)} rule VPN sắp hết hạn` });
   const level = sm.expired_enabled ? "err" : issues.length ? "warn" : "ok";
   return {
     issues,
@@ -86,11 +86,12 @@ function reviewPart(list, today) {
   };
 }
 
-function driftPart(c) {
+function driftPart(c, from) {
   const n = c.totals?.drift || 0;
+  const tab = link("changes", { type: "drift", from });
   return {
-    issues: n ? [{ level: "warn", tab: "changes", text: `${num(n)} lần group bị sửa ngoài app (drift) trong 7 ngày` }] : [],
-    cards: [{ tab: "changes", title: "Sửa ngoài app", level: n ? "warn" : "ok", big: num(n), sub: "lần drift trong 7 ngày" }],
+    issues: n ? [{ level: "warn", tab, text: `${num(n)} lần group bị sửa ngoài app (drift) trong 7 ngày` }] : [],
+    cards: [{ tab, title: "Sửa ngoài app", level: n ? "warn" : "ok", big: num(n), sub: "lần drift trong 7 ngày" }],
   };
 }
 
@@ -142,7 +143,7 @@ export async function loadOverview() {
       [ab, "Tự động chặn", "autoblock", autoblockPart],
       [vpn, "VPN (chỉ đọc)", "vpn", vpnPart],
       [rv, "Rà soát", "review", (v) => reviewPart(v.campaigns || v, vpn.value?.today || today)],
-      [ch, "Sửa ngoài app", "changes", driftPart],
+      [ch, "Sửa ngoài app", "changes", (v) => driftPart(v, from)],
       [rep, "7 ngày qua", "reports", reportPart],
     ];
     if (admin) parts.push([mail, "Email", "settings", emailPart]);
@@ -178,6 +179,9 @@ $("#ov-refresh").addEventListener("click", loadOverview);
 $("#ov-body").addEventListener("click", (e) => {
   const b = e.target.closest("[data-go]");
   if (!b) return;
-  go(b.dataset.go);
-  $(".tab.is-active")?.focus(); // panel Tổng quan bị ẩn → giữ focus bàn phím ở mục menu vừa mở
+  // panel Tổng quan bị ẩn → focus bàn phím sang mục menu vừa mở (sau khi router đổi tab qua hashchange)
+  window.addEventListener("hashchange", () => $(".tab.is-active")?.focus(), { once: true });
+  const t = b.dataset.go; // "tab" hoặc link "#tab?k=v"
+  if (t.startsWith("#")) location.hash = t;
+  else go(t);
 });

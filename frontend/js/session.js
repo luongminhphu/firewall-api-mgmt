@@ -61,6 +61,13 @@ $("#local-toggle").addEventListener("click", () => {
   $("#login-user").focus();
 });
 
+// Giữ deep link (#tab?k=v) qua vòng đăng nhập Microsoft; main.js khôi phục sau #sso=
+const saveReturnHash = () => {
+  const h = location.hash.replace(/^#/, "");
+  if (/^[a-z]+(?:\?.*)?$/.test(h)) sess?.setItem("sb_return_hash", h);
+};
+$("#sso-btn").addEventListener("click", saveReturnHash);
+
 export function autoSso(modes) {
   if (!modes?.oidc_auto) return false;
   if (sess?.getItem("sb_no_auto") === "1") return false; // vừa bấm Thoát → không tự đăng nhập lại
@@ -69,6 +76,7 @@ export function autoSso(modes) {
   sess?.setItem("sb_auto_ts", String(Date.now()));
   $("#sso-auto").classList.remove("hidden");
   $("#sso-box").classList.add("hidden");
+  saveReturnHash();
   location.replace(ssoUrl());
   return true;
 }
@@ -90,6 +98,7 @@ export function logout(manual) {
   store?.removeItem("sb_token");
   if (manual === true) {
     sess?.setItem("sb_no_auto", "1");
+    history.replaceState(null, "", location.pathname + location.search); // máy dùng chung: không để lại #tab?q=… cho người sau
     if (state.authModes?.oidc) {
       $("#sso-hint").textContent = "Đã thoát khỏi app. Bấm nút trên để vào lại bằng tài khoản Microsoft.";
       $("#sso-hint").className = "alert alert--info";

@@ -1,32 +1,40 @@
 # Mục tiêu
-Trang **Tổng quan** (`#overview`) cho IT Infrastructure Manager: một màn hình trả lời "hôm nay có gì cần xử lý" xuyên các module
-(firewall, tự động chặn, IP Host Group, VPN, rà soát, email, số liệu 7 ngày), mỗi thẻ bấm được để mở đúng tab xử lý.
-Roadmap: `docs/roadmap-infra.md` mục L1.
+Deep link có tham số `#<tab>?<khoá>=<giá trị>` (roadmap L2): mở thẳng một trang với bộ lọc điền sẵn — từ Tổng quan, từ kết quả chặn,
+hoặc dán link vào email / ticket. Ví dụ `#changes?q=1.2.3.4`, `#changes?fw=2&type=drift`, `#vpn?status=expired_enabled`, `#groups?fw=2&q=1.2.3.4`, `#audit?q=1.2.3.4`.
 
 # Ngoài phạm vi
-- API mới / đổi response (để dành L3 tra cứu IP, L6 `/api/overview/counts`).
-- Deep link có tham số `#tab?ip=` (L2, làm sau) — thẻ chỉ mở tab.
-- Tự làm mới theo chu kỳ (chỉ tải khi mở tab + nút "Làm mới").
+- Ghi ngược bộ lọc người dùng tự chỉnh vào URL (URL "chia sẻ được" của trạng thái hiện tại) — làm sau nếu cần.
+- API mới (L3 tra cứu IP), lối tắt trên trang Firewall (L5), VPN ↔ Rà soát (L4).
 
 # Ràng buộc & quyết định
-- D1: **Chỉ frontend**, gọi API sẵn có, `contract_test.py` không đổi snapshot. Gọi song song bằng `Promise.allSettled`; thẻ nào lỗi / 403 thì hiện "Không đọc được" riêng thẻ đó, không làm hỏng trang.
-- D2: API dùng: `/api/firewalls`, `/api/group-cache`, `/api/autoblock/status`, `/api/vpn/rules` (`summary`, `syncs`), `/api/review/campaigns`, `/api/reports/summary?days=7`, `/api/notify/outbox?status=failed` (**chỉ admin** gọi — vai trò khác không gọi, không hiện thẻ). Tất cả còn lại cần quyền Readonly (viewer) trở lên — đã kiểm ở router.
-- D3: Vai trò Rà soát không thấy tab Tổng quan (main.js đã ẩn mọi tab trừ review; REVIEWER_PATHS chặn ở API).
-- D4: Trang mặc định khi không có hash: **Quản trị viên → `overview`**; Write / Readonly giữ **Chặn nhanh** (ca trực SOC ban đêm cần vào thẳng màn chặn). Giả định — người dùng có thể đổi.
-- D5: Nhóm menu mới đầu tiên "Tổng quan" (trên "Vận hành"). Giao diện tiếng Việt có dấu, dùng lại class sẵn có (`.stat`, `.status-card`, chip trạng thái) + token theme (sáng/tối), theo skill `ui-ux-pro-max` / `impeccable`; điện thoại 390px không cuộn ngang.
-- D7: Drift 7 ngày: `/api/changes?type=drift&from=…&limit=500` → `totals.drift` (C-01). Email lỗi: chỉ thư `created_at` trong 7 ngày, chỉ số lượng + loại (C-02). Sức khoẻ firewall: group-cache + VPN syncs là tín hiệu chính, `last_status` phụ kèm `last_checked` (C-03). Ngày "hôm nay" theo giờ VN: lấy `today` từ `/api/vpn/rules`.
-- D8: Router: hash rỗng / không hợp lệ → tab mặc định theo vai trò, kể cả khi bấm Back (C-04, C-06). Đang tải thì không gọi chồng (C-05). Mọi chuỗi từ API qua `esc()`.
-- D6: Thứ tự: khối "Cần xử lý" (chỉ các mục có vấn đề, sắp theo mức nghiêm trọng) ở trên, rồi các thẻ module; khi không có gì cần xử lý hiện câu chốt "Không có việc cần xử lý".
+- D1: Chỉ frontend, không đổi API (contract không đổi).
+- D2: Cú pháp `#tab?k=v&k2=v2` (URLSearchParams). Router nhận `^[a-z]+(\?.*)?$`; tab vẫn chỉ chữ thường. Hash `#sso=…`/`#sso_error=…` giữ nguyên xử lý cũ (main.js đọc trước router).
+- D3: Khoá được hỗ trợ (danh sách trắng, khoá khác bỏ qua):
+  - `changes`: `fw` (id firewall) → `#c-fw`, `type` → `#c-type`, `q` → `#c-q`, `actor` → `#c-actor`, `from`/`to` (YYYY-MM-DD) → `#c-from`/`#c-to`
+  - `audit`: `q` → `#a-search`, `action` → `#a-action`
+  - `groups`: `fw` → `#g-fw`, `q` → `#g-search`
+  - `vpn`: `fw` → `#vr-fw`, `q` → `#vr-q`, `status` → bộ lọc chip `vs.status` (chỉ giá trị có trong danh sách chip), view rule
+- D4: Chỉ gán `.value` (không bao giờ innerHTML); `select` chỉ nhận giá trị có trong option (sau khi option đã được điền); ngày phải đúng `YYYY-MM-DD`; chuỗi cắt ≤ 120 ký tự. Giá trị không hợp lệ → bỏ qua khoá đó, không lỗi.
+- D5: Khi có tham số: các ô lọc KHÔNG có trong link được đặt lại rỗng (link cho kết quả xác định, không lẫn bộ lọc cũ). Khi không có tham số (bấm menu): giữ bộ lọc người dùng như hiện tại.
+- D6: Cùng tab, đổi tham số → tải lại với bộ lọc mới (hashchange). Tab không được phép → tab mặc định như cũ (bỏ tham số).
+- D7: Dùng ngay: Tổng quan (mục "Cần xử lý" theo firewall → `#groups?fw=<id>`, drift → `#changes?type=drift&from=<VN−6>`, VPN hết hạn còn bật → `#vpn?status=expired_enabled`, sắp hết hạn → `#vpn?status=expiring`); kết quả Chặn nhanh "Xem lịch sử thay đổi" → `#changes?q=<IP đầu tiên>` nếu chặn 1 IP, hoặc theo khoảng thời gian hôm nay.
+- D9: Không bao giờ nhận tham số cho tab có thao tác ghi tự do (#block: ô IP, lý do). Chỉ tab trong D3. (C-07)
+- D10: Link sống sót qua SSO (C-01); go() cùng tab xoá `?` cũ (C-06); D5 sửa theo C-02; áp tham số trong hàm load của trang, 1 request (C-03).
+- D8: Một hàm dựng link dùng chung (vd `link(tab, params)` trong router.js) để không ai tự ghép chuỗi hash.
 
 # Tiêu chí hoàn thành (kiểm chứng được)
-- [x] `tests/ui_smoke_test.py`: admin không hash → vào Tổng quan; có đủ thẻ; bấm thẻ VPN → `#vpn` active; Readonly không hash → Chặn nhanh, thấy tab Tổng quan nhưng không có thẻ email và không gọi `/api/notify/outbox`; không lỗi JS; điện thoại 390px không cuộn ngang; từ Tổng quan bấm thẻ VPN rồi Back → về lại Tổng quan.
-- [x] Thẻ lỗi riêng lẻ: một API trả lỗi → thẻ đó báo "Không đọc được", thẻ khác vẫn hiện (kiểm bằng route chặn trong Playwright).
-- [x] `frontend_lint_test.py`, `contract_test.py` (không ghi snapshot), `bash tests/run_all.sh` pass.
-- [x] README (tính năng, mục 6 hướng dẫn tab), architecture.md nhật ký, roadmap đánh dấu L1 xong.
+- [x] ui_smoke: mở `#changes?q=1.2.3.4` → `#c-q` = "1.2.3.4" và request `/api/changes` có `q=1.2.3.4`; `#changes?fw=<id>&type=drift` → select đúng; `#vpn?status=expired_enabled` → chip đó active; `#groups?fw=<id>` → `#g-fw` đúng; `#audit?q=x` → `#a-search` = x.
+- [x] Giá trị xấu (`fw=999999`, `from=abc`, `q=<script>`, khoá lạ) → không lỗi JS, không chèn HTML, khoá bị bỏ qua.
+- [x] Bấm menu sau đó → bộ lọc không bị xoá (D5). Back giữa hai link khác tham số → bộ lọc theo link.
+- [x] SSO `#sso=` vẫn chạy (oidc/sso test hiện có pass); vai trò Rà soát mở `#vpn?…` → vẫn chỉ tab Rà soát.
+- [x] Tổng quan: bấm mục VPN hết hạn → `#vpn?status=expired_enabled`, chip active.
+- [x] `bash tests/run_all.sh` pass; contract không đổi. README 6.x ghi cú pháp link; architecture.md; roadmap L2 xong.
 
 # Task
 | ID | Mô tả | Phụ thuộc | Rủi ro | Trạng thái |
 |----|-------|-----------|--------|------------|
-| T-01 | `pages/overview.js` + tab/panel trong `index.html` + CSS + nối `main.js` + trang mặc định theo vai trò trong `router.js` | — | TB | done |
-| T-02 | Bổ sung `tests/ui_smoke.cjs` theo tiêu chí trên | T-01 | Thấp | done |
-| T-03 | Tài liệu (README, architecture.md, roadmap) | T-02 | Thấp | done |
+| T-01 | Router (parse, `link()`, params cho onShow, go() cùng tab), main.js truyền params, giữ link qua SSO, siết SSO hash | — | TB | done |
+| T-02 | 4 trang nhận params trong hàm load (changes, audit, groups, vpn) + C-02, C-04, C-05 | T-01 | TB | done |
+| T-03 | Dùng link: overview.js, block.js (D7) | T-02 | Thấp | done |
+| T-04 | ui_smoke khẳng định theo tiêu chí + C-03 (1 request), D9 | T-03 | Thấp | done |
+| T-05 | Tài liệu (Opus) | T-04 | Thấp | done |

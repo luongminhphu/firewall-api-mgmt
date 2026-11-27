@@ -48,3 +48,35 @@ export function fwMessage(msg) {
   }
   return m;
 }
+
+/** Ngày hôm nay (hoặc `d`) theo giờ Việt Nam, dạng YYYY-MM-DD. */
+export const vnDay = (d = new Date()) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
+
+/** Đếm ô lọc đang có giá trị trong một hộp "Lọc" và ghi vào dòng "· n đang áp dụng". */
+export const filterCount = (box) => {
+  const n = [...box.querySelectorAll("input, select")].filter((el) => el.value && el.type !== "checkbox").length;
+  box.querySelector(".filter-count").textContent = n ? `· ${n} đang áp dụng` : "";
+};
+
+/** Deep link: gán `params` (URLSearchParams) vào ô lọc theo `spec` {khoá: "#id"}; chỉ gán .value, bỏ khoá không hợp lệ.
+    Có ít nhất một khoá hợp lệ (hoặc `extra` = true, vd khoá không phải ô nhập) → đặt rỗng `reset` trước, mở hộp lọc, cập nhật đếm. Trả về true nếu đã áp. */
+export function applyFilterParams(params, spec, reset, extra = false) {
+  if (!(params instanceof URLSearchParams)) return false; // gọi từ sự kiện / nơi khác: không có link
+  const ok = [];
+  for (const [key, id] of Object.entries(spec)) {
+    const el = $(id);
+    const v = (params.get(key) ?? "").slice(0, 120);
+    if (!v) continue;
+    if (el.tagName === "SELECT" ? ![...el.options].some((o) => o.value === v) : el.type === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(v)) continue;
+    ok.push([el, v]);
+  }
+  // link có khoá của trang (kể cả giá trị sai, vd firewall đã xoá) → vẫn đặt lại: kết quả theo link, không lẫn bộ lọc cũ
+  if (!Object.keys(spec).some((k) => params.has(k)) && !extra) return false;
+  reset.forEach((id) => { $(id).value = ""; });
+  ok.forEach(([el, v]) => { el.value = v; });
+  new Set([...reset, ...Object.values(spec)].map((id) => $(id).closest("[data-filter-box]")).filter(Boolean)).forEach((box) => {
+    box.open = true;
+    filterCount(box);
+  });
+  return true;
+}

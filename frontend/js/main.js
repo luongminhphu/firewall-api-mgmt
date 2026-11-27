@@ -17,10 +17,10 @@ import { loadReports } from "./pages/reports.js";
 import { loadReview } from "./pages/review.js";
 import { loadSettings } from "./pages/settings.js";
 import { loadVpn } from "./pages/vpn.js";
-import { initRouter, setDefaultTab, showInitial } from "./router.js";
+import { HASH_RE, initRouter, setDefaultTab, showInitial } from "./router.js";
 import { autoSso, initLogin, logout, sess, setAfterLogin, showLoginError, tryHeaderSso } from "./session.js";
 import { can, ROLE_LABEL, state, tokenStore as store } from "./store.js";
-import { $, $$, esc } from "./util.js";
+import { $, $$, esc, filterCount } from "./util.js";
 // Các trang tự gắn sự kiện khi được nạp (kể cả trang không export gì cho main, vd Chặn nhanh)
 import "./pages/block.js";
 
@@ -34,6 +34,7 @@ async function boot() {
   }
   sess?.removeItem("sb_no_auto");
   sess?.removeItem("sb_auto_ts");
+  sess?.removeItem("sb_return_hash"); // đã vào app: link chờ khôi phục (nếu SSO lỗi trước đó) không còn hiệu lực
   $$(".js-block-group").forEach((el) => (el.textContent = state.blockGroup));
   $("#login-screen").classList.add("hidden");
   $("#app").classList.remove("hidden");
@@ -103,10 +104,6 @@ document.addEventListener("keydown", (e) => {
 });
 
 // Bộ lọc gom trong "Lọc": desktop mở sẵn; điện thoại thu gọn để bảng không bị đẩy xuống. Đếm bộ lọc đang áp dụng.
-const filterCount = (box) => {
-  const n = [...box.querySelectorAll("input, select")].filter((el) => el.value && el.type !== "checkbox").length;
-  box.querySelector(".filter-count").textContent = n ? `· ${n} đang áp dụng` : "";
-};
 $$("[data-filter-box]").forEach((box) => {
   box.open = !box.hasAttribute("data-collapsed") && window.matchMedia("(min-width: 721px)").matches;
   ["input", "change"].forEach((ev) => box.addEventListener(ev, () => filterCount(box)));
@@ -145,17 +142,17 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-initRouter((tab) => {
+initRouter((tab, params) => {
   const btn = $(`.tab[data-tab="${tab}"]`);
   $("#page-title").textContent = btn?.querySelector("span")?.textContent.trim() || btn?.textContent.trim() || ""; // bỏ huy hiệu số
   document.title = `${$("#page-title").textContent} · SOC Rapid Block`;
   setNav(false);
   if (tab === "overview") loadOverview();
-  if (tab === "audit") loadAudit();
-  if (tab === "changes") loadChanges();
-  if (tab === "groups") loadGroupsForSelectedFw();
+  if (tab === "audit") loadAudit(params);
+  if (tab === "changes") loadChanges(params);
+  if (tab === "groups") loadGroupsForSelectedFw(params);
   if (tab === "users") loadUsers();
-  if (tab === "vpn") loadVpn();
+  if (tab === "vpn") loadVpn(params);
   if (tab === "settings") loadSettings();
   if (tab === "review") loadReview();
   if (tab === "autoblock") loadAutoblock();
@@ -194,8 +191,10 @@ function applyRole() {
 // --------------------------------------------------------- khởi động
 (async () => {
   // 1) Kết quả trả về từ Entra ID (OIDC callback chuyển hướng về /#sso=...)
-  const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
-  if (hash.has("sso") || hash.has("sso_error")) {
+  const raw = location.hash.replace(/^#/, "");
+  const isSso = /^(sso|sso_error)=/.test(raw); // chỉ khi hash BẮT ĐẦU bằng sso= / sso_error= (không phải #tab?sso=…)
+  const hash = new URLSearchParams(isSso ? raw : "");
+  if (isSso) {
     history.replaceState(null, "", location.pathname + location.search);
   }
   loadBranding(); // logo cũng hiện ở màn hình đăng nhập (endpoint công khai)
@@ -207,6 +206,10 @@ function applyRole() {
   if (hash.has("sso")) {
     state.token = hash.get("sso");
     store?.setItem("sb_token", state.token);
+    // Khôi phục deep link đã lưu trước khi sang Microsoft (chỉ nhận hash hợp lệ)
+    const back = sess?.getItem("sb_return_hash");
+    sess?.removeItem("sb_return_hash");
+    if (back && HASH_RE.test(back)) history.replaceState(null, "", location.pathname + location.search + "#" + back);
     try {
       await boot();
       return;

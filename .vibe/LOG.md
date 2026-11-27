@@ -12,3 +12,7 @@
 - T-01 (Sonnet) trang Tổng quan; Opus sửa nhãn loại email + trạng thái 0 firewall. Gate 2: 2 Major (C-08 nhãn công tắc khẩn cấp sai trường, C-09 response null kẹt trang) + Minor — Opus sửa.
 - T-02 (Sonnet) +23 khẳng định ui_smoke (kể cả 2 ca cho C-08, C-09). FAIL connection refused 1 lần do Opus chạy run_e2e trùng lúc; chạy lại 2/2 pass.
 - T-03 (Opus) README 6.0 + 2.3.0, architecture §23, roadmap L1 xong. CLOSE: run_all.sh 32/32.
+- 2026-11-27 Vòng 3 (L2 deep link): nhánh dựng lại từ main e0d98cb sau khi PR #7 merge; archive overview. Viết PLAN.
+- Gate 1: 3 Major + 4 Minor/Q, tất cả Accepted (C-01..C-07). Tách thành 5 task.
+- Gate 2 L2: 1 Major (C-08) + Minor (C-09) — Opus sửa; T-04 cập nhật khẳng định.
+- T-01, T-02 (Sonnet), T-03 (Opus, link ở Tổng quan + Chặn nhanh, sửa focus sau hashchange), T-04 (Sonnet, +20 khẳng định), T-05 (Opus) tài liệu 2.4.0. CLOSE: run_all.sh 32/32. Commit + PR + merge theo yêu cầu người dùng.
