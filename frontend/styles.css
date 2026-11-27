@@ -1079,3 +1079,27 @@ button.block-sum { border: 0; background: none; padding: 0; font-family: inherit
 }
 .tc-gcell { min-width: 11rem; }
 .tc-gcell .tc-note { display: block; width: 100%; margin-top: var(--s1); min-height: 30px; font-size: var(--fs-xs); }
+
+/* ---- Trang Tổng quan ---- */
+.ov-bar { display: flex; align-items: center; justify-content: flex-end; gap: var(--s3); }
+#ov-body { display: grid; gap: var(--s5); }
+.ov-issues { list-style: none; margin: var(--s3) 0 0; padding: 0; display: grid; gap: var(--s2); }
+.ov-issue { display: flex; align-items: baseline; gap: var(--s3); width: 100%; min-height: 40px; padding: var(--s2) var(--s3); text-align: left;
+  font: inherit; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--radius); cursor: pointer; }
+.ov-issue:hover { background: var(--surface-3); }
+.ov-issue:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ov-issue--err { border-left-color: var(--danger); }
+.ov-issue--warn { border-left-color: var(--warn); }
+.ov-issue span { min-width: 0; overflow-wrap: anywhere; }
+.ov-tag { flex: none; font-style: normal; font-size: var(--fs-xs); font-weight: 600; }
+.ov-issue--err .ov-tag, .ov-card--err .ov-tag { color: var(--danger); }
+.ov-issue--warn .ov-tag, .ov-card--warn .ov-tag { color: var(--warn); }
+.ov-card--ok .ov-tag { color: var(--ok); }
+.ov-card--unk .ov-tag { color: var(--text-muted); }
+.ov-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--s3); }
+.ov-card__title { display: flex; justify-content: space-between; gap: var(--s2); color: var(--text) !important; font-weight: 600; }
+.ov-card span { overflow-wrap: anywhere; }
+.ov-card--err b { color: var(--danger); }
+.ov-card--warn b { color: var(--warn); }
+.ov-card--ok b { color: var(--text); }
+.ov-card--unk b { color: var(--text-muted); }

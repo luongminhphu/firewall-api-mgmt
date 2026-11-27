@@ -1,49 +1,32 @@
 # Mục tiêu
-Đánh giá tổng thể SOC Rapid Block (v2.2) từ góc nhìn IT Infrastructure Manager. Làm ngay milestone M1 (sửa lỗi đúng/sai và
-hiệu suất, rủi ro thấp, **không đổi API**). Viết đề xuất M2 (liên kết tính năng) và M3 (tính năng bổ trợ) vào `docs/roadmap-infra.md`
-để người dùng chọn trước khi code.
+Trang **Tổng quan** (`#overview`) cho IT Infrastructure Manager: một màn hình trả lời "hôm nay có gì cần xử lý" xuyên các module
+(firewall, tự động chặn, IP Host Group, VPN, rà soát, email, số liệu 7 ngày), mỗi thẻ bấm được để mở đúng tab xử lý.
+Roadmap: `docs/roadmap-infra.md` mục L1.
 
-# Ngoài phạm vi (lần này)
-- Mọi thứ cần **nới allowlist `policy.py`** (gộp lệnh Remove, đọc firmware/HA/license/backup cấu hình): chỉ đề xuất, chờ chủ sản phẩm duyệt (Quy tắc 1).
-- API mới / đổi hình dạng response (M2, M3): chờ người dùng chọn.
-- Alembic, đổi cơ chế đăng nhập, token CSV qua query string (backlog cũ §7).
-
-# Đánh giá (bằng chứng)
-Điểm mạnh: kiểm soát an toàn chặt (policy.py điểm chặn duy nhất, 4 lớp autoblock, chuỗi băm, AES-GCM), 28 bộ E2E + contract test, tài liệu đầy đủ.
-Điểm yếu chính:
-- E1 [đúng/sai] `core/hashchain.py:32` khoá chỉ trong tiến trình; nhiều pod ghi cùng bảng → hai dòng cùng prev_hash, gãy chuỗi (README quảng bá chạy nhiều pod).
-- E2 [đúng/sai] `modules/audit/router.py:27-38` tìm `q` sau `LIMIT` → không tìm thấy bản ghi cũ; `audit_logs` không có index ngoài PK.
-- E3 [hiệu suất] `modules/vpn/rules.py:246-262` rules × accounts × `json.loads`; gọi từ `/api/vpn/rules`, notify mỗi 5 phút, rà soát.
-- E4 [hiệu suất] `group_cache.run_due` và `vpn/sync.sync_all` quét tuần tự từng firewall (mỗi cái tới 180 s).
-- E5 [hiệu suất] Không gzip (`group-members` trả toàn bộ thành viên); `/api/group-cache` parse `data_json` 2 lần/firewall, giao diện poll 1 s.
-- E6 [vận hành] `jobs.purge_old` chỉ chạy lúc khởi động; pool DB mặc định 5+10 trong khi job chặn giữ 2 kết nối/luồng.
-- E7 [vận hành] Badge menu poll mỗi 60 s cả khi tab ẩn.
-- E8 [kiểm chứng] Vòng lặp chạy toàn bộ test trong `.claude/cowork.md` báo FAIL giả: app cũ chưa nhả cổng 8090; `logging_test` / `slow_fw_test` cần biến môi trường riêng.
-- Liên kết (M2): không có trang tổng quan, router không nhận tham số, không tra cứu một IP xuyên module, VPN ↔ Rà soát không link,
-  sức khoẻ firewall chỉ kiểm tra tay, drift WebAdmin không báo ai, không có hạn chặn (TTL), không theo dõi kích thước group.
+# Ngoài phạm vi
+- API mới / đổi response (để dành L3 tra cứu IP, L6 `/api/overview/counts`).
+- Deep link có tham số `#tab?ip=` (L2, làm sau) — thẻ chỉ mở tab.
+- Tự làm mới theo chu kỳ (chỉ tải khi mở tab + nút "Làm mới").
 
 # Ràng buộc & quyết định
-- D1: M1 không thêm/đổi endpoint, không đổi khoá JSON → `contract_test.py` không ghi lại snapshot.
-- D2: Index mới tạo bằng `CREATE INDEX IF NOT EXISTS` khi khởi động (Quy tắc 7), chạy được SQLite + PostgreSQL.
-- D3: Khoá chuỗi băm: giữ threading.Lock + `pg_advisory_xact_lock` trên chính session khi PostgreSQL (không thêm kết nối, nhả khi commit); không tính lại hash dữ liệu cũ (C-01).
-- D4: Không song song hoá quét định kỳ trong M1 (C-03, Deferred). Pool DB cấu hình qua env, mặc định giữ 5/10.
-- D5: Tìm audit dùng `icontains(autoescape=True)` (C-04).
+- D1: **Chỉ frontend**, gọi API sẵn có, `contract_test.py` không đổi snapshot. Gọi song song bằng `Promise.allSettled`; thẻ nào lỗi / 403 thì hiện "Không đọc được" riêng thẻ đó, không làm hỏng trang.
+- D2: API dùng: `/api/firewalls`, `/api/group-cache`, `/api/autoblock/status`, `/api/vpn/rules` (`summary`, `syncs`), `/api/review/campaigns`, `/api/reports/summary?days=7`, `/api/notify/outbox?status=failed` (**chỉ admin** gọi — vai trò khác không gọi, không hiện thẻ). Tất cả còn lại cần quyền Readonly (viewer) trở lên — đã kiểm ở router.
+- D3: Vai trò Rà soát không thấy tab Tổng quan (main.js đã ẩn mọi tab trừ review; REVIEWER_PATHS chặn ở API).
+- D4: Trang mặc định khi không có hash: **Quản trị viên → `overview`**; Write / Readonly giữ **Chặn nhanh** (ca trực SOC ban đêm cần vào thẳng màn chặn). Giả định — người dùng có thể đổi.
+- D5: Nhóm menu mới đầu tiên "Tổng quan" (trên "Vận hành"). Giao diện tiếng Việt có dấu, dùng lại class sẵn có (`.stat`, `.status-card`, chip trạng thái) + token theme (sáng/tối), theo skill `ui-ux-pro-max` / `impeccable`; điện thoại 390px không cuộn ngang.
+- D7: Drift 7 ngày: `/api/changes?type=drift&from=…&limit=500` → `totals.drift` (C-01). Email lỗi: chỉ thư `created_at` trong 7 ngày, chỉ số lượng + loại (C-02). Sức khoẻ firewall: group-cache + VPN syncs là tín hiệu chính, `last_status` phụ kèm `last_checked` (C-03). Ngày "hôm nay" theo giờ VN: lấy `today` từ `/api/vpn/rules`.
+- D8: Router: hash rỗng / không hợp lệ → tab mặc định theo vai trò, kể cả khi bấm Back (C-04, C-06). Đang tải thì không gọi chồng (C-05). Mọi chuỗi từ API qua `esc()`.
+- D6: Thứ tự: khối "Cần xử lý" (chỉ các mục có vấn đề, sắp theo mức nghiêm trọng) ở trên, rồi các thẻ module; khi không có gì cần xử lý hiện câu chốt "Không có việc cần xử lý".
 
 # Tiêu chí hoàn thành (kiểm chứng được)
-- [x] Toàn bộ `tests/*_test.py` pass bằng `bash tests/run_all.sh` (mới), không FAIL giả.
-- [x] Test mới: tìm audit trúng bản ghi nằm ngoài N dòng mới nhất; chuỗi băm còn liền khi 2 tiến trình ghi song song trên PostgreSQL (FAIL trên code cũ).
-- [x] `vpn_rules_test.py` cho cùng kết quả sau tối ưu; đo `list_rules` 500 rule × 2000 tài khoản < 2 s và kết quả từng rule giống bản cũ.
-- [x] `contract_test.py`, `policy_guard_test.py`, `db_migrate_test.py` pass, snapshot không đổi.
-- [x] `docs/roadmap-infra.md` có M2/M3, mỗi mục: giá trị, phạm vi, rủi ro, có chạm Quy tắc 1 không.
+- [x] `tests/ui_smoke_test.py`: admin không hash → vào Tổng quan; có đủ thẻ; bấm thẻ VPN → `#vpn` active; Readonly không hash → Chặn nhanh, thấy tab Tổng quan nhưng không có thẻ email và không gọi `/api/notify/outbox`; không lỗi JS; điện thoại 390px không cuộn ngang; từ Tổng quan bấm thẻ VPN rồi Back → về lại Tổng quan.
+- [x] Thẻ lỗi riêng lẻ: một API trả lỗi → thẻ đó báo "Không đọc được", thẻ khác vẫn hiện (kiểm bằng route chặn trong Playwright).
+- [x] `frontend_lint_test.py`, `contract_test.py` (không ghi snapshot), `bash tests/run_all.sh` pass.
+- [x] README (tính năng, mục 6 hướng dẫn tab), architecture.md nhật ký, roadmap đánh dấu L1 xong.
 
 # Task
 | ID | Mô tả | Phụ thuộc | Rủi ro | Trạng thái |
 |----|-------|-----------|--------|------------|
-| T-01 | `tests/run_all.sh`: chờ cổng rảnh giữa các bộ, env riêng cho logging/slow_fw; sửa lệnh trong cowork.md | — | Thấp | done |
-| T-02 | Khoá chuỗi băm liên pod (E1) + test ghi song song | T-01 | Cao | done |
-| T-03 | Audit: lọc `q` trong SQL trước LIMIT, index `audit_logs(action)` (E2) + test | T-01 | Cao | done |
-| T-04 | VPN `list_rules`: dựng chỉ mục tài khoản một lần (E3) + test đo | T-01 | TB | done |
-| T-05 | Purge jobs định kỳ + pool DB cấu hình được (E6); song song quét (E4) Deferred | T-01 | TB | done |
-| T-06 | GZip, badge bỏ poll khi tab ẩn (E5, E7); parse cache một lần Deferred (C-13) | T-01 | Thấp | done |
-| T-07 | `docs/roadmap-infra.md` (M2, M3) + nhật ký architecture.md + README | T-02..T-06 | Thấp | done |
-| T-08 | Test gzip + dọn jobs (C-12) | T-05, T-06 | Thấp | done |
+| T-01 | `pages/overview.js` + tab/panel trong `index.html` + CSS + nối `main.js` + trang mặc định theo vai trò trong `router.js` | — | TB | done |
+| T-02 | Bổ sung `tests/ui_smoke.cjs` theo tiêu chí trên | T-01 | Thấp | done |
+| T-03 | Tài liệu (README, architecture.md, roadmap) | T-02 | Thấp | done |

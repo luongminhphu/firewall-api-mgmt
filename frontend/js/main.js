@@ -9,6 +9,7 @@ import { loadAudit } from "./pages/audit.js";
 import { loadAutoblock } from "./pages/autoblock.js";
 import { loadBranding } from "./pages/branding.js";
 import { loadChanges } from "./pages/changes.js";
+import { loadOverview } from "./pages/overview.js";
 import { loadFirewalls } from "./pages/firewalls.js";
 import { loadGroupsForSelectedFw } from "./pages/groups.js";
 import { loadUsers } from "./pages/users.js";
@@ -16,7 +17,7 @@ import { loadReports } from "./pages/reports.js";
 import { loadReview } from "./pages/review.js";
 import { loadSettings } from "./pages/settings.js";
 import { loadVpn } from "./pages/vpn.js";
-import { initRouter, showInitial } from "./router.js";
+import { initRouter, setDefaultTab, showInitial } from "./router.js";
 import { autoSso, initLogin, logout, sess, setAfterLogin, showLoginError, tryHeaderSso } from "./session.js";
 import { can, ROLE_LABEL, state, tokenStore as store } from "./store.js";
 import { $, $$, esc } from "./util.js";
@@ -61,7 +62,8 @@ async function boot() {
   }
   await loadFirewalls();
   loadBranding();
-  showInitial(); // deep link #tab (tab không được phép → Chặn nhanh)
+  setDefaultTab(can("admin") ? "overview" : "block");
+  showInitial(); // deep link #tab; không hash / không hợp lệ → mặc định theo vai trò
   refreshPendingBadge();
   window.clearInterval(boot._badge);
   boot._badge = window.setInterval(refreshPendingBadge, 60000);
@@ -148,6 +150,7 @@ initRouter((tab) => {
   $("#page-title").textContent = btn?.querySelector("span")?.textContent.trim() || btn?.textContent.trim() || ""; // bỏ huy hiệu số
   document.title = `${$("#page-title").textContent} · SOC Rapid Block`;
   setNav(false);
+  if (tab === "overview") loadOverview();
   if (tab === "audit") loadAudit();
   if (tab === "changes") loadChanges();
   if (tab === "groups") loadGroupsForSelectedFw();

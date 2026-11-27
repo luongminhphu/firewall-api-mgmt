@@ -152,7 +152,7 @@ class Settings:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "").strip()
 
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "2.2.1"
+    APP_VERSION: str = "2.3.0"
 
     @property
     def auth_modes(self) -> list[str]:

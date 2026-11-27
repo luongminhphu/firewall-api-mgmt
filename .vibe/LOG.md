@@ -7,3 +7,8 @@
 - T-04 (Sonnet): chỉ mục VPN, 1,3 s → 0,01 s. T-05, T-06 (Opus, nhỏ). Gate 2 milestone → T-08 (Sonnet) test gzip/purge; Opus sửa mức nén, comment, env rỗng (C-12, C-13).
 - T-07 (Opus): docs/roadmap-infra.md, architecture.md §22, README 2.2.1.
 - CLOSE: run_all.sh 32/32 SQLite; 11 bộ liên quan pass trên PostgreSQL 16. Chưa commit (chờ người dùng).
+- 2026-11-27 Vòng 2 (Tổng quan): archive PLAN M1 → archive/2026-11-27-m1-perf. Viết PLAN Tổng quan (chỉ frontend).
+- Gate 1: 0 Blocker, 4 Major Accepted (C-01..C-04), Minor C-05..C-07.
+- T-01 (Sonnet) trang Tổng quan; Opus sửa nhãn loại email + trạng thái 0 firewall. Gate 2: 2 Major (C-08 nhãn công tắc khẩn cấp sai trường, C-09 response null kẹt trang) + Minor — Opus sửa.
+- T-02 (Sonnet) +23 khẳng định ui_smoke (kể cả 2 ca cho C-08, C-09). FAIL connection refused 1 lần do Opus chạy run_e2e trùng lúc; chạy lại 2/2 pass.
+- T-03 (Opus) README 6.0 + 2.3.0, architecture §23, roadmap L1 xong. CLOSE: run_all.sh 32/32.
