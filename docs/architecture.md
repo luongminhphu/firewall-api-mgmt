@@ -736,3 +736,25 @@ Roadmap L2. Chỉ frontend, không đổi API.
 - SSO: hash chỉ được coi là kết quả đăng nhập khi bắt đầu bằng `sso=` / `sso_error=`. Trước khi chuyển sang Microsoft, link hiện tại được lưu
   vào sessionStorage (`sb_return_hash`), khôi phục sau `#sso=` nếu khớp `HASH_RE` (không rời origin). Thoát thủ công xoá hash khỏi thanh địa chỉ.
 - Dùng ngay: Tổng quan (firewall → `#groups?fw=`, drift → `#changes?type=drift&from=`, VPN → `#vpn?status=`), kết quả Chặn nhanh → `#changes?q=<IP>`.
+
+## 25. Cảnh báo email cho Infra: firewall mất kết nối, sửa group ngoài giờ (v2.5.0, 27/11/2026)
+
+Roadmap F1 + F2. Yêu cầu chủ sản phẩm (27/11): email sửa `SCANPORT GROUP` trên WebAdmin **chỉ ngoài giờ hành chính / cuối tuần / ngày lễ**.
+
+- **Kiểm tra sức khoẻ** (`notify/health.py`, `jobs.every("fw-health", FW_HEALTH_MINUTES)`): mỗi firewall đang bật một lệnh
+  `Get IPHostGroup` lọc theo tên (đi qua `policy.check_request`, không lệnh ghi). Trạng thái so với lần **probe** trước (không so `last_status`,
+  luồng chặn cũng ghi), lưu `AppSetting alerts.state`. Audit `fw_health` chỉ khi đổi trạng thái. Lỗi ≥ `fw_down_minutes` → `fw_down`; hồi phục
+  sau khi đã báo → `fw_up` (dedupe theo `down_since`). `auth_error` giãn 60 phút nhưng vẫn xét ngưỡng; đổi host/port/tài khoản/mật khẩu
+  (fingerprint) → probe ngay. Mỗi firewall try/commit riêng.
+- **Drift gần thời gian thực**: probe thấy tên thành viên khác cache (hoặc cache `dirty`) → quét nhẹ (giữ `gc-scan`, không chờ).
+- **Chống drift giả** (sửa lỗi có sẵn): `group_cache.scan` so drift dưới `fw-write` (không chờ) — lệnh chặn / bỏ chặn đang chạy thì hoãn; app
+  ghi thay đổi sau lúc bắt đầu đọc → hoãn; hoãn = `dirty`, probe kế tiếp quét lại.
+- **Email drift** (`notify/drift.py`, trong `run_cycle`, bước có try riêng): con trỏ `AppSetting alerts.drift` luôn tiến (tắt rồi bật không xả lịch sử,
+  lần đầu không gửi lịch sử); mỗi `batch_id` một email; chỉ khi `autoblock.settings.window_reason` (coi lịch như bật) của thời điểm phát hiện ≠ "".
+- **Outbox**: `deliver` giữ `jobs.lock("outbox-deliver")` (không chờ; cảnh báo cầu dao tự động chặn thì chờ) → không gửi trùng giữa luồng / pod.
+- Cấu hình trong Thông báo: `alert_fw_down`, `fw_down_minutes` (5–1440), `alert_drift` — độc lập công tắc nhắc hạn VPN, dùng chung email Infra.
+- Nút **Đồng bộ** (Lịch sử thay đổi) cũng so drift dưới `fw-write` không chờ: đang có lệnh chặn / bỏ chặn thì báo thử lại sau.
+- Chưa xử lý: pod bị dừng đúng lúc giữa ghi nhật ký và lưu snapshot của lệnh bỏ chặn (vd trong vòng xoá object) có thể để lại một lần
+  `drift_remove` giả. Đảo thứ tự lưu snapshot trước nhật ký đã thử nhưng gây drift giả không ổn định trên PostgreSQL → hoãn, cần điều tra riêng.
+- Giới hạn đã biết: firewall chập chờn (< ngưỡng rồi ok) không có email; N pod → N lượt probe/chu kỳ (email không trùng nhờ state);
+  tắt firewall đang báo lỗi không có email đóng; thời điểm drift = lúc phát hiện.

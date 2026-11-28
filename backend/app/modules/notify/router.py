@@ -43,6 +43,9 @@ class NotifyIn(_In):
     infra_emails: Any = None  # list hoặc chuỗi phân cách , ; xuống dòng
     reminder_days: list[int] | None = None
     expired_weekly: bool | None = None
+    alert_fw_down: bool | None = None
+    fw_down_minutes: int | None = None
+    alert_drift: bool | None = None
 
 
 class ContactIn(_In):

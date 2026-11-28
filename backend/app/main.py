@@ -5,6 +5,7 @@ Nghiệp vụ nằm ở modules/*, xác thực ở auth/*, hạ tầng ở core/
 """
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -32,6 +33,7 @@ from .modules.firewalls.router import router as firewalls_router
 from .modules.ipblock import group_cache as gc
 from .modules.ipblock.changes_router import router as changes_router
 from .modules.ipblock.router import router as ipblock_router
+from .modules.notify import health as notify_health
 from .modules.notify import outbox as notify_outbox
 from .modules.notify.router import router as notify_router
 from .modules.reports.router import router as reports_router
@@ -63,6 +65,12 @@ def _startup() -> None:
     # Thông báo email: lập kế hoạch nhắc hạn VPN (idempotent) + gửi hàng đợi; mỗi vòng chỉ một pod chạy
     if settings.NOTIFY_INTERVAL_SECONDS > 0:
         jobs.every("notify", settings.NOTIFY_INTERVAL_SECONDS, notify_outbox.run_cycle)
+    # Thăm dò từng firewall (Get nhẹ): cập nhật trạng thái, email Infra khi mất kết nối / hồi phục
+    if settings.FW_HEALTH_MINUTES > 0:
+        if settings.NOTIFY_INTERVAL_SECONDS <= 0:
+            logging.getLogger("notify").warning("FW_HEALTH_MINUTES bật nhưng NOTIFY_INTERVAL_SECONDS=0: email cảnh báo "
+                                                "firewall chỉ nằm trong hàng đợi, không được gửi")
+        jobs.every("fw-health", settings.FW_HEALTH_MINUTES * 60, notify_health.probe_all)
     # Rà soát quyền VPN: tự mở đợt đầu quý, nhắc / báo quá hạn (một pod/vòng); kiểm tra mỗi giờ
     jobs.every("review", 3600, review_service.tick)
     # Dọn công việc nền cũ hơn JOB_RETENTION_DAYS (result_json chứa từng IP) — trước đây chỉ chạy lúc khởi động

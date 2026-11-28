@@ -1,40 +1,52 @@
 # Mục tiêu
-Deep link có tham số `#<tab>?<khoá>=<giá trị>` (roadmap L2): mở thẳng một trang với bộ lọc điền sẵn — từ Tổng quan, từ kết quả chặn,
-hoặc dán link vào email / ticket. Ví dụ `#changes?q=1.2.3.4`, `#changes?fw=2&type=drift`, `#vpn?status=expired_enabled`, `#groups?fw=2&q=1.2.3.4`, `#audit?q=1.2.3.4`.
+Roadmap F1 + F2: Infra nhận email khi (F1) một firewall mất kết nối XML API kéo dài, kèm email khi hồi phục, và (F2) có người sửa
+`SCANPORT GROUP` trực tiếp trên WebAdmin (drift). Trạng thái firewall trên giao diện thành dữ liệu sống.
 
 # Ngoài phạm vi
-- Ghi ngược bộ lọc người dùng tự chỉnh vào URL (URL "chia sẻ được" của trạng thái hiện tại) — làm sau nếu cần.
-- API mới (L3 tra cứu IP), lối tắt trên trang Firewall (L5), VPN ↔ Rà soát (L4).
+- Kênh khác email (Teams, SMS, Prometheus — roadmap F9).
+- Kiểm tra song song nhiều firewall (tuần tự đủ cho ≤ 10 firewall với chu kỳ 5 phút).
+- Đổi cách phát hiện drift (giữ `changelog.detect_drift` chạy trong lượt quét cache).
 
 # Ràng buộc & quyết định
-- D1: Chỉ frontend, không đổi API (contract không đổi).
-- D2: Cú pháp `#tab?k=v&k2=v2` (URLSearchParams). Router nhận `^[a-z]+(\?.*)?$`; tab vẫn chỉ chữ thường. Hash `#sso=…`/`#sso_error=…` giữ nguyên xử lý cũ (main.js đọc trước router).
-- D3: Khoá được hỗ trợ (danh sách trắng, khoá khác bỏ qua):
-  - `changes`: `fw` (id firewall) → `#c-fw`, `type` → `#c-type`, `q` → `#c-q`, `actor` → `#c-actor`, `from`/`to` (YYYY-MM-DD) → `#c-from`/`#c-to`
-  - `audit`: `q` → `#a-search`, `action` → `#a-action`
-  - `groups`: `fw` → `#g-fw`, `q` → `#g-search`
-  - `vpn`: `fw` → `#vr-fw`, `q` → `#vr-q`, `status` → bộ lọc chip `vs.status` (chỉ giá trị có trong danh sách chip), view rule
-- D4: Chỉ gán `.value` (không bao giờ innerHTML); `select` chỉ nhận giá trị có trong option (sau khi option đã được điền); ngày phải đúng `YYYY-MM-DD`; chuỗi cắt ≤ 120 ký tự. Giá trị không hợp lệ → bỏ qua khoá đó, không lỗi.
-- D5: Khi có tham số: các ô lọc KHÔNG có trong link được đặt lại rỗng (link cho kết quả xác định, không lẫn bộ lọc cũ). Khi không có tham số (bấm menu): giữ bộ lọc người dùng như hiện tại.
-- D6: Cùng tab, đổi tham số → tải lại với bộ lọc mới (hashchange). Tab không được phép → tab mặc định như cũ (bỏ tham số).
-- D7: Dùng ngay: Tổng quan (mục "Cần xử lý" theo firewall → `#groups?fw=<id>`, drift → `#changes?type=drift&from=<VN−6>`, VPN hết hạn còn bật → `#vpn?status=expired_enabled`, sắp hết hạn → `#vpn?status=expiring`); kết quả Chặn nhanh "Xem lịch sử thay đổi" → `#changes?q=<IP đầu tiên>` nếu chặn 1 IP, hoặc theo khoảng thời gian hôm nay.
-- D9: Không bao giờ nhận tham số cho tab có thao tác ghi tự do (#block: ô IP, lý do). Chỉ tab trong D3. (C-07)
-- D10: Link sống sót qua SSO (C-01); go() cùng tab xoá `?` cũ (C-06); D5 sửa theo C-02; áp tham số trong hàm load của trang, 1 request (C-03).
-- D8: Một hàm dựng link dùng chung (vd `link(tab, params)` trong router.js) để không ai tự ghép chuỗi hash.
+- D0 (yêu cầu người dùng 27/11): email drift **chỉ khi thời điểm drift ngoài giờ hành chính / cuối tuần / ngày lễ**. Trong giờ hành chính team network
+  quản trị trực tiếp trên WebAdmin là bình thường → vẫn ghi Lịch sử thay đổi, không email. "Giờ hành chính" dùng chung lịch của Tự động chặn
+  (`autoblock.settings.window_reason`: khung 18:00–08:00, thứ 7/CN, ngày lễ) — tính với `window_enabled` coi như bật (lịch tắt 24/7 không có nghĩa
+  "luôn ngoài giờ"). Thời điểm = `GroupChange.ts` của dòng drift.
+- D1: **Job fw-health** `jobs.every("fw-health", FW_HEALTH_MINUTES*60)` (env, mặc định 5; 0 = tắt): mỗi firewall đang bật gọi `cli.get_group(BLOCK_GROUP)`
+  (Get lọc theo tên, nhẹ, đã có trong allowlist policy.py — không lệnh ghi). Thành công = sống; cập nhật `mark_status`. Mỗi firewall try/except +
+  commit riêng (C-03). `auth_error` → giãn chu kỳ firewall đó 60 phút để không khoá tài khoản API (C-07).
+- D1b: **Drift gần thời gian thực**: nếu tập tên thành viên probe đọc được khác cache → chạy `group_cache.scan(mode="lite")` NGAY trong probe, dưới
+  `fw_lock` (khoá ghi theo firewall) lấy kiểu không chờ; đang có lệnh chặn thì bỏ lượt này (C-01).
+- D1c: `group_cache.scan` (mọi chế độ): nếu có `GroupChange` add/remove do app của firewall đó ghi SAU lúc scan bắt đầu đọc → bỏ `detect_drift`
+  lượt này, đánh dấu dirty để lượt sau so lại (sửa race drift giả có sẵn — C-01).
+- D2: Audit chỉ khi trạng thái **probe** đổi (so với trạng thái probe trước lưu trong state, không so `last_status` mà luồng chặn cũng ghi — C-02),
+  action `fw_health`, actor `system`.
+- D3: F1 email khi lỗi liên tục ≥ `fw_down_minutes` (mặc định 15) từ `down_since`; email hồi phục chỉ khi đã gửi email lỗi. State
+  `{fw_id: {status, down_since, alerted, next_probe_at}}` trong AppSetting khoá riêng `alerts.state`; firewall tắt / bị xoá → xoá state (C-03).
+- D4: F2 trong `notify.run_cycle`, bước riêng có try riêng (C-05): đọc drift `id > con trỏ` (AppSetting `alerts.state`), **con trỏ luôn tiến kể cả
+  khi cảnh báo tắt** (bật lại không xả lịch sử); lọc theo D0; gom theo `batch_id` (mỗi lô một email, dedupe `drift:<batch_id>`, C-06), ≤ 50 dòng.
+  Lần đầu: con trỏ = max id, không gửi lịch sử.
+- D5: fw-health chỉ `enqueue` (không deliver); `deliver` bọc `jobs.lock("outbox-deliver", blocking=False)` để không pod/luồng nào gửi trùng (C-04).
+  Dedupe: `fw_down:<fw>:<down_since>`, `fw_up:<fw>:<down_since>`, `drift:<batch_id>`.
+- D6: Cấu hình **tách khỏi công tắc nhắc hạn VPN** (C-08): thêm vào notify cfg `DEFAULTS` (để update_cfg không xoá): `alert_fw_down` (true),
+  `fw_down_minutes` (15, 5–1440), `alert_drift` (true). Gửi khi loại đó bật và có `infra_emails` — KHÔNG phụ thuộc `enabled` (nhắc hạn VPN).
+  `GET/PUT /api/notify/settings` thêm khoá: cố ý đổi API, ghi lại contract snapshot — lý do: cấu hình cảnh báo F1/F2.
+- D7: Nội dung tiếng Việt: tên firewall, site, thời điểm giờ VN, thông điệp lỗi (cắt 500 ký tự), IP drift thêm/bớt + giờ + lý do ngoài giờ
+  ("Cuối tuần", "Ngoài giờ 18:00–08:00", "Ngày lễ: …"). Link L2 nếu có APP_BASE_URL.
+- D8: Không lệnh ghi mới, không nới policy.py (Quy tắc 1). Không thêm bảng/cột.
+- Deferred: gộp nhiều firewall down trong một email (Q2); song song probe.
 
 # Tiêu chí hoàn thành (kiểm chứng được)
-- [x] ui_smoke: mở `#changes?q=1.2.3.4` → `#c-q` = "1.2.3.4" và request `/api/changes` có `q=1.2.3.4`; `#changes?fw=<id>&type=drift` → select đúng; `#vpn?status=expired_enabled` → chip đó active; `#groups?fw=<id>` → `#g-fw` đúng; `#audit?q=x` → `#a-search` = x.
-- [x] Giá trị xấu (`fw=999999`, `from=abc`, `q=<script>`, khoá lạ) → không lỗi JS, không chèn HTML, khoá bị bỏ qua.
-- [x] Bấm menu sau đó → bộ lọc không bị xoá (D5). Back giữa hai link khác tham số → bộ lọc theo link.
-- [x] SSO `#sso=` vẫn chạy (oidc/sso test hiện có pass); vai trò Rà soát mở `#vpn?…` → vẫn chỉ tab Rà soát.
-- [x] Tổng quan: bấm mục VPN hết hạn → `#vpn?status=expired_enabled`, chip active.
-- [x] `bash tests/run_all.sh` pass; contract không đổi. README 6.x ghi cú pháp link; architecture.md; roadmap L2 xong.
+- [x] `tests/alerts_test.py` (SQLite + PostgreSQL): firewall trỏ cổng đóng → sau ngưỡng có đúng 1 email `fw_down` (chạy job nhiều lần vẫn 1);
+      trỏ lại mock → 1 email `fw_up`; chưa quá ngưỡng → không email; Thông báo tắt / alert_fw_down tắt → không email; audit `fw_health` chỉ ở lần đổi trạng thái.
+- [x] Drift: sửa group trên mock ngoài app → probe phát hiện trong cùng lượt → GroupChange drift; drift lúc ngoài giờ → 1 email liệt kê IP; drift trong giờ hành chính → không email nhưng có trong Lịch sử; chạy lại → không trùng; lần đầu / bật lại sau khi tắt không gửi lịch sử; lệnh chặn chen giữa lượt quét → không drift giả.
+- [x] `policy_guard_test.py` pass (không lệnh ghi mới); `contract_test.py` pass sau khi ghi lại snapshot có chủ đích; `run_all.sh` pass.
+- [x] Cài đặt › Email có 3 ô cấu hình mới (UI smoke). README (biến `FW_HEALTH_MINUTES`, mục cảnh báo), architecture.md, roadmap F1/F2 xong.
 
 # Task
 | ID | Mô tả | Phụ thuộc | Rủi ro | Trạng thái |
 |----|-------|-----------|--------|------------|
-| T-01 | Router (parse, `link()`, params cho onShow, go() cùng tab), main.js truyền params, giữ link qua SSO, siết SSO hash | — | TB | done |
-| T-02 | 4 trang nhận params trong hàm load (changes, audit, groups, vpn) + C-02, C-04, C-05 | T-01 | TB | done |
-| T-03 | Dùng link: overview.js, block.js (D7) | T-02 | Thấp | done |
-| T-04 | ui_smoke khẳng định theo tiêu chí + C-03 (1 request), D9 | T-03 | Thấp | done |
-| T-05 | Tài liệu (Opus) | T-04 | Thấp | done |
+| T-01 | Cấu hình notify (3 khoá) + job fw-health (probe, state, F1 email, audit chuyển trạng thái) + khoá deliver + test | — | Cao | done |
+| T-02 | Drift gần thời gian thực (D1b, D1c) + email drift ngoài giờ (D0, D4) + test | T-01 | Cao | done |
+| T-03 | Giao diện Cài đặt › Email + ui_smoke + contract snapshot | T-02 | TB | done |
+| T-04 | Tài liệu (Opus) | T-03 | Thấp | done |

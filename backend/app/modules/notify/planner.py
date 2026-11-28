@@ -21,7 +21,8 @@ from ...core.models import AppSetting, VpnTeamContact
 from .smtp import parse_emails
 
 KEY = "notify.settings"
-DEFAULTS = {"enabled": False, "infra_emails": [], "reminder_days": [30, 14, 7, 1], "expired_weekly": True}
+DEFAULTS = {"enabled": False, "infra_emails": [], "reminder_days": [30, 14, 7, 1], "expired_weekly": True,
+            "alert_fw_down": True, "fw_down_minutes": 15, "alert_drift": True}
 
 
 def _fmt(d: str | None) -> str:
@@ -96,6 +97,14 @@ def update_cfg(db: Session, data: dict, *, actor: str, client_ip: str) -> dict:
         cfg["enabled"] = bool(data["enabled"])
     if data.get("expired_weekly") is not None:
         cfg["expired_weekly"] = bool(data["expired_weekly"])
+    for k in ("alert_fw_down", "alert_drift"):
+        if data.get(k) is not None:
+            cfg[k] = bool(data[k])
+    if data.get("fw_down_minutes") is not None:
+        m = data["fw_down_minutes"]
+        if isinstance(m, bool) or not isinstance(m, int) or not 5 <= m <= 1440:
+            raise AppError(400, "Ngưỡng mất kết nối là số phút nguyên từ 5 đến 1440")
+        cfg["fw_down_minutes"] = m
     if data.get("infra_emails") is not None:
         cfg["infra_emails"] = parse_emails(data["infra_emails"])
     if data.get("reminder_days") is not None:

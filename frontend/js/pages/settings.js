@@ -374,6 +374,9 @@ async function loadNotify() {
     $("#nt-infra").value = r.infra_emails.join("\n");
     $("#nt-days").value = r.reminder_days.join(", ");
     $("#nt-weekly").checked = r.expired_weekly;
+    $("#nt-fwdown").checked = r.alert_fw_down;
+    $("#nt-fwmin").value = r.fw_down_minutes;
+    $("#nt-drift").checked = r.alert_drift;
     // đang sửa dở bảng group thì không ghi đè (vd vừa bấm Lưu thông báo → tải lại cấu hình)
     if (!tcDirty() || !tcSaved.length) renderContacts(r.contacts);
     try {
@@ -435,6 +438,9 @@ $("#nt-form").addEventListener("submit", async (e) => {
         infra_emails: $("#nt-infra").value,
         reminder_days: days,
         expired_weekly: $("#nt-weekly").checked,
+        alert_fw_down: $("#nt-fwdown").checked,
+        fw_down_minutes: parseInt($("#nt-fwmin").value, 10),
+        alert_drift: $("#nt-drift").checked,
       },
     });
     say($("#nt-msg"), "Đã lưu cấu hình thông báo.", "ok");

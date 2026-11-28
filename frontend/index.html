@@ -1019,7 +1019,7 @@ Ví dụ:
               </div>
             </form>
 
-            <form class="card" id="nt-form">
+            <form class="card" id="nt-form" novalidate>
               <div class="card-head"><h2>Thông báo hạn VPN</h2></div>
               <label class="check"><input type="checkbox" id="nt-enabled" /> <span>Bật thông báo email</span></label>
               <label class="field"><span>Email Infra (nhận mọi thông báo) — mỗi dòng một địa chỉ</span>
@@ -1027,6 +1027,13 @@ Ví dụ:
               <label class="field"><span>Nhắc trước hạn (ngày, phân cách dấu phẩy)</span>
                 <input id="nt-days" placeholder="30, 14, 7, 1" inputmode="numeric" /></label>
               <label class="check"><input type="checkbox" id="nt-weekly" /> <span>Báo Infra hằng tuần các rule đã hết hạn nhưng vẫn bật</span></label>
+              <h3>Cảnh báo cho Infra</h3>
+              <label class="check"><input type="checkbox" id="nt-fwdown" /> <span>Email khi firewall mất kết nối XML API liên tục (và email khi kết nối lại)</span></label>
+              <label class="field"><span>Gửi sau khi mất kết nối liên tục (phút, 5–1440)</span>
+                <input id="nt-fwmin" type="number" min="5" max="1440" step="1" inputmode="numeric" /></label>
+              <label class="check"><input type="checkbox" id="nt-drift" /> <span>Email khi SCANPORT GROUP bị sửa trực tiếp trên WebAdmin <strong>ngoài giờ hành chính</strong></span></label>
+              <p class="muted tiny">Giờ hành chính lấy theo lịch Tự động chặn (Cài đặt › Tự động chặn): ngoài khung giờ đó, thứ 7, Chủ nhật, ngày lễ thì mới gửi. Trong giờ hành chính vẫn ghi Lịch sử thay đổi.</p>
+              <p class="muted tiny">Hai cảnh báo này gửi tới email Infra ở trên, kể cả khi tắt nhắc hạn VPN.</p>
               <p class="muted tiny">Mỗi mốc chỉ gửi một lần cho mỗi rule; đổi hạn thì nhắc lại theo hạn mới. Đại diện group (mục VPN &amp; rà soát) nhận thư nhắc của các rule thuộc group mình.</p>
               <p id="nt-msg" class="alert hidden" role="status"></p>
               <button class="btn btn--primary" type="submit">Lưu thông báo</button>

@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ...auth.rbac import current_user, operator, principal
+from ...core import jobs
 from ...core.db import get_session
 from ...core.deps import client_ip_of, selected_firewalls
 from ...integrations.sophos import SophosAuthError, SophosError
@@ -128,15 +129,20 @@ def changes_sync(
     out = []
     for fw in fws:
         try:
-            with client_for(fw) as cli:
-                g = cli.get_group(group)
-                hosts = list(g["hosts"]) if g else []
-                det, _ = resolve_hosts(cli, hosts, cached_details(db, fw.id)) if hosts else ({}, [])
-            details = {n: _host_value(h) for n, h in det.items()}
-            res = changelog.detect_drift(db, fw, group, {h: details.get(h, "") for h in hosts})
-            db.commit()
-            out.append({"firewall": fw.name, "group": group, "ok": True, "exists": bool(g),
-                        "total": len(hosts), **res})
+            with jobs.lock(f"fw-write:{fw.id}", blocking=False) as got:  # lệnh chặn / bỏ chặn đang chạy → so bây giờ ra drift giả
+                if not got:
+                    out.append({"firewall": fw.name, "group": group, "ok": False,
+                                "error": "Đang có lệnh chặn / bỏ chặn trên firewall này — thử lại sau ít phút"})
+                    continue
+                with client_for(fw) as cli:
+                    g = cli.get_group(group)
+                    hosts = list(g["hosts"]) if g else []
+                    det, _ = resolve_hosts(cli, hosts, cached_details(db, fw.id)) if hosts else ({}, [])
+                details = {n: _host_value(h) for n, h in det.items()}
+                res = changelog.detect_drift(db, fw, group, {h: details.get(h, "") for h in hosts})
+                db.commit()
+                out.append({"firewall": fw.name, "group": group, "ok": True, "exists": bool(g),
+                            "total": len(hosts), **res})
         except (SophosError, SophosAuthError, ValueError) as exc:
             db.rollback()
             out.append({"firewall": fw.name, "group": group, "ok": False, "error": str(exc)})
