@@ -261,6 +261,28 @@ const confirmOk = async (page) => {
     await page.click('#nt-form button[type="submit"]');
     await page.waitForSelector("#nt-msg.alert--ok");
     chk("Cài đặt: bật thông báo hạn VPN", true);
+    // Cảnh báo Infra: mặc định → đổi → giữ sau tải lại → ngưỡng sai báo lỗi tiếng Việt
+    chk("Cài đặt: cảnh báo Infra có mặc định (bật, 15 phút, bật)", (await page.isChecked("#nt-fwdown"))
+      && (await page.inputValue("#nt-fwmin")) === "15" && (await page.isChecked("#nt-drift")));
+    await page.fill("#nt-fwmin", "30");
+    await page.uncheck("#nt-drift");
+    await page.click('#nt-form button[type="submit"]');
+    await page.waitForSelector("#nt-msg.alert--ok");
+    await page.reload();
+    await page.waitForSelector("#app:not(.hidden)");
+    await tab(page, "settings");
+    await page.click('#st-nav [data-st="mail"]');
+    await page.waitForFunction(() => document.querySelector("#nt-fwmin").value === "30");
+    chk("Cài đặt: cảnh báo Infra giữ sau khi tải lại", (await page.inputValue("#nt-fwmin")) === "30"
+      && !(await page.isChecked("#nt-drift")) && (await page.isChecked("#nt-fwdown")));
+    await page.fill("#nt-fwmin", "3");
+    await page.click('#nt-form button[type="submit"]');
+    await page.waitForSelector("#nt-msg.alert--error");
+    chk("Cài đặt: phút < 5 báo lỗi tiếng Việt", /[ạảãàáâấầẩẫậắằẳẵặêếềểễệôốồổỗộơớờởỡợưứừửữự]|phút|Ngưỡng|không/i.test(await page.textContent("#nt-msg")), await page.textContent("#nt-msg"));
+    await page.fill("#nt-fwmin", "15");
+    await page.check("#nt-drift");
+    await page.click('#nt-form button[type="submit"]');
+    await page.waitForSelector("#nt-msg.alert--ok");
     // Group VPN & đại diện (mục VPN & rà soát): tên, đại diện, gán user VPN bằng chip
     await page.click('#st-nav [data-st="vpn"]');
     // Gợi ý từ tên rule → bỏ tick 1 user → Chọn → group mới vào bảng, con trỏ ở ô email đại diện

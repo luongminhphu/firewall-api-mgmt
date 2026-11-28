@@ -16,3 +16,8 @@
 - Gate 1: 3 Major + 4 Minor/Q, tất cả Accepted (C-01..C-07). Tách thành 5 task.
 - Gate 2 L2: 1 Major (C-08) + Minor (C-09) — Opus sửa; T-04 cập nhật khẳng định.
 - T-01, T-02 (Sonnet), T-03 (Opus, link ở Tổng quan + Chặn nhanh, sửa focus sau hashchange), T-04 (Sonnet, +20 khẳng định), T-05 (Opus) tài liệu 2.4.0. CLOSE: run_all.sh 32/32. Commit + PR + merge theo yêu cầu người dùng.
+- 2026-11-27 Vòng 4 (F1+F2): nhánh từ main dab4b4d; archive L2. Phát hiện last_status không định kỳ → cần job fw-health. Viết PLAN.
+- Gate 1: 5 Major + Minor/Q, Accepted trừ Q2 Deferred. Người dùng yêu cầu: drift chỉ email ngoài giờ → D0 + D1b.
+- T-01 (Sonnet) + Gate 2 (1 Major C-12 + Minor C-13) — Opus sửa. run_e2e tắt fw-health mặc định.
+- Gate 2 T-02: BLOCK (C-14) + C-15..C-17 → T-02b.
+- T-02b (Sonnet, dừng giữa chừng do hết hạn mức nhưng đã xong; Opus tự kiểm). Gate 2 vòng 2: C-18 Accepted, C-19 thử sửa → gây race PG → hoàn tác + Deferred, C-20 Accepted. T-03 UI (Sonnet), T-04 tài liệu (Opus).

@@ -22,7 +22,7 @@ from . import changelog
 from ...core import jobs
 from ...core.config import settings
 from ...core.db import SessionLocal
-from ...core.models import Firewall, GroupCache
+from ...core.models import Firewall, GroupCache, GroupChange
 from ...integrations.sophos.policy import BLOCK_GROUP
 from .service import _host_value, client_for, resolve_hosts
 from ...integrations.sophos import SophosAuthError, SophosError
@@ -102,6 +102,8 @@ def scan(db: Session, fw: Firewall, group: str = BLOCK_GROUP, *, mode: str = "fu
     Lỗi firewall ghi vào cache (status=error) nhưng không xóa dữ liệu cũ.
     """
     t0 = time.monotonic()
+    t_start = _now()  # trước khi đọc firewall: lệnh chặn ghi sau mốc này có thể chưa nằm trong kết quả đọc
+    raced = False
     row = get_row(db, fw.id) or GroupCache(firewall_id=fw.id, group_name=group, data_json="{}")
     if row.id is None:
         db.add(row)
@@ -123,14 +125,24 @@ def scan(db: Session, fw: Firewall, group: str = BLOCK_GROUP, *, mode: str = "fu
                    # Mốc quét đầy đủ gần nhất quyết định TTL; quét nhẹ sau thao tác không làm "trẻ" lại mốc này
                    "full_scanned_at": now_iso if details_mode == "full" else old.get("full_scanned_at")}
             try:  # phát hiện thay đổi ngoài app như trước
-                changelog.detect_drift(db, fw, g["name"], {n: _host_value(det.get(n, {})) for n in g["hosts"]})
+                # Khoá fw-write: lệnh chặn/bỏ chặn đã ghi nhật ký (commit) nhưng chưa lưu snapshot vẫn đang giữ khoá → raced
+                with jobs.lock(f"fw-write:{fw.id}", blocking=False) as got:
+                    # mọi bản ghi mới sau lúc bắt đầu đọc (kể cả drift do nút Đồng bộ ghi) → dữ liệu đọc đã cũ
+                    raced = not got or db.scalar(select(GroupChange.id).where(
+                        GroupChange.firewall_id == fw.id, GroupChange.ts >= t_start).limit(1)) is not None
+                    if raced:  # lệnh chặn chen giữa lúc đọc: so sánh bây giờ sẽ ra drift giả → quét lại sau (dirty)
+                        log.info("scan %s: có thay đổi do app ghi trong lúc quét, bỏ detect_drift lượt này", fw.name)
+                    else:
+                        changelog.detect_drift(db, fw, g["name"], {n: _host_value(det.get(n, {})) for n in g["hosts"]})
+                        db.commit()  # drift + snapshot nằm trong khoá, trước khi lệnh chặn tiếp theo có thể ghi
             except Exception:  # noqa: BLE001
+                raced = True  # chưa so được (vd hết pool khi lấy khoá) → dirty, probe quét lại
                 log.exception("detect_drift lỗi trên %s", fw.name)
         row.group_name = group
         row.data_json = json.dumps(new, ensure_ascii=False)
         row.status, row.error = "ok", ""
         row.scanned_at = _now()
-        row.dirty = False
+        row.dirty = raced
     except (SophosError, SophosAuthError, ValueError) as exc:
         row.status, row.error = "error", str(exc)[:1000]
     _attempts[fw.id] = time.monotonic()

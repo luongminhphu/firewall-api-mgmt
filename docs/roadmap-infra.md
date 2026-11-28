@@ -49,8 +49,8 @@ Thứ tự ưu tiên tính theo giá trị cho Infra Manager trên công sức b
 
 | # | Tính năng | Giá trị | Cần nới allowlist? | Công sức |
 |---|---|---|---|---|
-| F1 | **Giám sát sức khoẻ firewall định kỳ** (dùng kết quả quét cache / VPN sync ghi vào `Firewall.last_status`), cảnh báo email sau N lần lỗi liên tiếp | Biết firewall mất kết nối API trước khi SOC cần chặn | Không | Nhỏ |
-| F2 | **Cảnh báo drift WebAdmin** qua email (outbox, kiểu `group_drift`) gửi danh sách Infra | Phát hiện người sửa `SCANPORT GROUP` ngoài quy trình, phục vụ kiểm soát thay đổi ISO 27001 A.8.32 | Không | Nhỏ |
+| F1 ✅ 2.5.0 | **Giám sát sức khoẻ firewall định kỳ** (dùng kết quả quét cache / VPN sync ghi vào `Firewall.last_status`), cảnh báo email sau N lần lỗi liên tiếp | Biết firewall mất kết nối API trước khi SOC cần chặn | Không | Nhỏ |
+| F2 ✅ 2.5.0 | **Cảnh báo drift WebAdmin** (chỉ ngoài giờ hành chính) qua email (outbox, kiểu `group_drift`) gửi danh sách Infra | Phát hiện người sửa `SCANPORT GROUP` ngoài quy trình, phục vụ kiểm soát thay đổi ISO 27001 A.8.32 | Không | Nhỏ |
 | F3 | **Thời hạn chặn (TTL)**, tuỳ chọn cho mỗi lần chặn: tự gỡ khi hết hạn, có danh sách sắp hết hạn | Group không phình mãi; IP động của nhà mạng không bị chặn vĩnh viễn | Không (xoá IP Host do app tạo đã được phép) | TB, cần schema `expires_at` và job định kỳ |
 | F4 | **Ngưỡng kích thước group**: cảnh báo khi `total` vượt mức cấu hình | Tránh chạm giới hạn object của SFOS (cần đối chiếu tài liệu Sophos) | Không | Nhỏ |
 | F5 | **Báo cáo tháng cho quản lý** (PDF tự gửi ngày 1): số IP, tỉ lệ tự động, thời gian phản ứng, VPN hết hạn, tiến độ rà soát, sức khoẻ firewall | Tài liệu báo cáo lãnh đạo và auditor, không phải làm tay | Không | TB (tái dùng `modules/reports`) |
@@ -59,7 +59,7 @@ Thứ tự ưu tiên tính theo giá trị cho Infra Manager trên công sức b
 | F8 | **Quy trình xin / gia hạn quyền VPN** (đại diện team đề xuất, Infra duyệt; app chỉ ghi nhận và nhắc, không sửa firewall) | Khép vòng ISO A.5.18: cấp quyền, rà soát, thu hồi | Không (VPN vẫn chỉ đọc) | Lớn |
 | F9 | **Xuất chỉ số Prometheus `/metrics`** (job lỗi, độ trễ firewall, lệnh chờ duyệt) | Đưa vào hệ giám sát sẵn có của Infra (Grafana) | Không | Nhỏ |
 
-**Đề xuất thứ tự:** ~~L1~~ (xong 2.3.0) → ~~L2~~ (xong 2.4.0) → F1 + F2 (dùng chung outbox) → L3 → F3 → F5. Các mục **[P]** cần chủ sản phẩm duyệt riêng.
+**Đề xuất thứ tự:** ~~L1~~ (xong 2.3.0) → ~~L2~~ (xong 2.4.0) → ~~F1 + F2~~ (xong 2.5.0) → L3 → F3 → F5. Các mục **[P]** cần chủ sản phẩm duyệt riêng.
 
 ## 5. Việc người vận hành nên kiểm trên production
 

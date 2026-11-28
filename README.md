@@ -376,6 +376,7 @@ ban đầu; quản trị viên chỉnh lại trên giao diện.
 | `SESSION_SECRET` | Khóa ký phiên; để trống thì mỗi lần restart mọi người phải đăng nhập lại. **Secret** |
 | `POSTGRES_PASSWORD` / `OIDC_CLIENT_SECRET` | Mật khẩu DB / client secret của app đăng nhập. **Secret** |
 | `DATABASE_URL` | Chuỗi kết nối PostgreSQL (manifest k8s tự ghép) |
+| `FW_HEALTH_MINUTES` | Chu kỳ kiểm tra kết nối XML API từng firewall (5 phút; 0 = tắt). Cần job email (`NOTIFY_INTERVAL_SECONDS` > 0) để cảnh báo được gửi |
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | Pool kết nối PostgreSQL mỗi pod (5 / 10). Tăng khi chặn trên nhiều firewall cùng lúc; tổng × số pod phải nhỏ hơn `max_connections` |
 | `APP_BASE_URL` | Địa chỉ người dùng mở app, dùng cho link trong email nhắc hạn, rà soát, tự động chặn |
 | `SESSION_TTL_HOURS` | Thời hạn phiên (mặc định 8 giờ) |
@@ -639,8 +640,18 @@ Bốn nhóm theo công việc vận hành, chọn ở menu con bên trái (trên
 |---|---|
 | **Tự động chặn (Teams)** | Một form chia 6 bước, có mục lục nhảy nhanh và nút **Lưu** luôn ở đáy: 1 · Kết nối Microsoft Graph (+ Kiểm tra kết nối) · 2 · Người được gửi lệnh · 3 · Lịch tự chặn & giới hạn (ngày thường / cuối tuần / ngày lễ, ngưỡng IP/giờ, chu kỳ đọc, ngưỡng lệnh cũ) · 4 · Whitelist · 5 · Trả lời vào group chat (webhook) · 6 · Cảnh báo & firewall đích |
 | **VPN & rà soát** | Firewall có VPN (chỉ đồng bộ các firewall này), ngưỡng "sắp hết hạn", Rule Group được đọc · rà soát định kỳ (tự mở hằng quý, hạn hoàn thành, nhắc trước hạn) |
-| **Email & thông báo** | Máy chủ SMTP (STARTTLS / SSL / không mã hóa, kiểm tra TLS, mật khẩu mã hóa, **Gửi thử**) · thông báo hạn VPN (email Infra, mốc nhắc, báo hằng tuần) · đại diện team · hàng đợi email (**Chạy ngay**; thư lỗi tự thử lại, lùi dần tới 6 giờ, tối đa 8 lần) |
+| **Email & thông báo** | Máy chủ SMTP (STARTTLS / SSL / không mã hóa, kiểm tra TLS, mật khẩu mã hóa, **Gửi thử**) · thông báo hạn VPN (email Infra, mốc nhắc, báo hằng tuần) · **cảnh báo cho Infra** (firewall mất kết nối, sửa group ngoài giờ — xem dưới) · đại diện team · hàng đợi email (**Chạy ngay**; thư lỗi tự thử lại, lùi dần tới 6 giờ, tối đa 8 lần) |
 | **Giao diện** | Logo hiển thị (PNG / JPG / WebP / SVG, ≤ `LOGO_MAX_KB`) — trên thanh trên cùng, màn hình đăng nhập, header báo cáo |
+
+**Cảnh báo cho Infra** (gửi tới email Infra, độc lập với công tắc nhắc hạn VPN):
+
+- **Firewall mất kết nối XML API**: app kiểm tra mỗi `FW_HEALTH_MINUTES` phút (chỉ đọc `SCANPORT GROUP`). Lỗi liên tục quá ngưỡng (mặc định
+  15 phút) → một email; kết nối lại → một email. Sai mật khẩu API → app giãn kiểm tra còn 60 phút/lần để không khoá tài khoản API, sửa mật
+  khẩu trong tab Firewall thì kiểm tra lại ngay. Tắt firewall khi đang báo lỗi thì không có email "đã kết nối lại".
+- **Sửa SCANPORT GROUP trên WebAdmin**: phát hiện trong khoảng một chu kỳ kiểm tra. Chỉ email khi thời điểm phát hiện **ngoài giờ hành chính**
+  theo lịch Tự động chặn (ngoài khung giờ, thứ 7, Chủ nhật, ngày lễ) — trong giờ hành chính team network sửa trực tiếp là bình thường, vẫn ghi
+  Lịch sử thay đổi. Thời điểm là lúc app phát hiện (lệch tối đa một chu kỳ); nếu tắt kiểm tra định kỳ hoặc firewall mất kết nối, lần sửa có thể
+  chỉ được phát hiện muộn (lượt quét hằng ngày) và phân loại theo giờ phát hiện.
 
 ### 6.11 Người dùng (quản trị viên)
 
@@ -745,6 +756,7 @@ E2E_DATABASE_URL=postgresql+psycopg2://u:p@127.0.0.1:5432/srb bash tests/run_e2e
 | `hashchain_multiproc_test.py` | Chuỗi băm vẫn liền khi nhiều tiến trình / pod ghi cùng lúc (PostgreSQL) |
 | `audit_search_test.py` | Tìm Audit log trúng cả bản ghi cũ, `%` / `_` là ký tự thường, có index `action` |
 | `vpn_rules_perf_test.py` | Liên kết rule ↔ tài khoản VPN nhanh, kết quả giống thuật toán cũ |
+| `alerts_test.py` | Cảnh báo firewall mất kết nối / hồi phục (ngưỡng, không trùng, giãn khi sai mật khẩu), drift ngoài giờ / trong giờ, con trỏ, không drift giả khi chen lệnh chặn |
 | `ops_test.py` | Nén gzip response lớn, dọn công việc nền cũ |
 | `ui_smoke_test.py` | Playwright trên mọi tab: desktop, điện thoại 390px, tooltip, phân quyền giao diện · Tổng quan: mức nghiêm trọng, thẻ lỗi riêng lẻ, Back, không gọi chồng, Readonly không gọi outbox · link có tham số: áp bộ lọc, 1 request, giá trị xấu, XSS, Chặn nhanh không nhận tham số, giữ link qua SSO |
 
@@ -757,6 +769,7 @@ Lấy mẫu cấu hình VPN thật để phát triển (chỉ đọc, đã che d
 
 | Phiên bản | Nội dung chính |
 |---|---|
+| **2.5.0** | **Cảnh báo email cho Infra**: firewall mất kết nối XML API / kết nối lại (kiểm tra định kỳ `FW_HEALTH_MINUTES`), sửa `SCANPORT GROUP` trên WebAdmin **ngoài giờ hành chính** (phát hiện trong ~5 phút) · trạng thái firewall là dữ liệu sống · sửa lỗi drift giả khi lượt quét chen với lệnh chặn / bỏ chặn · hàng đợi email không gửi trùng giữa các pod |
 | **2.4.0** | **Link có tham số** `#tab?k=v` (Lịch sử thay đổi, Audit, IP Host Group, VPN), giữ link qua đăng nhập Microsoft · Tổng quan và kết quả chặn mở thẳng trang đã lọc · thoát thủ công xoá link khỏi thanh địa chỉ |
 | **2.3.0** | **Trang Tổng quan** cho IT Infrastructure Manager (Cần xử lý + thẻ từng module, bấm để mở tab), trang mặc định của quản trị viên · nút Back về đúng trang mặc định |
 | **2.2.1** | Chuỗi băm an toàn khi chạy nhiều pod · tìm Audit log đúng trên toàn bộ dữ liệu · VPN nhanh hơn ~100 lần với nhiều rule/tài khoản · gzip · dọn công việc nền định kỳ · pool DB cấu hình được · `tests/run_all.sh`. Đánh giá & lộ trình: [`docs/roadmap-infra.md`](docs/roadmap-infra.md) |

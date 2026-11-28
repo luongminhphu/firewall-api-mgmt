@@ -17,6 +17,8 @@ class Settings:
     # Pool kết nối PostgreSQL mỗi pod (mặc định như SQLAlchemy). Tổng (size+overflow) × số pod < max_connections.
     DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE") or "5")
     DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW") or "10")
+    # Chu kỳ job fw-health (phút): thăm dò từng firewall, cảnh báo mất kết nối. 0 = tắt.
+    FW_HEALTH_MINUTES: int = int(os.getenv("FW_HEALTH_MINUTES") or "5")
 
     # Khóa chính dùng để mã hóa mật khẩu firewall (AES-256-GCM qua HKDF).
     # BẮT BUỘC đặt trong .env ở môi trường thật.
@@ -152,7 +154,7 @@ class Settings:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "").strip()
 
     APP_NAME: str = "SOC Rapid Block"
-    APP_VERSION: str = "2.4.0"
+    APP_VERSION: str = "2.5.0"
 
     @property
     def auth_modes(self) -> list[str]:

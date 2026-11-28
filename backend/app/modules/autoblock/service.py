@@ -87,7 +87,7 @@ def _mail(db: Session, cfg: dict, key: str, kind: str, subject: str, body: str, 
     outbox.enqueue(db, [{"dedupe_key": key, "kind": kind, "to": to, "subject": subject, "body": body}])
     if urgent:
         try:
-            outbox.deliver(db)  # cảnh báo gửi ngay, không chờ chu kỳ NOTIFY_INTERVAL_SECONDS
+            outbox.deliver(db, wait=True)  # cảnh báo gửi ngay, không chờ chu kỳ NOTIFY_INTERVAL_SECONDS
         except Exception:  # noqa: BLE001 — SMTP lỗi: thư vẫn nằm trong hàng đợi, sẽ thử lại
             log.exception("Gửi cảnh báo tự động chặn lỗi")
 

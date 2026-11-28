@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ...core import jobs
 from ...core.config import settings
 from ...core.models import EmailOutbox
 from ..vpn import expiry
@@ -58,7 +59,17 @@ def enqueue(db: Session, msgs: list[dict]) -> int:
     return added
 
 
-def deliver(db: Session, limit: int = 50) -> dict:
+def deliver(db: Session, limit: int = 50, *, wait: bool = False) -> dict:
+    # Khóa: luồng / pod khác đang gửi thì bỏ lượt (wait=True: chờ — cảnh báo khẩn); _deliver chọn lại thư sau khi
+    # giữ khóa nên không thư nào gửi hai lần
+    with jobs.lock("outbox-deliver", blocking=wait) as got:
+        if not got:
+            pending = db.query(EmailOutbox).filter(EmailOutbox.status == "pending").count()
+            return {"sent": 0, "failed": 0, "retry": 0, "pending": pending, "note": "Đang có tiến trình khác gửi"}
+        return _deliver(db, limit)
+
+
+def _deliver(db: Session, limit: int) -> dict:
     cfg = smtp.get(db)
     if not (cfg["enabled"] and cfg["configured"]):
         pending = db.query(EmailOutbox).filter(EmailOutbox.status == "pending").count()
@@ -102,10 +113,19 @@ def plan_now(db: Session, today: dt.date | None = None) -> dict:
 def run_cycle(today: dt.date | None = None) -> dict:
     from ...core.db import SessionLocal
 
+    from . import drift
+
     with SessionLocal() as db:
-        p = plan_now(db, today)
-        d = deliver(db)
-    return {**p, **d}
+        steps = {}
+        for name, fn in (("plan", lambda: plan_now(db, today)), ("drift", lambda: drift.run(db) and {}),
+                         ("deliver", lambda: deliver(db))):
+            try:  # mỗi bước một try: lỗi bước này không chặn bước khác
+                steps[name] = fn()
+            except Exception:  # noqa: BLE001
+                db.rollback()
+                log.exception("notify.run_cycle: bước %s lỗi", name)
+                steps[name] = {}
+    return {**steps["plan"], **steps["deliver"]}
 
 
 def list_outbox(db: Session, status: str = "", limit: int = 200) -> list[dict]:
